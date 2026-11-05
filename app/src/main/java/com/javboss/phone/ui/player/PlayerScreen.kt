@@ -74,19 +74,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import coil3.compose.AsyncImage
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
 import com.javboss.phone.data.SeekSensitivity
+import com.javboss.phone.ui.components.coverFrost
+import com.javboss.phone.ui.components.coverImageModel
 import com.javboss.phone.ui.components.formatDuration
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -94,7 +99,8 @@ import kotlin.math.roundToInt
 
 /**
  * 手机播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
- * 进入时先竖屏小窗播放（视频按 16:9 居中，不打横屏、不隐藏系统栏），
+ * 进入时先竖屏播放：窗口宽度恒等于屏宽（16:9 横向铺满、无左右留白），
+ * 背景是一整张毛玻璃化的封面，按住顶部把手只能上下拖动；
  * 点控件条右侧的全屏按钮才切横屏沉浸；退出播放页恢复进来前的方向。
  * 左上始终可返回，左中打开设置，右中锁定；锁定时只保留返回与解锁。
  */
@@ -113,7 +119,7 @@ fun PlayerScreen(
     LaunchedEffect(videoId) { viewModel.load(videoId) }
 
     DisposableEffect(Unit) {
-        // 进入播放页：先竖屏小窗（不横屏、不隐藏系统栏）
+        // 进入播放页：先竖屏、窗口横向铺满（不横屏、不隐藏系统栏）
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         activity?.window?.let { window ->
             WindowCompat.setDecorFitsSystemWindows(window, true)
@@ -154,42 +160,39 @@ fun PlayerScreen(
     }
 
     BoxWithConstraints(
-        Modifier
-            .fillMaxSize()
-            // 全屏才是纯黑舞台；竖屏小窗改用主题背景色，避免看起来像「整屏黑边」
-            .background(if (fullscreen) Color.Black else MaterialTheme.colorScheme.background),
+        Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
+        // 背景异常全黑的根因：Theme 的 background 是 #121212、themes.xml 的 windowBackground
+        // 又是纯黑，而竖屏外层此前直接用了主题底色，stage 再叠一块 Color.Black。
+        // 这里改为铺一层不透明的毛玻璃封面（全屏才用纯黑舞台），把这两种黑都盖住。
+        if (fullscreen) {
+            Box(Modifier.fillMaxSize().background(Color.Black))
+        } else {
+            FrostedCoverBackdrop(state.coverUrl)
+        }
+
         val density = LocalDensity.current
-        // 竖屏小窗：宽度取屏宽的 82%，默认居中；按住顶部把手可上下左右拖动，
-        // 拖动范围限制在屏幕内，位置在本页内记住（切全屏/回来不丢）。
-        val windowWidth = maxWidth * if (fullscreen) 1f else PLAYER_WINDOW_WIDTH_FRACTION
+        // 竖屏窗口宽度恒等于屏宽（fillMaxWidth），16:9 高度随屏宽算，任何屏宽都成立。
+        // 只允许上下拖动：X 位移永远为 0，也没有任何改变宽度的手势。
         val handleHeight = if (fullscreen) 0.dp else DRAG_HANDLE_HEIGHT
-        val windowHeight = handleHeight + windowWidth * 9f / 16f
-        val horizontalRoom = ((maxWidth - windowWidth) / 2f - 8.dp).let { if (it < 0.dp) 0.dp else it }
+        val windowHeight = handleHeight + maxWidth * 9f / 16f
         val verticalRoom = ((maxHeight - windowHeight) / 2f - 8.dp).let { if (it < 0.dp) 0.dp else it }
-        val maxOffsetX = with(density) { horizontalRoom.toPx() }
         val maxOffsetY = with(density) { verticalRoom.toPx() }
-        var dragX by rememberSaveable { mutableFloatStateOf(0f) }
         var dragY by rememberSaveable { mutableFloatStateOf(0f) }
 
         when {
-            state.loading -> Text("加载播放源…", color = if (fullscreen) Color.White else MaterialTheme.colorScheme.onBackground)
+            state.loading -> Text("加载播放源…", color = Color.White)
             state.error != null -> Text("无法播放：${state.error}", color = MaterialTheme.colorScheme.error)
             else -> Column(
                 Modifier
-                    .then(
-                        if (fullscreen) Modifier.fillMaxSize()
-                        else Modifier.fillMaxWidth(PLAYER_WINDOW_WIDTH_FRACTION)
-                    )
+                    // fillMaxWidth() 不写比例、不写固定 dp：宽度始终 = 手机屏宽，横向铺满
+                    .then(if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
                     .offset {
+                        // offset 只改绘制位置、不改测量宽度；X 恒为 0，拖动过程宽度不变
                         if (fullscreen) IntOffset.Zero
-                        else IntOffset(
-                            dragX.coerceIn(-maxOffsetX, maxOffsetX).roundToInt(),
-                            dragY.coerceIn(-maxOffsetY, maxOffsetY).roundToInt(),
-                        )
-                    }
-                    .then(if (fullscreen) Modifier else Modifier.clip(RoundedCornerShape(14.dp))),
+                        else IntOffset(0, dragY.coerceIn(-maxOffsetY, maxOffsetY).roundToInt())
+                    },
             ) {
                 if (!fullscreen) {
                     // 把手独立于视频区域，播放器原有的 seek / 亮度 / 音量 / 双击手势完全不受影响
@@ -197,11 +200,11 @@ fun PlayerScreen(
                         Modifier
                             .fillMaxWidth()
                             .height(DRAG_HANDLE_HEIGHT)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .pointerInput(maxOffsetX, maxOffsetY) {
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
+                            .pointerInput(maxOffsetY) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    dragX = (dragX + dragAmount.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                    // 只取 dy：左右拖动被完全忽略，宽度不随手势变化
                                     dragY = (dragY + dragAmount.y).coerceIn(-maxOffsetY, maxOffsetY)
                                 }
                             },
@@ -239,11 +242,46 @@ fun PlayerScreen(
     }
 }
 
-/** 竖屏小窗宽度占屏宽比例：留出左右边距，仍有足够宽度给进度条 */
-private const val PLAYER_WINDOW_WIDTH_FRACTION = 0.82f
-
-/** 竖屏小窗顶部拖动把手高度 */
+/** 竖屏窗口顶部拖动把手高度（宽度仍是整屏） */
 private val DRAG_HANDLE_HEIGHT = 22.dp
+
+/** 毛玻璃封面上的压暗遮罩：别压太狠，否则又变成一片黑 */
+private const val BACKDROP_SCRIM = 0.28f
+
+/**
+ * 竖屏背景：整屏铺一张毛玻璃化的封面。
+ * API 31+ 用 RenderEffect 模糊，API 26–30 退化成 28px 小解码 + 双线性放大，
+ * 两者都是项目里已有的封面毛玻璃逻辑（coverImageModel / coverFrost）。
+ * 底层还垫了一层中性渐变：普通视频没有 JAV 封面时也不会退回 #121212 的纯黑。
+ */
+@Composable
+private fun FrostedCoverBackdrop(coverUrl: String?) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.surface,
+                    ),
+                ),
+            ),
+    ) {
+        if (coverUrl != null) {
+            AsyncImage(
+                model = coverImageModel(coverUrl, Build.VERSION.SDK_INT < Build.VERSION_CODES.S),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .coverFrost(true),
+            )
+            // 压暗一层保证把手、加载提示、控制条可读
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_SCRIM)))
+        }
+    }
+}
 
 @Composable
 private fun UnifiedPlayerStage(
@@ -452,8 +490,8 @@ private fun UnifiedPlayerStage(
             }
         }
 
-    // 竖屏小窗：一张 16:9 画面，父级 Column 已负责 82% 宽、圆角裁剪与拖动位置；
-    // 只有全屏才铺满整屏（纯黑舞台）
+    // 竖屏：16:9 画面横向铺满（宽度恒等于屏宽，不做圆角/留白，不横向缩放），
+    // 父级 Column 只负责上下拖动位置；全屏才铺满整屏（纯黑舞台）
     val stageSizeModifier = if (fullscreen) {
         Modifier.fillMaxSize()
     } else {
@@ -652,8 +690,7 @@ private fun PlaybackControls(
     modifier: Modifier = Modifier,
 ) {
     Surface(color = Color.Black.copy(alpha = 0.65f), modifier = modifier.fillMaxWidth()) {
-        // 竖屏小窗只有 82% 屏宽，IconButton 默认 48dp 的触控区会把进度条挤没，
-        // 所以窄屏用 34dp 按钮 + 20dp 图标；全屏保持原尺寸
+        // 控制条保持紧凑按钮（34dp / 20dp），把宽度尽量让给进度条；全屏用标准尺寸
         val buttonSize = if (fullscreen) 48.dp else 34.dp
         val iconSize = if (fullscreen) 24.dp else 20.dp
         Row(
@@ -674,8 +711,7 @@ private fun PlaybackControls(
                     modifier = Modifier.size(iconSize),
                 )
             }
-            // 竖屏小窗宽度只有整屏，时间和引擎标识全排上会把进度条挤成一小截：
-            // 窄屏用更小的字号、更紧的间距，并把「当前引擎」让到全屏再显示（设置浮层里也有）
+            // 竖屏时间用更小字号、更紧间距，并把「当前引擎」让到全屏再显示（设置浮层里也有）
             val timeStyle = if (fullscreen) {
                 MaterialTheme.typography.labelMedium
             } else {

@@ -29,6 +29,8 @@ data class PlayerUiState(
     val fallbackPositionMs: Long = 0,
     /** 全屏拖动 seek 灵敏度偏好 */
     val seekSensitivity: SeekSensitivity = SeekSensitivity.MEDIUM,
+    /** 竖屏背景用的毛玻璃封面（拿不到就退回中性渐变，不影响播放） */
+    val coverUrl: String? = null,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -64,10 +66,23 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     container.videoRepository.reportPlay(videoId)
                     startPlaybackReporter(videoId, source.locationId)
+                    loadCover(videoId)
                 }
             } catch (e: Exception) {
                 uiState = PlayerUiState(loading = false, error = e.message ?: "获取播放源失败")
             }
+        }
+    }
+
+    /**
+     * 竖屏背景要一张毛玻璃封面：先由 /videos/{id} 拿到番号，再拼封面地址。
+     * 单独起协程，失败或普通视频没有 JAV 信息都只是没有封面，绝不能挡住起播。
+     */
+    private fun loadCover(videoId: Long) {
+        viewModelScope.launch {
+            val code = runCatching { container.videoRepository.getVideo(videoId) }
+                .getOrNull()?.jav?.code?.takeIf { it.isNotBlank() } ?: return@launch
+            uiState = uiState.copy(coverUrl = container.apiClient.javCoverUrl(code))
         }
     }
 
