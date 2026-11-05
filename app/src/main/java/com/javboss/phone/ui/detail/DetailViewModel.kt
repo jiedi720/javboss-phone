@@ -61,6 +61,20 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
                     }.getOrNull()
                     uiState = uiState.copy(javMeta = meta)
 
+                    // /videos/{id} 有时不含目录信息，用同一部作品里内嵌的视频对象补齐路径
+                    val current = uiState.video
+                    if (current != null && current.path.isBlank()) {
+                        meta?.videos?.firstOrNull { it.id == current.id }?.let { fromMeta ->
+                            uiState = uiState.copy(
+                                video = current.copy(
+                                    path = fromMeta.path,
+                                    directoryPath = fromMeta.directoryPath,
+                                    directory = fromMeta.directory,
+                                ),
+                            )
+                        }
+                    }
+
                     val sid = meta?.seriesId
                     if (sid != null && sid > 0) {
                         val series = container.videoRepository.getJavSeries(sid)

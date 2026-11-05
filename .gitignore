@@ -13,3 +13,6 @@ app/build/
 keystore.properties
 keystore/
 AGENTS.md
+
+# 本地构建产物（APK 分发目录，不进仓库）
+dist/

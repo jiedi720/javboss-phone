@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
-import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,7 +49,7 @@ fun VideosScreen(
     viewModel: VideosViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
-    val gridState = rememberLazyStaggeredGridState()
+    val gridState = rememberLazyGridState()
 
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) onSessionExpired()
@@ -121,12 +121,13 @@ fun VideosScreen(
                 state.videos.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.videos.isEmpty() && state.error != null -> CenterMessage(state.error)
                 state.videos.isEmpty() -> CenterMessage("没有视频")
-                else -> LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Fixed(2),
+                // 等高行网格：两列严格对齐，不会像瀑布流那样各列独立堆叠、越差越多
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
                     state = gridState,
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalItemSpacing = 8.dp,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.videos, key = { it.id }) { video ->
@@ -138,7 +139,7 @@ fun VideosScreen(
                             onClick = { onVideoClick(video.id, video.jav?.code) },
                         )
                     }
-                    item(span = StaggeredGridItemSpan.FullLine) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         GridFooter(state.loadingMore, state.endReached, state.total)
                     }
                 }

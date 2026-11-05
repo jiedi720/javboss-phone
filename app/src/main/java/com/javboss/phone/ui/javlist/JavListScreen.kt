@@ -2,28 +2,21 @@ package com.javboss.phone.ui.javlist
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
-import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.GridFooter
+import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.WorkCard
 
 /** 演员/标签/片商/系列点击落地页：对应过滤条件的作品瀑布流 */
@@ -50,13 +44,15 @@ fun JavListScreen(
     studioId: Long,
     seriesId: Long,
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
+    onPlay: (videoId: Long) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: JavListViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
-    val gridState = rememberLazyStaggeredGridState()
+    val gridState = rememberLazyGridState()
     var pickerTarget by remember { mutableStateOf<JavDto?>(null) }
+    var playPickerTarget by remember { mutableStateOf<JavDto?>(null) }
 
     LaunchedEffect(Unit) { viewModel.start(idolIds, tagIds, studioId, seriesId) }
     LaunchedEffect(state.sessionExpired) {
@@ -75,6 +71,15 @@ fun JavListScreen(
             jav.videos.isEmpty() -> onOpenDetail(0, jav.code)
             jav.videos.size == 1 -> onOpenDetail(jav.videos.first().id, jav.code)
             else -> pickerTarget = jav
+        }
+    }
+
+    // 封面右下角播放钮：一个视频直接起播，多个先选
+    val onWorkPlay: (JavDto) -> Unit = { jav ->
+        when {
+            jav.videos.isEmpty() -> Unit
+            jav.videos.size == 1 -> onPlay(jav.videos.first().id)
+            else -> playPickerTarget = jav
         }
     }
 
@@ -99,23 +104,30 @@ fun JavListScreen(
                 state.items.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.items.isEmpty() && state.error != null -> CenterMessage(state.error)
                 state.items.isEmpty() && !state.loading -> CenterMessage("没有作品")
-                else -> LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Fixed(2),
+                else -> LazyVerticalGrid(
+                    // 普通网格是「行优先」：1 2 3 / 4 5 6 从左往右排。
+                    // 之前用的 staggered grid 是「列优先」，序号会竖着一列列往下走，
+                    // 看上去就不是从左到右的顺序了。
+                    columns = GridCells.Fixed(state.columns),
                     state = gridState,
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalItemSpacing = 8.dp,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.items, key = { it.id }) { jav ->
+                        val playAction: (() -> Unit)? =
+                            if (jav.videos.isEmpty()) null else ({ onWorkPlay(jav) })
                         WorkCard(
                             coverUrl = viewModel.coverUrl(jav.code),
                             code = jav.code,
                             title = jav.title,
                             onClick = { onWorkClick(jav) },
+                            cropPosition = jav.coverCropPosition,
+                            onPlay = playAction,
                         )
                     }
-                    item(span = StaggeredGridItemSpan.FullLine) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         GridFooter(state.loadingMore, state.endReached, state.total)
                     }
                 }
@@ -124,29 +136,28 @@ fun JavListScreen(
     }
 
     pickerTarget?.let { jav ->
-        AlertDialog(
-            onDismissRequest = { pickerTarget = null },
-            title = { Text(jav.code) },
-            text = {
-                Column {
-                    Text("选择要查看的视频文件", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    jav.videos.forEach { video ->
-                        TextButton(
-                            onClick = {
-                                pickerTarget = null
-                                onOpenDetail(video.id, jav.code)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(video.filename, maxLines = 1)
-                        }
-                    }
-                }
+        VideoPickDialog(
+            title = jav.code,
+            hint = "选择要查看的视频文件",
+            options = jav.videos.map { it.id to it.filename },
+            onPick = { videoId ->
+                pickerTarget = null
+                onOpenDetail(videoId, jav.code)
             },
-            confirmButton = {
-                TextButton(onClick = { pickerTarget = null }) { Text("取消") }
+            onDismiss = { pickerTarget = null },
+        )
+    }
+
+    playPickerTarget?.let { jav ->
+        VideoPickDialog(
+            title = jav.code,
+            hint = "选择要播放的视频文件",
+            options = jav.videos.map { it.id to it.filename },
+            onPick = { videoId ->
+                playPickerTarget = null
+                onPlay(videoId)
             },
+            onDismiss = { playPickerTarget = null },
         )
     }
 }

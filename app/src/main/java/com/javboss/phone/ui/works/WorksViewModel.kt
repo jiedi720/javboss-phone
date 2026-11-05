@@ -10,6 +10,7 @@ import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.IdolDto
 import com.javboss.phone.data.api.dto.JavDto
+import com.javboss.phone.data.api.dto.JavItemUpdateRequest
 import com.javboss.phone.data.api.dto.PrefixDto
 import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.StudioDto
@@ -20,8 +21,8 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
- * 与网页版/TV 版一致的 JAV 排序维度（见 web/src/constants/jav.js）。
- * 每个维度一个 chip，选中的 chip 再点一次切换升/降序。
+ * 与网页版/TV 版一致的 JAV 排序维度（见 web/src/constants/jav.js 的 `je` 数组）。
+ * 六个维度与 Web 端一一对应，升/降序取值也照搬（含 code_desc、height_desc 这种反向命名）。
  */
 enum class JavSortBase(
     val label: String,
@@ -35,12 +36,37 @@ enum class JavSortBase(
     CODE("番号", "code", "code_desc", "A→Z", "Z→A", true),
     DURATION("时长", "duration_asc", "duration", "短→长", "长→短", false),
     RELEASE("发行时间", "release_asc", "release", "远→近", "近→远", false),
-    PLAY_COUNT("播放次数", "play_count_asc", "play_count", "少→多", "多→少", false),
+    // 服务端的排序键是 watched（jav.watched_ms），不是旧的 play_count
+    WATCHED("观看时长", "watched_asc", "watched", "短→长", "长→短", false),
+    FAVORITE_RATING("喜爱度", "favorite_rating_asc", "favorite_rating", "低→高", "高→低", false),
+}
+
+/**
+ * 女优排序维度，与 Web 端 `Je`（女优页排序数组）完全一致。
+ * 注意「年龄」这一项是反的：升序（小→大）用 `birth`，降序用 `birth_asc`，
+ * 因为服务端按生日排序，生日越晚年龄越小。
+ */
+enum class IdolSortBase(
+    val label: String,
+    val ascValue: String,
+    val descValue: String,
+    val ascLabel: String,
+    val descLabel: String,
+    val defaultAsc: Boolean,
+) {
+    WORK("作品数量", "work_asc", "work", "少→多", "多→少", false),
+    RECENT("加入时间", "recent_asc", "recent", "远→近", "近→远", false),
+    AGE("年龄", "birth", "birth_asc", "小→大", "大→小", false),
+    HEIGHT("身高", "height", "height_desc", "低→高", "高→低", false),
+    BUST("胸围", "bust_asc", "bust", "小→大", "大→小", false),
+    HIPS("臀围", "hips_asc", "hips", "小→大", "大→小", false),
+    WAIST("腰围", "waist", "waist_desc", "小→大", "大→小", false),
+    CUP("罩杯", "cup_asc", "cup", "小→大", "大→小", false),
 }
 
 /** 作品库的四个卡片墙视角（对齐 TV 版作品库子页签） */
 enum class LibraryTab(val label: String) {
-    WORKS("作品"),
+    WORKS("JAV"),
     IDOLS("女优"),
     STUDIOS("片商"),
     SERIES("系列"),
@@ -79,8 +105,13 @@ data class WorksUiState(
     val allPrefixes: List<PrefixDto> = emptyList(),
     // 女优/片商/系列
     val idols: EntityPage<IdolDto> = EntityPage(),
+    /** 女优排序维度（默认作品数量，多→少，与 Web 端一致） */
+    val idolsSort: IdolSortBase = IdolSortBase.WORK,
+    val idolsSortAsc: Boolean = false,
     val studios: EntityPage<StudioDto> = EntityPage(),
     val series: EntityPage<SeriesDto> = EntityPage(),
+    /** 卡片墙每行数量（2/3/4），持久化在 SettingsManager */
+    val columns: Int = 2,
     val error: String? = null,
     val sessionExpired: Boolean = false,
 )
@@ -88,7 +119,20 @@ data class WorksUiState(
 class WorksViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as JavBossApp).container
 
-    var uiState by mutableStateOf(WorksUiState())
+    var uiState by mutableStateOf(
+        WorksUiState(
+            columns = container.settings.gridColumns,
+            // 排序沿用上次的选择（本地持久化），不再每次打开都重置成默认
+            sort = container.settings.javSortName
+                ?.let { runCatching { JavSortBase.valueOf(it) }.getOrNull() }
+                ?: JavSortBase.RECENT,
+            sortAsc = container.settings.javSortAsc,
+            idolsSort = container.settings.idolSortName
+                ?.let { runCatching { IdolSortBase.valueOf(it) }.getOrNull() }
+                ?: IdolSortBase.WORK,
+            idolsSortAsc = container.settings.idolSortAsc,
+        ),
+    )
         private set
 
     private var searchJob: Job? = null
@@ -96,6 +140,12 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshWorks()
+        // 每行卡片数在设置页里改，这里跟着流转，改完回作品页立即生效
+        viewModelScope.launch {
+            container.settings.gridColumnsFlow.collect { columns ->
+                if (columns != uiState.columns) uiState = uiState.copy(columns = columns)
+            }
+        }
     }
 
     // ---------- 作品 ----------
@@ -162,6 +212,8 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             uiState.copy(sort = base, sortAsc = base.defaultAsc, random = false, seed = null)
         }
+        val s = uiState
+        viewModelScope.launch { container.settings.saveJavSort(s.sort.name, s.sortAsc) }
         refreshWorks()
     }
 
@@ -193,6 +245,7 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
             search = "", sort = JavSortBase.RECENT, sortAsc = false, prefix = "",
             tagIds = emptySet(), solo = false, random = false, seed = null,
         )
+        viewModelScope.launch { container.settings.saveJavSort(JavSortBase.RECENT.name, false) }
         refreshWorks()
     }
 
@@ -251,8 +304,26 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 女优 / 片商 / 系列（同一套分页逻辑） ----------
 
-    private suspend fun fetchIdols(limit: Int, offset: Int) =
-        container.videoRepository.listJavIdols(limit = limit, offset = offset, search = uiState.search)
+    private suspend fun fetchIdols(limit: Int, offset: Int) = uiState.let { s ->
+        container.videoRepository.listJavIdols(
+            limit = limit,
+            offset = offset,
+            search = s.search,
+            sort = if (s.idolsSortAsc) s.idolsSort.ascValue else s.idolsSort.descValue,
+        )
+    }
+
+    /** 女优点排序：换维度用默认方向，点同一个维度切升降序（与作品一致） */
+    fun onIdolSortClick(base: IdolSortBase) {
+        uiState = if (uiState.idolsSort == base) {
+            uiState.copy(idolsSortAsc = !uiState.idolsSortAsc)
+        } else {
+            uiState.copy(idolsSort = base, idolsSortAsc = base.defaultAsc)
+        }
+        val s = uiState
+        viewModelScope.launch { container.settings.saveIdolSort(s.idolsSort.name, s.idolsSortAsc) }
+        refreshIdols()
+    }
 
     fun refreshIdols() {
         viewModelScope.launch {
@@ -388,6 +459,35 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(series = uiState.series.copy(loadingMore = false), sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(series = uiState.series.copy(loadingMore = false))
+            }
+        }
+    }
+
+    // ---------- 喜爱度评分 ----------
+
+    /**
+     * 改喜爱度：0..5、步长 0.5，走 PUT /jav/items/{id}（与 Web 端封面左上角那排星同一个接口）。
+     * 成功后只把返回的评分写回本地列表，避免整条对象被服务端裁剪后的版本覆盖掉。
+     */
+    fun updateRating(javId: Long, rating: Double) {
+        if (javId <= 0) return
+        val normalized = (Math.round(rating * 2) / 2.0).coerceIn(0.0, 5.0)
+        viewModelScope.launch {
+            try {
+                val updated = container.videoRepository.updateJavItem(
+                    javId,
+                    JavItemUpdateRequest(favoriteRating = normalized),
+                )
+                val applied = updated.favoriteRating
+                uiState = uiState.copy(
+                    items = uiState.items.map {
+                        if (it.id == javId) it.copy(favoriteRating = applied) else it
+                    },
+                )
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (_: Exception) {
+                // 失败就保持原样，下一次刷新会从服务端取到真实值
             }
         }
     }

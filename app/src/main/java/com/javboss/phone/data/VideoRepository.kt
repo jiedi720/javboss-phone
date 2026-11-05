@@ -7,6 +7,8 @@ import com.javboss.phone.data.api.dto.JavItemUpdateRequest
 import com.javboss.phone.data.api.dto.JavListResponse
 import com.javboss.phone.data.api.dto.JavTagsReplaceRequest
 import com.javboss.phone.data.api.dto.PrefixDto
+import com.javboss.phone.data.api.dto.PlaybackSessionReportRequest
+import com.javboss.phone.data.api.dto.PlaybackSessionRequest
 import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
 import com.javboss.phone.data.api.dto.StreamsResponse
@@ -15,11 +17,47 @@ import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.data.api.dto.VideoListResponse
+import retrofit2.HttpException
+
+/** 可直接播放的源地址 + 本次命中的文件位置（观看时长要按位置归账） */
+data class PlayableSource(
+    val urls: List<String> = emptyList(),
+    val locationId: Long = 0,
+)
 
 class VideoRepository(private val apiClient: ApiClient) {
 
-    suspend fun listVideos(limit: Int, offset: Int, search: String = "", sort: String = ""): VideoListResponse =
-        apiClient.api().listVideos(limit = limit, offset = offset, search = search, sort = sort)
+    /**
+     * 服务端是否开启了「视频页隐藏已关联 JAV 的视频」（config.video_hide_jav）。
+     * 用户的服务端默认是 true —— 也就是 Web 的视频页只列普通视频，JAV 只从「作品」进。
+     * 值只取一次并缓存，避免每次翻页都打一次 /config。
+     */
+    private var hideJavCache: Boolean? = null
+
+    suspend fun videosHideJav(): Boolean {
+        hideJavCache?.let { return it }
+        val value = runCatching {
+            val raw = apiClient.api().getConfig()["video_hide_jav"]
+            val text = (raw as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@runCatching false
+            text.equals("true", ignoreCase = true) || text == "1"
+        }.getOrDefault(false)
+        hideJavCache = value
+        return value
+    }
+
+    suspend fun listVideos(
+        limit: Int,
+        offset: Int,
+        search: String = "",
+        sort: String = "",
+        hideJav: Boolean = false,
+    ): VideoListResponse = apiClient.api().listVideos(
+        limit = limit,
+        offset = offset,
+        search = search,
+        sort = sort,
+        hideJav = if (hideJav) 1 else 0,
+    )
 
     suspend fun getVideo(id: Long): VideoDto =
         apiClient.api().getVideo(id)
@@ -28,21 +66,51 @@ class VideoRepository(private val apiClient: ApiClient) {
         apiClient.api().getStreams(id)
 
     /**
-     * 播放源地址转绝对 URL。direct 永远排最前（免转码、原生 Range 拖动），
+     * 播放源地址 + 本次命中的文件位置 id。direct 永远排最前（免转码、原生 Range 拖动），
      * 服务端按浏览器标准未列出 direct 源时（mkv/wmv/h265 等）按固定格式自拼；
      * HLS 排最后兜底（依赖服务端 ffmpeg）。
      */
-    suspend fun resolvePlayUrls(id: Long): List<String> {
+    suspend fun resolvePlayable(id: Long): PlayableSource {
         val streams = getStreams(id)
         val direct = streams.sources.firstOrNull { it.kind == "direct" }?.src
             ?: "videos/$id/stream"
         val hls = streams.sources.filter { it.kind == "hls" }.map { it.src }
-        return (listOf(direct) + hls).map { apiClient.absoluteUrl(it) }
+        return PlayableSource(
+            urls = (listOf(direct) + hls).map { apiClient.absoluteUrl(it) },
+            locationId = streams.locationId,
+        )
     }
 
     suspend fun reportPlay(id: Long) {
         runCatching { apiClient.api().incrementPlayCount(id) }
     }
+
+    // ---------- 播放会话：把手机端的观看时长记进服务端 ----------
+
+    /** 开一个播放会话；失败返回 null（拿不到就只是这次不上报，不影响播放） */
+    suspend fun openPlaybackSession(videoId: Long, locationId: Long): String? =
+        runCatching {
+            apiClient.api()
+                .createPlaybackSession(videoId, PlaybackSessionRequest(locationId))
+                .sessionId
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /**
+     * 上报「本会话累计观看毫秒数」（单调递增，不是增量）。
+     * 返回 false 表示服务端已回收该会话（410），调用方应丢掉 session 重建；
+     * 其他错误直接抛出，让调用方保持 session 下个周期重试，避免频繁重建。
+     */
+    suspend fun reportPlaybackSession(videoId: Long, sessionId: String, watchedMs: Long): Boolean =
+        try {
+            apiClient.api().reportPlaybackSession(
+                videoId,
+                sessionId,
+                PlaybackSessionReportRequest(watchedMs),
+            )
+            true
+        } catch (e: HttpException) {
+            if (e.code() == 410) false else throw e
+        }
 
     suspend fun searchJavs(
         limit: Int,
@@ -56,6 +124,7 @@ class VideoRepository(private val apiClient: ApiClient) {
         solo: Boolean = false,
         sort: String = "",
         seed: Long? = null,
+        favoriteGroupId: Long? = null,
     ): JavListResponse =
         apiClient.api().searchJav(
             limit = limit,
@@ -69,6 +138,7 @@ class VideoRepository(private val apiClient: ApiClient) {
             solo = if (solo) 1 else 0,
             sort = sort,
             seed = seed,
+            favoriteGroupId = favoriteGroupId,
         )
 
     suspend fun listJavPrefixes(): List<PrefixDto> =

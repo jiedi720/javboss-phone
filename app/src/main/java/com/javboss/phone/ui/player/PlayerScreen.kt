@@ -28,12 +28,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
@@ -80,6 +83,8 @@ import kotlin.math.roundToInt
 
 /**
  * 手机播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
+ * 进入时先竖屏小窗播放（视频按 16:9 居中，不打横屏、不隐藏系统栏），
+ * 点控件条右侧的全屏按钮才切横屏沉浸；退出播放页恢复进来前的方向。
  * 左上始终可返回，左中打开设置，右中锁定；锁定时只保留返回与解锁。
  */
 @Composable
@@ -91,26 +96,49 @@ fun PlayerScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val state = viewModel.uiState
+    var fullscreen by remember { mutableStateOf(false) }
+    val previousOrientation = remember(activity) { activity?.requestedOrientation }
 
     LaunchedEffect(videoId) { viewModel.load(videoId) }
 
     DisposableEffect(Unit) {
-        val window = activity?.window
-        val controller = window?.let { WindowInsetsControllerCompat(it, it.decorView) }
-        val previousOrientation = activity?.requestedOrientation
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        if (window != null && controller != null) {
+        // 进入播放页：先竖屏小窗（不横屏、不隐藏系统栏）
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        activity?.window?.let { window ->
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            WindowInsetsControllerCompat(window, window.decorView)
+                .show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            // 离开播放页：结束会话并把最后一段观看时长补报给服务端
+            viewModel.stopPlaybackReporter()
+            activity?.window?.let { window ->
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+            }
+            activity?.requestedOrientation =
+                previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    // 只在用户手动切换全屏时改方向/系统栏；DisposableEffect 不随它重启，避免误停时长上报
+    LaunchedEffect(fullscreen) {
+        val window = activity?.window ?: return@LaunchedEffect
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        activity?.requestedOrientation = if (fullscreen) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        if (fullscreen) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
-        onDispose {
-            if (window != null && controller != null) {
-                controller.show(WindowInsetsCompat.Type.systemBars())
-                WindowCompat.setDecorFitsSystemWindows(window, true)
-            }
-            activity?.requestedOrientation = previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
@@ -130,9 +158,12 @@ fun PlayerScreen(
                 seekSensitivity = state.seekSensitivity,
                 cookieHeader = viewModel.cookieHeader,
                 proxyUrl = viewModel::proxyUrl,
+                fullscreen = fullscreen,
+                onToggleFullscreen = { fullscreen = !fullscreen },
                 onSwitchToVlc = viewModel::switchToVlc,
                 onEngineModeChange = viewModel::selectEngineMode,
                 onSeekSensitivityChange = viewModel::selectSeekSensitivity,
+                onPlaybackState = viewModel::onPlaybackState,
                 onAllSourcesFailed = { viewModel.failPlayback("所有播放源均播放失败") },
                 onBack = onBack,
             )
@@ -150,9 +181,12 @@ private fun UnifiedPlayerStage(
     seekSensitivity: SeekSensitivity,
     cookieHeader: String,
     proxyUrl: (String) -> String,
+    fullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
     onSwitchToVlc: (Long) -> Unit,
     onEngineModeChange: (EngineMode, Long) -> Unit,
     onSeekSensitivityChange: (SeekSensitivity) -> Unit,
+    onPlaybackState: (Boolean) -> Unit,
     onAllSourcesFailed: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -240,6 +274,7 @@ private fun UnifiedPlayerStage(
             durationMs = engine.durationMs
             subtitlesAvailable = engine.subtitlesAvailable
             subtitlesEnabled = engine.subtitlesEnabled
+            onPlaybackState(isPlaying)   // 只有真正在播的时间才计入服务端观看时长
             if (isPlaying && positionMs > 0) resumePositionMs = positionMs
             delay(500)
         }
@@ -343,7 +378,16 @@ private fun UnifiedPlayerStage(
             }
         }
 
-    Box(Modifier.fillMaxSize().then(gestureModifier)) {
+    // 竖屏小窗时视频按 16:9 居中，四周留黑；全屏时铺满
+    val stageSizeModifier = if (fullscreen) {
+        Modifier.fillMaxSize()
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+    }
+
+    Box(stageSizeModifier.then(gestureModifier)) {
         key(activeEngine) {
             AndroidView(
                 factory = { ctx ->
@@ -459,8 +503,10 @@ private fun UnifiedPlayerStage(
                 positionMs = positionMs,
                 durationMs = durationMs,
                 activeEngine = activeEngine,
+                fullscreen = fullscreen,
                 onPlayingChange = engine::setPlaying,
                 onSeek = engine::seekTo,
+                onToggleFullscreen = onToggleFullscreen,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -523,8 +569,10 @@ private fun PlaybackControls(
     positionMs: Long,
     durationMs: Long,
     activeEngine: EngineMode,
+    fullscreen: Boolean,
     onPlayingChange: (Boolean) -> Unit,
     onSeek: (Long) -> Unit,
+    onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(color = Color.Black.copy(alpha = 0.65f), modifier = modifier.fillMaxWidth()) {
@@ -539,7 +587,14 @@ private fun PlaybackControls(
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
             )
             Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = MaterialTheme.typography.labelMedium)
-            Text(if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 8.dp))
+            IconButton(onClick = onToggleFullscreen) {
+                Icon(
+                    if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (fullscreen) "退出全屏" else "全屏",
+                    tint = Color.White,
+                )
+            }
+            Text(if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
         }
     }
 }

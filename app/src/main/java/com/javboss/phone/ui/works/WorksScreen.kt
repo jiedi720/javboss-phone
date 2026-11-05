@@ -1,5 +1,6 @@
 package com.javboss.phone.ui.works
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -11,16 +12,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
-import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,13 +48,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.EntityCard
 import com.javboss.phone.ui.components.GridFooter
+import com.javboss.phone.ui.components.IdolCard
+import com.javboss.phone.ui.components.RatingDialog
+import com.javboss.phone.ui.components.SortDialog
+import com.javboss.phone.ui.components.SortEntry
+import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.WorkCard
+import com.javboss.phone.ui.components.idolInfoRows
 
 /**
  * 作品库 tab：作品/女优/片商/系列四个卡片墙视角。
@@ -61,16 +71,23 @@ import com.javboss.phone.ui.components.WorkCard
 @Composable
 fun WorksScreen(
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
+    onPlay: (videoId: Long) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: WorksViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
-    val gridState = rememberLazyStaggeredGridState()
+    val gridState = rememberLazyGridState()
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var showFilter by remember { mutableStateOf(false) }
+    // 排序面板（作品 / 女优两个视角共用）
+    var showSort by remember { mutableStateOf(false) }
+    // 正在改评分的作品
+    var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
     // 一部作品有多个视频文件时，先弹选择框
     var pickerTarget by remember { mutableStateOf<JavDto?>(null) }
+    // 点封面播放钮但作品有多个视频文件时，弹播放用的选择框
+    var playPickerTarget by remember { mutableStateOf<JavDto?>(null) }
 
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) onSessionExpired()
@@ -92,23 +109,45 @@ fun WorksScreen(
         }
     }
 
+    // 封面右下角的播放钮：一个视频直接起播，多个先选，没视频就没有按钮
+    val onWorkPlay: (JavDto) -> Unit = { jav ->
+        when {
+            jav.videos.isEmpty() -> Unit
+            jav.videos.size == 1 -> onPlay(jav.videos.first().id)
+            else -> playPickerTarget = jav
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
-        // 顶栏：四个视角按钮 + 搜索图标 + 筛选图标（仅作品视角）
+        // 顶栏：四个视角按钮（窄屏可横滑）+ 排序 / 搜索 / 筛选 三个图标
+        // 每行卡片数已挪到「设置」页，这里不再占位置，图标才不会被挤出屏幕外
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LibraryTab.entries.forEach { tab ->
-                FilterChip(
-                    selected = state.tab == tab,
-                    onClick = { viewModel.onTabChange(tab) },
-                    label = { Text(tab.label) },
-                )
+            Row(
+                Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LibraryTab.entries.forEach { tab ->
+                    FilterChip(
+                        selected = state.tab == tab,
+                        onClick = { viewModel.onTabChange(tab) },
+                        label = { Text(tab.label) },
+                    )
+                }
             }
-            Spacer(Modifier.weight(1f))
+            // 排序：作品 / 女优两个视角各有一套维度（与 Web 端一致）
+            if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
+                IconButton(onClick = { showSort = true }) {
+                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序")
+                }
+            }
             IconButton(onClick = {
                 searchOpen = !searchOpen
                 if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
@@ -123,7 +162,7 @@ fun WorksScreen(
                     viewModel.loadFilterOptions()
                     showFilter = true
                 }) {
-                    Icon(Icons.Filled.FilterList, contentDescription = "筛选")
+                    Icon(Icons.Filled.FilterAlt, contentDescription = "筛选")
                 }
             }
         }
@@ -162,18 +201,21 @@ fun WorksScreen(
             onRefresh = viewModel::refreshCurrent,
             modifier = Modifier.fillMaxSize(),
         ) {
-            LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(2),
+            // 用等高行的 LazyVerticalGrid，不用瀑布流：
+            // 瀑布流各列独立堆叠，卡片高度只要差半个像素（列宽除不尽时的取整误差）
+            // 就会越差越多，最后出现"最后一列整体偏上、网格对不齐"。
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(state.columns),
                 state = gridState,
                 contentPadding = PaddingValues(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalItemSpacing = 8.dp,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when (state.tab) {
                     LibraryTab.WORKS -> {
                         if (state.items.isEmpty() && !state.loading) {
-                            item(span = StaggeredGridItemSpan.FullLine) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
                                 CenterMessage(
                                     if (state.error != null) state.error
                                     else if (state.loading) "加载中…" else "没有作品",
@@ -181,38 +223,54 @@ fun WorksScreen(
                             }
                         }
                         items(state.items, key = { it.id }) { jav ->
+                            val playAction: (() -> Unit)? =
+                                if (jav.videos.isEmpty()) null else ({ onWorkPlay(jav) })
                             WorkCard(
                                 coverUrl = viewModel.coverUrl(jav.code),
                                 code = jav.code,
                                 title = jav.title,
                                 onClick = { onWorkClick(jav) },
+                                cropPosition = jav.coverCropPosition,
+                                rating = jav.favoriteRating,
+                                onRatingClick = { ratingTarget = jav },
+                                onPlay = playAction,
                             )
                         }
-                        item(span = StaggeredGridItemSpan.FullLine) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             GridFooter(state.loadingMore, state.endReached, state.total)
                         }
                     }
                     LibraryTab.IDOLS -> {
                         if (state.idols.items.isEmpty() && !state.idols.loading) {
-                            item(span = StaggeredGridItemSpan.FullLine) { CenterMessage("没有女优") }
+                            item(span = { GridItemSpan(maxLineSpan) }) { CenterMessage("没有女优") }
                         }
                         items(state.idols.items, key = { it.id }) { idol ->
-                            EntityCard(
+                            IdolCard(
                                 coverUrl = viewModel.idolCoverUrl(idol),
                                 name = idol.displayName,
-                                subtitle = "${idol.workCount} 部作品",
+                                secondaryName = idol.secondaryName,
+                                workCount = idol.workCount,
+                                infoRows = idolInfoRows(
+                                    birthDate = idol.birthDate,
+                                    heightCm = idol.heightCm,
+                                    bust = idol.bust,
+                                    waist = idol.waist,
+                                    hips = idol.hips,
+                                    cup = idol.cup,
+                                ),
                                 onClick = {
                                     onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
                                 },
+                                cropLeft = idol.coverCropLeft ?: 0.47,
                             )
                         }
-                        item(span = StaggeredGridItemSpan.FullLine) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             GridFooter(state.idols.loadingMore, state.idols.endReached, state.idols.total)
                         }
                     }
                     LibraryTab.STUDIOS -> {
                         if (state.studios.items.isEmpty() && !state.studios.loading) {
-                            item(span = StaggeredGridItemSpan.FullLine) { CenterMessage("没有片商") }
+                            item(span = { GridItemSpan(maxLineSpan) }) { CenterMessage("没有片商") }
                         }
                         items(state.studios.items, key = { it.id }) { studio ->
                             EntityCard(
@@ -222,15 +280,17 @@ fun WorksScreen(
                                 onClick = {
                                     onOpenJavList("片商：${studio.name}", "", "", studio.id, 0)
                                 },
+                                aspectRatio = 800f / 538f,
+                                cropLeft = null,
                             )
                         }
-                        item(span = StaggeredGridItemSpan.FullLine) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             GridFooter(state.studios.loadingMore, state.studios.endReached, state.studios.total)
                         }
                     }
                     LibraryTab.SERIES -> {
                         if (state.series.items.isEmpty() && !state.series.loading) {
-                            item(span = StaggeredGridItemSpan.FullLine) { CenterMessage("没有系列") }
+                            item(span = { GridItemSpan(maxLineSpan) }) { CenterMessage("没有系列") }
                         }
                         items(state.series.items, key = { it.id }) { series ->
                             EntityCard(
@@ -240,9 +300,11 @@ fun WorksScreen(
                                 onClick = {
                                     onOpenJavList("系列：${series.name}", "", "", 0, series.id)
                                 },
+                                aspectRatio = 800f / 538f,
+                                cropLeft = null,
                             )
                         }
-                        item(span = StaggeredGridItemSpan.FullLine) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
                             GridFooter(state.series.loadingMore, state.series.endReached, state.series.total)
                         }
                     }
@@ -255,7 +317,6 @@ fun WorksScreen(
         ModalBottomSheet(onDismissRequest = { showFilter = false }) {
             FilterSheet(
                 state = state,
-                onSortClick = viewModel::onSortClick,
                 onPrefixChange = viewModel::onPrefixChange,
                 onTagToggle = viewModel::onTagToggle,
                 onSoloChange = viewModel::onSoloChange,
@@ -266,30 +327,65 @@ fun WorksScreen(
     }
 
     pickerTarget?.let { jav ->
-        AlertDialog(
-            onDismissRequest = { pickerTarget = null },
-            title = { Text(jav.code) },
-            text = {
-                Column {
-                    Text("选择要查看的视频文件", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    jav.videos.forEach { video ->
-                        TextButton(
-                            onClick = {
-                                pickerTarget = null
-                                onOpenDetail(video.id, jav.code)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(video.filename, maxLines = 1)
-                        }
-                    }
-                }
+        VideoPickDialog(
+            title = jav.code,
+            hint = "选择要查看的视频文件",
+            options = jav.videos.map { it.id to it.filename },
+            onPick = { videoId ->
+                pickerTarget = null
+                onOpenDetail(videoId, jav.code)
             },
-            confirmButton = {
-                TextButton(onClick = { pickerTarget = null }) { Text("取消") }
+            onDismiss = { pickerTarget = null },
+        )
+    }
+
+    playPickerTarget?.let { jav ->
+        VideoPickDialog(
+            title = jav.code,
+            hint = "选择要播放的视频文件",
+            options = jav.videos.map { it.id to it.filename },
+            onPick = { videoId ->
+                playPickerTarget = null
+                onPlay(videoId)
+            },
+            onDismiss = { playPickerTarget = null },
+        )
+    }
+
+    ratingTarget?.let { jav ->
+        RatingDialog(
+            code = jav.code,
+            current = jav.favoriteRating,
+            onDismiss = { ratingTarget = null },
+            onSave = { value ->
+                viewModel.updateRating(jav.id, value)
+                ratingTarget = null
             },
         )
+    }
+
+    if (showSort) {
+        when (state.tab) {
+            LibraryTab.WORKS -> SortDialog(
+                title = "排序 · JAV",
+                entries = JavSortBase.entries.map { base ->
+                    val selected = state.sort == base && !state.random
+                    SortEntry(base.label, selected, if (state.sortAsc) base.ascLabel else base.descLabel)
+                },
+                onPick = { viewModel.onSortClick(JavSortBase.entries[it]) },
+                onDismiss = { showSort = false },
+            )
+            LibraryTab.IDOLS -> SortDialog(
+                title = "排序 · 女优",
+                entries = IdolSortBase.entries.map { base ->
+                    val selected = state.idolsSort == base
+                    SortEntry(base.label, selected, if (state.idolsSortAsc) base.ascLabel else base.descLabel)
+                },
+                onPick = { viewModel.onIdolSortClick(IdolSortBase.entries[it]) },
+                onDismiss = { showSort = false },
+            )
+            else -> Unit
+        }
     }
 }
 
@@ -297,7 +393,6 @@ fun WorksScreen(
 @Composable
 private fun FilterSheet(
     state: WorksUiState,
-    onSortClick: (JavSortBase) -> Unit,
     onPrefixChange: (String) -> Unit,
     onTagToggle: (Long) -> Unit,
     onSoloChange: (Boolean) -> Unit,
@@ -323,26 +418,7 @@ private fun FilterSheet(
             TextButton(onClick = onClear) { Text("清空") }
         }
 
-        Text("排序", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            JavSortBase.entries.forEach { base ->
-                val selected = !state.random && state.sort == base
-                FilterChip(
-                    selected = selected,
-                    onClick = { onSortClick(base) },
-                    label = {
-                        Text(
-                            if (selected)
-                                "${base.label} ${if (state.sortAsc) base.ascLabel else base.descLabel}"
-                            else base.label,
-                        )
-                    },
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
                 selected = openSection == "prefix",

@@ -7,6 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.javboss.phone.data.AuthRepository
 import com.javboss.phone.data.FavoriteRepository
+import com.javboss.phone.data.PresetManager
 import com.javboss.phone.data.SessionManager
 import com.javboss.phone.data.SettingsManager
 import com.javboss.phone.data.VideoRepository
@@ -21,6 +22,8 @@ import kotlinx.coroutines.runBlocking
 class AppContainer(context: Application) {
     val session = SessionManager(context)
     val settings = SettingsManager(context)
+    // 预设连接地址（IP / 完整 URL）持久化
+    val presets = PresetManager(context)
     val cookieJar = SessionCookieJar(session)
     val apiClient = ApiClient(session, cookieJar)
     val authRepository = AuthRepository(session, apiClient)
@@ -42,6 +45,7 @@ class JavBossApp : Application(), SingletonImageLoader.Factory {
         runBlocking {
             container.session.restore()
             container.settings.restore()
+            container.presets.restore()
             container.cookieJar.restoreFromSession()
         }
     }

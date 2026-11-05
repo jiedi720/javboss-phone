@@ -45,8 +45,18 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
 
     private var searchJob: Job? = null
 
+    /**
+     * 「视频」页只列普通视频：服务端 config.video_hide_jav 为 true 时，
+     * 已关联 JAV 的视频只在「作品」里出现（Web 端同一个开关、同一个请求参数）。
+     */
+    private var hideJav = false
+
     init {
-        refresh()
+        // 先取服务端配置再拉列表，否则第一屏会把 JAV 视频也带出来
+        viewModelScope.launch {
+            hideJav = runCatching { container.videoRepository.videosHideJav() }.getOrDefault(false)
+            refresh()
+        }
     }
 
     private suspend fun fetch(limit: Int, offset: Int) =
@@ -55,6 +65,7 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
             offset = offset,
             search = uiState.search,
             sort = uiState.sort.value,
+            hideJav = hideJav,
         )
 
     fun refresh() {

@@ -93,30 +93,139 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
 
 // ---------- 收藏夹详情 ----------
 
+/** 收藏夹条目对应的 JAV：用于显示星级（收藏夹接口本身不返回 favorite_rating） */
+data class FavRating(val javId: Long, val rating: Double)
+
+/**
+ * 收藏夹**内部条目**（封面网格）的排序维度。
+ * 每条只有番号 / 标题 / name 和喜爱度（喜爱度靠 /jav?favorite_group_id= 补回来），
+ * 没有加入时间，所以维度就这四样。
+ */
+enum class FavItemSortBase(
+    val label: String,
+    val ascLabel: String,
+    val descLabel: String,
+    val defaultAsc: Boolean,
+) {
+    DEFAULT("默认顺序", "原序", "倒序", true),
+    CODE("番号", "A→Z", "Z→A", true),
+    TITLE("标题", "A→Z", "Z→A", true),
+    RATING("喜爱度", "低→高", "高→低", false),
+}
+
 data class FavGroupUiState(
     val items: List<FavoriteItemDto> = emptyList(),
     val loading: Boolean = false,
+    /** 卡片墙每行数量，跟随「作品」页的设置 */
+    val columns: Int = 2,
+    /** 番号（大写）→ 该作品的 jav id 与喜爱度，来自 /jav?favorite_group_id= */
+    val ratings: Map<String, FavRating> = emptyMap(),
+    /** 搜索关键词，按番号 / 标题过滤 */
+    val search: String = "",
+    val sort: FavItemSortBase = FavItemSortBase.DEFAULT,
+    val sortAsc: Boolean = true,
     val error: String? = null,
     val notice: String? = null,
     val sessionExpired: Boolean = false,
-)
+) {
+    /** 网格实际渲染的列表 = 搜索过滤 + 排序后的结果 */
+    val visibleItems: List<FavoriteItemDto>
+        get() {
+            val keyword = search.trim()
+            val filtered = if (keyword.isEmpty()) {
+                items
+            } else {
+                items.filter {
+                    it.code.contains(keyword, ignoreCase = true) ||
+                        it.title.contains(keyword, ignoreCase = true) ||
+                        it.name.contains(keyword, ignoreCase = true)
+                }
+            }
+            val sorted = when (sort) {
+                FavItemSortBase.DEFAULT -> filtered
+                FavItemSortBase.CODE -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.code })
+                FavItemSortBase.TITLE -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+                // 没评过分的按 0 算，排在一端
+                FavItemSortBase.RATING -> filtered.sortedBy { ratings[it.code.uppercase()]?.rating ?: 0.0 }
+            }
+            return if (sortAsc) sorted else sorted.reversed()
+        }
+
+    /** 有关键词但一条都没匹配上 */
+    val noMatch: Boolean get() = items.isNotEmpty() && visibleItems.isEmpty()
+}
 
 class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as JavBossApp).container
 
-    var uiState by mutableStateOf(FavGroupUiState())
+    var uiState by mutableStateOf(
+        FavGroupUiState(
+            columns = container.settings.gridColumns,
+            sort = container.settings.favItemSortName
+                ?.let { runCatching { FavItemSortBase.valueOf(it) }.getOrNull() }
+                ?: FavItemSortBase.DEFAULT,
+            sortAsc = container.settings.favItemSortAsc,
+        ),
+    )
         private set
+
+    fun onSearchChange(value: String) {
+        uiState = uiState.copy(search = value)
+    }
+
+    /** 点未选中的维度 → 切维度用默认方向；点已选中的 → 切升/降序（与作品页一致） */
+    fun onSortClick(base: FavItemSortBase) {
+        uiState = if (uiState.sort == base) {
+            uiState.copy(sortAsc = !uiState.sortAsc)
+        } else {
+            uiState.copy(sort = base, sortAsc = base.defaultAsc)
+        }
+        val s = uiState
+        viewModelScope.launch { container.settings.saveFavItemSort(s.sort.name, s.sortAsc) }
+    }
 
     fun load(groupId: Long) {
         viewModelScope.launch {
             uiState = uiState.copy(loading = true, error = null)
             try {
                 val items = container.favoriteRepository.listItems(groupId)
-                uiState = uiState.copy(items = items, loading = false)
+                // 收藏夹条目只有番号，星级得另外拿：直接用服务端的 favorite_group_id 过滤条件
+                // 拉一份完整 JavDto，按番号建索引（一个请求，不用逐条查）
+                val ratings = runCatching {
+                    container.videoRepository
+                        .searchJavs(limit = 500, offset = 0, favoriteGroupId = groupId)
+                        .items
+                        .associate { it.code.uppercase() to FavRating(it.id, it.favoriteRating) }
+                }.getOrDefault(emptyMap())
+                uiState = uiState.copy(items = items, ratings = ratings, loading = false)
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(loading = false, error = e.message ?: "加载失败")
+            }
+        }
+    }
+
+    fun ratingOf(code: String): Double = uiState.ratings[code.uppercase()]?.rating ?: 0.0
+
+    /** 改喜爱度：写回服务端后同步本地映射（收藏夹卡片左上角那颗星） */
+    fun updateRating(code: String, rating: Double) {
+        val entry = uiState.ratings[code.uppercase()] ?: return
+        val normalized = (Math.round(rating * 2) / 2.0).coerceIn(0.0, 5.0)
+        viewModelScope.launch {
+            try {
+                val updated = container.videoRepository.updateJavItem(
+                    entry.javId,
+                    com.javboss.phone.data.api.dto.JavItemUpdateRequest(favoriteRating = normalized),
+                )
+                val applied = updated.favoriteRating
+                uiState = uiState.copy(
+                    ratings = uiState.ratings + (code.uppercase() to entry.copy(rating = applied)),
+                )
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(notice = "评分保存失败")
             }
         }
     }
@@ -148,6 +257,29 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(sessionExpired = true)
             } catch (e: Exception) {
                 onResolved(0, item.code)
+            }
+        }
+    }
+
+    /**
+     * 封面播放钮：收藏夹条目只有番号，先用番号找关联视频再起播；
+     * 找不到视频时给个提示，不起播
+     */
+    fun playItem(item: FavoriteItemDto, onResolved: (videoId: Long) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val jav = container.videoRepository.searchJavs(limit = 5, offset = 0, search = item.code)
+                    .items.firstOrNull { it.code.equals(item.code, ignoreCase = true) }
+                val videoId = jav?.videos?.firstOrNull()?.id ?: 0L
+                if (videoId > 0) {
+                    onResolved(videoId)
+                } else {
+                    uiState = uiState.copy(notice = "「${item.code}」没有找到可播放的视频文件")
+                }
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(notice = "播放失败：${e.message ?: "网络异常"}")
             }
         }
     }

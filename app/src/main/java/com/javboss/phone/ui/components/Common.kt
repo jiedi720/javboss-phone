@@ -1,11 +1,16 @@
 package com.javboss.phone.ui.components
 
+import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -13,19 +18,49 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.request.ImageRequest
+import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.PrivacyMask
+import java.time.LocalDate
+import kotlin.math.roundToInt
+import java.time.Period
 
 /** 秒 → "mm:ss" 或 "h:mm:ss" */
 fun formatDuration(totalSec: Long): String {
@@ -36,11 +71,121 @@ fun formatDuration(totalSec: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
+/**
+ * 毫秒 → 服务端那种「已观看」文案：`1 小时 23 分钟 4 秒`，
+ * 不足 1 秒显示「不足 1 秒」，0 返回空串（调用方据此不显示这一行）。
+ */
+fun formatWatchedTime(ms: Long): String {
+    if (ms <= 0) return ""
+    val totalSec = ms / 1000
+    if (totalSec <= 0) return "不足 1 秒"
+    val h = totalSec / 3600
+    val m = totalSec % 3600 / 60
+    val s = totalSec % 60
+    return listOfNotNull(
+        h.takeIf { it > 0 }?.let { "$it 小时" },
+        m.takeIf { it > 0 }?.let { "$it 分钟" },
+        s.takeIf { it > 0 }?.let { "$it 秒" },
+    ).joinToString(" ")
+}
+
+/** 字节 → "512 MB" / "1.35 GB"（详情页区分同一部作品的多个文件版本） */fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return ""
+    val gb = bytes / 1024.0 / 1024.0 / 1024.0
+    return if (gb >= 1.0) "%.2f GB".format(gb) else "%.0f MB".format(bytes / 1024.0 / 1024.0)
+}
+
 /** 图片加载完成前的占位，避免瀑布流跳动 */
 @Composable
 private fun ImagePlaceholder(modifier: Modifier = Modifier) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
 }
+
+/**
+ * 把服务端的 `cover_crop_position`（0..1，等于 Web 端 CSS `object-position: p*100% center`）
+ * 换算成 Coil 的裁剪锚点：0 → 贴左，0.5 → 居中，1 → 贴右。
+ *
+ * Web 端封面组件是 `object-cover` + `object-position`，所以 App 用 ContentScale.Crop + Alignment
+ * 才能还原同一块可视区域；早期版本固定居中，会把宽幅包装图切在正中间（也就是中缝）。
+ */
+fun coverCropAlignment(position: Double?): Alignment {
+    val p = position?.takeIf { it.isFinite() }?.coerceIn(0.0, 1.0) ?: 1.0
+    return BiasAlignment(horizontalBias = (p * 2f - 1f).toFloat(), verticalBias = 0f)
+}
+
+// ---------- 封面打码（毛玻璃） ----------
+
+/**
+ * API 31+ 才有真正的 RenderEffect 高斯模糊：可以直接糊「已经画出来的那张图」，
+ * 不需要重新请求图片，所以解锁的瞬间就是糊的，不会先亮一下原图。
+ */
+private val coverBlurSupported: Boolean
+    get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/** 毛玻璃模糊半径，按卡片宽度取，糊到认不出内容但颜色还能透出来 */
+private val COVER_BLUR = 22.dp
+
+/**
+ * 低版本（API 26..30）没有 RenderEffect，退化成「小尺寸解码 + 双线性放大」：
+ * 像素被平滑开，观感也是毛玻璃而不是马赛克方块。
+ */
+private const val FROST_DECODE_PX = 28
+
+/**
+ * 封面打码状态，在 `MainActivity` 根部一次性算好后用 CompositionLocal 下发。
+ *
+ * @property masked 现在就要打码吗（设置常开 或 刚锁过屏）
+ * @property alwaysOn 设置里的「封面毛玻璃」是否常开（常开时「显示封面」没有意义，不显示入口）
+ */
+data class CoverMaskState(
+    val masked: Boolean = false,
+    val alwaysOn: Boolean = false,
+)
+
+/**
+ * 为什么用 `staticCompositionLocalOf` 而不是「每张卡片各自 collect 一个 Flow」：
+ * 后者在锁屏/解锁这种「UI 停帧期间状态变化」的场景下并不可靠——已经组合好的卡片
+ * 可能不跟着刷新，表现为「解锁后还是原图，滑动一下才打码」。静态 CompositionLocal
+ * 一变，整棵子树强制重组，所见即所得；也保证卡片和顶部提示条永远读的是同一份状态。
+ */
+val LocalCoverMask = staticCompositionLocalOf { CoverMaskState() }
+
+/** 当前是否要给封面打码：设置页「封面毛玻璃」常开，或者刚锁过屏（[PrivacyMask]） */
+@Composable
+fun rememberCoverMask(): CoverMaskState {
+    val context = LocalContext.current
+    val settings = remember(context) {
+        (context.applicationContext as JavBossApp).container.settings
+    }
+    val alwaysOn by settings.coverMaskFlow.collectAsState()
+    val locked by PrivacyMask.locked.collectAsState()
+    return CoverMaskState(masked = alwaysOn || locked, alwaysOn = alwaysOn)
+}
+
+/**
+ * 封面加载模型。只有「打码 + 系统不支持 RenderEffect 模糊」时才换成小尺寸请求，
+ * 其余情况一律用原地址（不重下、不闪）。
+ */
+@Composable
+fun coverImageModel(url: String, smallDecode: Boolean): Any {
+    val context = LocalContext.current
+    return remember(url, smallDecode) {
+        if (!smallDecode) url
+        else ImageRequest.Builder(context)
+            .data(url)
+            .size(FROST_DECODE_PX, FROST_DECODE_PX)
+            .build()
+    }
+}
+
+/** 给封面加上毛玻璃：API 31+ 走 RenderEffect，低版本无操作（靠小图放大去糊） */
+fun Modifier.coverFrost(masked: Boolean): Modifier =
+    if (masked && coverBlurSupported) blur(COVER_BLUR) else this
+
+/**
+ * 打码时不做任何"关插值"处理：默认的双线性插值会把小图平滑放大，
+ * 观感是毛玻璃；一旦改成 `FilterQuality.None` 就变成硬边马赛克了。
+ */
 
 /** 视频卡片：16:9 缩略图 + 标题 + 时长 */
 @OptIn(ExperimentalFoundationApi::class)
@@ -80,22 +225,252 @@ fun VideoCard(
                 }
             }
             Column(Modifier.padding(8.dp)) {
+                // 与作品卡一样：标题恒定两行，短标题也留出第二行，卡片才能等高对齐
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodySmall,
+                    minLines = 2,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (playCount > 0) {
-                    Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(2.dp))
+                // 播放次数这行也恒定占位（0 次时填一个空格），否则有无播放记录的卡片会一高一低
+                Text(
+                    text = if (playCount > 0) "播放 $playCount 次" else " ",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 实体封面裁剪锚点，复刻 Web 端实体卡片「按高度铺满 + 横向左移」的算法：
+ *   renderedWidth = 容器高 × 图片宽高比
+ *   offset        = clamp(cropLeft × renderedWidth, 0, renderedWidth - 容器宽)
+ * 换算成 Coil 的 Alignment：offset=0 → 贴左，=多余宽度 → 贴右。
+ *
+ * cropLeft 为 null 时表示该卡片在 Web 端就是 `object-cover` 居中（片商/系列），直接返回居中。
+ */
+fun entityCropAlignment(
+    cropLeft: Double?,
+    imageSize: Pair<Int, Int>?,
+    frameWidth: Float,
+    frameHeight: Float,
+): Alignment {
+    if (cropLeft == null) return Alignment.Center
+    if (imageSize == null || frameWidth <= 0f || frameHeight <= 0f) return Alignment.Center
+    val (iw, ih) = imageSize
+    if (iw <= 0 || ih <= 0) return Alignment.Center
+    val rendered = frameHeight * (iw.toFloat() / ih.toFloat())
+    if (rendered <= frameWidth) return Alignment.Center
+    val excess = rendered - frameWidth
+    val offset = (cropLeft.toFloat() * rendered).coerceIn(0f, excess)
+    return BiasAlignment(horizontalBias = 2f * offset / excess - 1f, verticalBias = 0f)
+}
+
+// ---------- 女优卡片正文的数据行（复刻 Web 端 wT() / xT() / yT() / CT()） ----------
+
+/** 罩杯数字 → "E罩杯"（1=A … 11=K），<=0 视为无值 */
+fun cupLabel(cup: Int): String {
+    if (cup <= 0) return ""
+    val letter = 'A' + (cup - 1).coerceAtMost(25)
+    return "${letter}罩杯"
+}
+
+/** 三围 → "胸88-腰58-臀86"（三项都有才显示，与 Web 端 xT() 一致） */
+fun bwhLabel(bust: Int, waist: Int, hips: Int): String =
+    if (bust > 0 && waist > 0 && hips > 0) "胸$bust-腰$waist-臀$hips" else ""
+
+/** 生日 → "1996-03-01（29岁）"；解析失败时原样返回，未来日期不带年龄 */
+fun birthWithAgeLabel(birthDate: String, today: LocalDate = LocalDate.now()): String {
+    val raw = birthDate.trim().take(10)
+    if (raw.isEmpty()) return ""
+    val date = runCatching { LocalDate.parse(raw) }.getOrNull() ?: return birthDate.trim()
+    if (date.isAfter(today)) return raw
+    return "$raw（${Period.between(date, today).years}岁）"
+}
+
+/**
+ * 女优卡片封面下方的数据行，**永远是固定两行**：
+ *  1. `1996-03-01（30岁）`（没录入 → `生日未录入`）
+ *  2. `158cm · 胸88-腰58-臀86 · E罩杯`（都没录入 → `身体数据未录入`）
+ *
+ * 固定行数是硬要求：行数随数据多少变化会让卡片高矮不一，
+ * 瀑布流里就再也对不齐（Web 端是等高网格，看起来才整齐）。
+ * 别名不在这两行里显示（Web 端有，但卡片信息栏太挤，用户要求去掉）。
+ */
+fun idolInfoRows(
+    birthDate: String,
+    heightCm: Int,
+    bust: Int,
+    waist: Int,
+    hips: Int,
+    cup: Int,
+    today: LocalDate = LocalDate.now(),
+): List<String> {
+    val birth = birthWithAgeLabel(birthDate, today).ifBlank { "生日未录入" }
+    val body = listOfNotNull(
+        heightCm.takeIf { it > 0 }?.let { "${it}cm" },
+        bwhLabel(bust, waist, hips).takeIf { it.isNotEmpty() },
+        cupLabel(cup).takeIf { it.isNotEmpty() },
+    ).joinToString(" · ").ifBlank { "身体数据未录入" }
+    return listOf(birth, body)
+}
+
+/**
+ * 女优卡片：竖版封面 + 左上角「作品 N」角标 + 名字 + 数据行。
+ * 宽高比 100:143.1、封面按 `cover_crop_left` 左移，与 Web 端女优卡完全一致。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun IdolCard(
+    coverUrl: String?,
+    name: String,
+    secondaryName: String,
+    workCount: Int,
+    infoRows: List<String>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    cropLeft: Double? = 0.47,
+) {
+    var imageSize by remember(coverUrl) { mutableStateOf<Pair<Int, Int>?>(null) }
+    val masked = LocalCoverMask.current.masked
+    Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
+        Column {
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(100f / 143.1f),
+            ) {
+                val density = LocalDensity.current
+                val frameW = with(density) { maxWidth.toPx() }
+                val frameH = with(density) { maxHeight.toPx() }
+                if (coverUrl != null) {
+                    AsyncImage(
+                        model = coverImageModel(coverUrl, masked && !coverBlurSupported),
+                        contentDescription = name,
+                        contentScale = ContentScale.Crop,
+                        alignment = entityCropAlignment(cropLeft, imageSize, frameW, frameH),
+                        onSuccess = { success: AsyncImagePainter.State.Success ->
+                            val image = success.result.image
+                            imageSize = image.width to image.height
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .coverFrost(masked),
+                    )
+                } else {
+                    ImagePlaceholder(Modifier.fillMaxSize())
+                }
+                if (workCount > 0) {
                     Text(
-                        text = "播放 $playCount 次",
+                        text = "作品 $workCount",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xB3000000))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Column(Modifier.padding(8.dp)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (secondaryName.isNotBlank()) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = secondaryName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                // 固定渲染两行（缺失时是占位文案），保证每张卡片等高、网格能对齐
+                infoRows.forEach { row ->
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = row,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
+    }
+}
+
+/**
+ * 作品卡片左上角的喜爱度小标签（对齐 Web 端封面左上角那排爱心）。
+ *
+ * 图标与 Web 端一致用爱心（服务端 MUI Rating 的 icon/emptyIcon 就是心形，主色 #FBBF24）：
+ * 已评分是实心心 + 数值，未评分是描边心——Web 在 rating=0 时把胶囊设成 `opacity-0`、
+ * 只靠鼠标悬停显形（`group-hover:opacity-100`），手机没有悬停，照搬就等于「未评分的作品
+ * 永远看不到评分入口」，所以 0 分这里改成描边心，既提示还没评分，也留出入口。
+ */
+@Composable
+private fun RatingBadge(rating: Double, onClick: () -> Unit) {
+    val rated = rating > 0.0
+    Row(
+        modifier = Modifier
+            .padding(6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xCC000000))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (rated) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (rated) "喜爱度 $rating" else "未评分",
+            tint = if (rated) Color(0xFFFBBF24) else Color(0xCCFFFFFF),
+            modifier = Modifier.size(13.dp),
+        )
+        if (rated) {
+            Spacer(Modifier.width(3.dp))
+            Text(
+                text = if (rating % 1.0 == 0.0) rating.toInt().toString() else "%.1f".format(rating),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+/** 作品封面右下角的播放小圆钮：直接起播，不用先进详情页 */
+@Composable
+private fun CoverPlayButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(6.dp)
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(Color(0xB3000000))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = "播放",
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -109,7 +484,13 @@ fun WorkCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    cropPosition: Double? = null,
+    rating: Double = 0.0,
+    onRatingClick: (() -> Unit)? = null,
+    /** 非 null 时在封面右下角显示播放钮；点击不进入详情，直接起播 */
+    onPlay: (() -> Unit)? = null,
 ) {
+    val masked = LocalCoverMask.current.masked
     Card(
         modifier = modifier.combinedClickable(
             onClick = onClick,
@@ -124,13 +505,21 @@ fun WorkCard(
             ) {
                 if (coverUrl != null) {
                     AsyncImage(
-                        model = coverUrl,
+                        model = coverImageModel(coverUrl, masked && !coverBlurSupported),
                         contentDescription = code,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        alignment = coverCropAlignment(cropPosition),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .coverFrost(masked),
                     )
                 } else {
                     ImagePlaceholder(Modifier.fillMaxSize())
+                }
+                if (onRatingClick != null) {
+                    Box(Modifier.align(Alignment.TopStart)) {
+                        RatingBadge(rating, onRatingClick)
+                    }
                 }
                 if (code.isNotBlank()) {
                     Text(
@@ -148,21 +537,34 @@ fun WorkCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
+                // 放在番号条之后，保证盖在渐变之上且优先接收点击
+                if (onPlay != null) {
+                    Box(Modifier.align(Alignment.BottomEnd)) {
+                        CoverPlayButton(onPlay)
+                    }
+                }
             }
-            if (title.isNotBlank()) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(8.dp),
-                )
-            }
+            // 标题永远占两行高度（minLines=2）：只有一行标题的卡片也留出第二行，
+            // 同一行的卡片底边才对得齐；空标题同样占位，不让卡片塌下去
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(8.dp),
+            )
         }
     }
 }
 
-/** 实体卡片：2:3 封面（可无）+ 名称 + 副标题（女优/片商/系列视角共用） */
+/**
+ * 实体卡片：封面（可无）+ 名称 + 副标题（女优/片商/系列视角共用）。
+ *
+ * 宽高比与裁剪按 Web 端来的：
+ * - 女优卡：竖版 100:143.1，封面按高度铺满后按 `cover_crop_left` 左移（见 [entityCropAlignment]）；
+ * - 片商/系列卡：横版 800:538，`object-cover` 居中（传 cropLeft = null）。
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EntityCard(
@@ -171,19 +573,31 @@ fun EntityCard(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    aspectRatio: Float = 100f / 143.1f,
+    cropLeft: Double? = null,
 ) {
+    // 图片原始尺寸：Web 端要先读 naturalWidth/Height 才能算左移像素，这里同理
+    var imageSize by remember(coverUrl) { mutableStateOf<Pair<Int, Int>?>(null) }
     Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
         Column {
-            Box(
+            BoxWithConstraints(
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(2f / 3f),
+                    .aspectRatio(aspectRatio),
             ) {
+                val density = LocalDensity.current
+                val frameW = with(density) { maxWidth.toPx() }
+                val frameH = with(density) { maxHeight.toPx() }
                 if (coverUrl != null) {
                     AsyncImage(
                         model = coverUrl,
                         contentDescription = name,
                         contentScale = ContentScale.Crop,
+                        alignment = entityCropAlignment(cropLeft, imageSize, frameW, frameH),
+                        onSuccess = { success: AsyncImagePainter.State.Success ->
+                            val image = success.result.image
+                            imageSize = image.width to image.height
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -210,8 +624,85 @@ fun EntityCard(
     }
 }
 
-/** 瀑布流底部状态：加载中转圈 / 到底提示 */
+/**
+ * 一部作品挂了多个视频文件时，让用户先选一个。
+ * `options` 为 (videoId, 文件名)，`onPick` 收到被选项的 videoId。
+ */
 @Composable
+fun VideoPickDialog(
+    title: String,
+    hint: String,
+    options: List<Pair<Long, String>>,
+    onPick: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(hint, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                options.forEach { (id, name) ->
+                    TextButton(
+                        onClick = { onPick(id) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+/** 喜爱度编辑：0..5、步长 0.5，与 Web 端封面左上角的星级同一份数据（作品墙与收藏夹共用） */
+@Composable
+fun RatingDialog(
+    code: String,
+    current: Double,
+    onDismiss: () -> Unit,
+    onSave: (Double) -> Unit,
+) {
+    var value by remember(current) { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("喜爱度 · $code") },
+        text = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (value > 0.0) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint = Color(0xFFFBBF24),
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (value <= 0.0) "未评分" else "%.1f 分".format(value),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Slider(
+                    value = value.toFloat(),
+                    onValueChange = { v -> value = (v * 2f).roundToInt() / 2.0 },
+                    valueRange = 0f..5f,
+                    steps = 9,
+                )
+                Text(
+                    "0 分等于清除评分；改动会直接写回服务端",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(value) }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+/** 瀑布流底部状态：加载中转圈 / 到底提示 */@Composable
 fun GridFooter(loadingMore: Boolean, endReached: Boolean, count: Int) {
     Row(
         Modifier
@@ -249,4 +740,50 @@ fun LabeledValue(label: String, value: String) {
         Spacer(Modifier.width(8.dp))
         Text(value, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+/** 排序面板里的一项：已选中的那项额外显示当前方向（如「发行时间 近→远」） */
+data class SortEntry(val label: String, val selected: Boolean, val direction: String)
+
+/**
+ * 排序面板：一排维度 chip，点未选中的切换维度（用该维度默认方向），
+ * 点已选中的切换升/降序——与 Web 端排序按钮的行为一致。
+ * 作品 / 女优 / 收藏夹三处共用同一套 UI。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SortDialog(
+    title: String,
+    entries: List<SortEntry>,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    entries.forEachIndexed { index, entry ->
+                        FilterChip(
+                            selected = entry.selected,
+                            onClick = { onPick(index) },
+                            label = {
+                                Text(
+                                    if (entry.selected) "${entry.label} ${entry.direction}" else entry.label,
+                                )
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "再点一次已选中的维度可切换升 / 降序",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
+    )
 }

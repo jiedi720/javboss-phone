@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.javboss.phone.data.api.ServerAddressRules
 import kotlinx.coroutines.flow.first
 
 private val Context.dataStore by preferencesDataStore(name = "session")
@@ -30,15 +31,23 @@ class SessionManager(private val context: Context) {
     /** App 启动时从 DataStore 恢复（阻塞读一次，量在字节级，可接受） */
     suspend fun restore() {
         val prefs = context.dataStore.data.first()
-        serverUrl = prefs[keyServerUrl] ?: ""
+        val stored = prefs[keyServerUrl] ?: ""
+        // 旧版本写入的地址可能带末尾斜杠或省略协议头，这里统一按新规则归一化并回写
+        serverUrl = ServerAddressRules.normalize(stored) ?: stored
+        if (serverUrl != stored && stored.isNotBlank()) {
+            context.dataStore.edit { it[keyServerUrl] = serverUrl }
+        }
         cookieHeader = prefs[keyCookie] ?: ""
     }
 
+    /**
+     * 保存并归一化服务器地址。
+     * 兼容旧写法：`192.168.1.10:8655` 自动补 http://；完整 URL（含 https、路径前缀）原样保留，
+     * 去掉 query/fragment 与末尾斜杠。解析失败时退回旧版行为，避免异常路径下写不进去。
+     */
     suspend fun saveServerUrl(url: String) {
-        var normalized = url.trim().trimEnd('/')
-        // 遥控器输入从简：没带协议头时自动补 http://
-        if (normalized.isNotBlank() && !normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-            normalized = "http://$normalized"
+        val normalized = ServerAddressRules.normalize(url) ?: url.trim().trimEnd('/').let {
+            if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it"
         }
         serverUrl = normalized
         context.dataStore.edit { it[keyServerUrl] = normalized }

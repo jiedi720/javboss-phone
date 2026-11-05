@@ -1,8 +1,17 @@
 package com.javboss.phone.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -16,6 +25,43 @@ import com.javboss.phone.ui.login.LoginScreen
 import com.javboss.phone.ui.main.MainScreen
 import com.javboss.phone.ui.player.PlayerScreen
 import kotlinx.coroutines.launch
+
+/**
+ * 页面转场。
+ * Navigation Compose 的默认转场是 `fadeIn/fadeOut(tween(700))`——700ms 的淡入淡出在手机上手感
+ * 明显「慢半拍」，点封面进详情会像是卡了一下才跳。这里统一压到 200ms，
+ * 位移只做 1/12 屏宽的轻推（不整屏滑动，避免大图和小屏来回甩），进出都跟手。
+ */
+private const val TRANSITION_MS = 200
+
+/** 位移幅度：屏宽 / 12（约 8%） */
+private const val SLIDE_DIVISOR = 12
+
+private val slideSpec = tween<IntOffset>(
+    durationMillis = TRANSITION_MS,
+    easing = LinearOutSlowInEasing,
+)
+private val fadeSpec = tween<Float>(durationMillis = TRANSITION_MS, easing = LinearOutSlowInEasing)
+
+/** 进入新页：从右侧轻推进入 + 淡入 */
+private val navEnter: EnterTransition =
+    slideInHorizontally(slideSpec) { it / SLIDE_DIVISOR } + fadeIn(fadeSpec)
+
+/** 旧页退出：向左轻推 + 淡出 */
+private val navExit: ExitTransition =
+    slideOutHorizontally(slideSpec) { -it / SLIDE_DIVISOR } + fadeOut(fadeSpec)
+
+/** 返回时新页从左侧轻推进入 */
+private val navPopEnter: EnterTransition =
+    slideInHorizontally(slideSpec) { -it / SLIDE_DIVISOR } + fadeIn(fadeSpec)
+
+/** 返回时旧页向右轻推退出 */
+private val navPopExit: ExitTransition =
+    slideOutHorizontally(slideSpec) { it / SLIDE_DIVISOR } + fadeOut(fadeSpec)
+
+/** 播放页要转屏，滑动会跟转屏动画打架，只用短淡入淡出 */
+private val playerFadeEnter: EnterTransition = fadeIn(tween(150))
+private val playerFadeExit: ExitTransition = fadeOut(tween(150))
 
 object Routes {
     const val LOGIN = "login"
@@ -71,6 +117,10 @@ fun JavBossNavGraph(startWithSession: Boolean) {
     NavHost(
         navController = navController,
         startDestination = if (startWithSession) Routes.MAIN else Routes.LOGIN,
+        enterTransition = { navEnter },
+        exitTransition = { navExit },
+        popEnterTransition = { navPopEnter },
+        popExitTransition = { navPopExit },
     ) {
         composable(Routes.LOGIN) {
             LoginScreen(
@@ -84,6 +134,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
         composable(Routes.MAIN) {
             MainScreen(
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
+                onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
                 onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->
                     navController.navigate(Routes.javList(title, idolIds, tagIds, studioId, seriesId))
                 },
@@ -133,6 +184,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 studioId = args.getLong("studioId"),
                 seriesId = args.getLong("seriesId"),
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
+                onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
                 onBack = { navController.popBackStack() },
                 onSessionExpired = goLogin,
             )
@@ -149,6 +201,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 groupId = groupId,
                 groupName = entry.arguments?.getString("name").orEmpty(),
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
+                onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
                 onBack = { navController.popBackStack() },
                 onSessionExpired = goLogin,
             )
@@ -156,6 +209,10 @@ fun JavBossNavGraph(startWithSession: Boolean) {
         composable(
             route = Routes.PLAYER,
             arguments = listOf(navArgument("videoId") { type = NavType.LongType }),
+            enterTransition = { playerFadeEnter },
+            exitTransition = { playerFadeExit },
+            popEnterTransition = { playerFadeEnter },
+            popExitTransition = { playerFadeExit },
         ) { entry ->
             val videoId = entry.arguments?.getLong("videoId") ?: return@composable
             PlayerScreen(

@@ -3,6 +3,9 @@ package com.javboss.phone.data.api
 import com.javboss.phone.data.SessionManager
 import com.javboss.phone.data.api.dto.ApiErrorResponse
 import com.javboss.phone.data.api.dto.AuthStatusResponse
+import com.javboss.phone.data.api.dto.DirectoryCreateRequest
+import com.javboss.phone.data.api.dto.DirectoryDto
+import com.javboss.phone.data.api.dto.DirectoryUpdateRequest
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteGroupListResponse
 import com.javboss.phone.data.api.dto.FavoriteGroupNameRequest
@@ -15,6 +18,9 @@ import com.javboss.phone.data.api.dto.JavListResponse
 import com.javboss.phone.data.api.dto.JavTagsReplaceRequest
 import com.javboss.phone.data.api.dto.LoginRequest
 import com.javboss.phone.data.api.dto.LoginResponse
+import com.javboss.phone.data.api.dto.PlaybackSessionReportRequest
+import com.javboss.phone.data.api.dto.PlaybackSessionRequest
+import com.javboss.phone.data.api.dto.PlaybackSessionResponse
 import com.javboss.phone.data.api.dto.PrefixDto
 import com.javboss.phone.data.api.dto.RemoveFavoriteItemsRequest
 import com.javboss.phone.data.api.dto.ReplaceFavoriteGroupsRequest
@@ -62,7 +68,16 @@ interface JavBossApi {
         @Query("offset") offset: Int = 0,
         @Query("search") search: String = "",
         @Query("sort") sort: String = "",
+        /** 1 = 只返回没关联 JAV 的普通视频（服务端配置 video_hide_jav 为 true 时 Web 端就这么请求） */
+        @Query("hide_jav") hideJav: Int = 0,
     ): VideoListResponse
+
+    /**
+     * 服务端配置（扁平 key-value）。服务端把布尔值存成字符串 "true"/"false"，
+     * 所以类型不固定，这里用 JsonElement 统一接，避免某天变成 bool 就整包解析失败。
+     */
+    @GET("config")
+    suspend fun getConfig(): Map<String, kotlinx.serialization.json.JsonElement>
 
     @GET("videos/{id}")
     suspend fun getVideo(@Path("id") id: Long): VideoDto
@@ -72,6 +87,21 @@ interface JavBossApi {
 
     @POST("videos/{id}/play")
     suspend fun incrementPlayCount(@Path("id") id: Long)
+
+    /** 开一个播放会话，服务端返回 session_id（观看时长按会话累计） */
+    @POST("videos/{id}/playback-sessions")
+    suspend fun createPlaybackSession(
+        @Path("id") id: Long,
+        @Body body: PlaybackSessionRequest,
+    ): PlaybackSessionResponse
+
+    /** 上报本会话累计观看毫秒数；会话过期时服务端返回 410 */
+    @PUT("videos/{id}/playback-sessions/{sessionId}")
+    suspend fun reportPlaybackSession(
+        @Path("id") id: Long,
+        @Path("sessionId") sessionId: String,
+        @Body body: PlaybackSessionReportRequest,
+    )
 
     @GET("jav")
     suspend fun searchJav(
@@ -86,6 +116,8 @@ interface JavBossApi {
         @Query("solo") solo: Int = 0,
         @Query("sort") sort: String = "",
         @Query("seed") seed: Long? = null,
+        /** 只看某个收藏夹里的作品（Web 端筛选面板同一个参数），返回的是完整 JavDto */
+        @Query("favorite_group_id") favoriteGroupId: Long? = null,
     ): JavListResponse
 
     @GET("jav/prefixes")
@@ -161,6 +193,23 @@ interface JavBossApi {
 
     @GET("jav/javdb-url")
     suspend fun getJavDbUrl(@Query("code") code: String): JavDbUrlResponse
+
+    // ---------- 读取路径（媒体目录） ----------
+
+    @GET("directories")
+    suspend fun listDirectories(): List<DirectoryDto>
+
+    @POST("directories")
+    suspend fun createDirectory(@Body body: DirectoryCreateRequest): DirectoryDto
+
+    @PATCH("directories/{id}")
+    suspend fun updateDirectory(
+        @Path("id") id: Long,
+        @Body body: DirectoryUpdateRequest,
+    ): DirectoryDto
+
+    @POST("directories/{id}/scan")
+    suspend fun scanDirectory(@Path("id") id: Long)
 }
 
 /** 登录态失效（服务端返回 401）时抛出，UI 层捕获后跳回登录页 */

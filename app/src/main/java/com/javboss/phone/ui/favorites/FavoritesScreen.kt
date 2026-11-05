@@ -20,8 +20,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -42,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +55,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.RatingDialog
+import com.javboss.phone.ui.components.SortDialog
+import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.WorkCard
 
 /** 收藏夹 tab：作品收藏夹列表，支持新建/重命名/删除 */
@@ -187,6 +194,7 @@ fun FavoritesScreen(
             },
         )
     }
+
 }
 
 @Composable
@@ -225,6 +233,7 @@ fun FavGroupScreen(
     groupId: Long,
     groupName: String,
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
+    onPlay: (videoId: Long) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: FavGroupViewModel = viewModel(),
@@ -232,6 +241,9 @@ fun FavGroupScreen(
     val state = viewModel.uiState
     val context = LocalContext.current
     var removeTarget by remember { mutableStateOf<FavoriteItemDto?>(null) }
+    var ratingTarget by remember { mutableStateOf<FavoriteItemDto?>(null) }
+    var showSort by rememberSaveable { mutableStateOf(false) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(groupId) { viewModel.load(groupId) }
     LaunchedEffect(state.sessionExpired) {
@@ -246,14 +258,44 @@ fun FavGroupScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(groupName, maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    title = { Text(groupName, maxLines = 1) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showSort = true }) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序")
+                        }
+                        IconButton(onClick = {
+                            searchOpen = !searchOpen
+                            if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
+                        }) {
+                            Icon(
+                                if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
+                                contentDescription = if (searchOpen) "收起搜索" else "搜索",
+                            )
+                        }
+                    },
+                )
+                // 搜索框：点搜索图标才展开（与「作品」页一致）
+                if (searchOpen) {
+                    OutlinedTextField(
+                        value = state.search,
+                        onValueChange = viewModel::onSearchChange,
+                        placeholder = { Text("搜索番号 / 标题") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 8.dp),
+                    )
+                }
+            }
         },
     ) { padding ->
         Box(
@@ -261,17 +303,19 @@ fun FavGroupScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            val shown = state.visibleItems
             when {
                 state.items.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.items.isEmpty() && state.error != null -> CenterMessage(state.error)
+                state.noMatch -> CenterMessage("没有匹配「${state.search.trim()}」的作品")
                 state.items.isEmpty() -> CenterMessage("收藏夹是空的")
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(state.columns),
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(state.items, key = { it.id }) { item ->
+                    items(shown, key = { it.id }) { item ->
                         WorkCard(
                             coverUrl = viewModel.coverUrl(item.code),
                             code = item.code,
@@ -282,11 +326,28 @@ fun FavGroupScreen(
                                 }
                             },
                             onLongClick = { removeTarget = item },
+                            rating = viewModel.ratingOf(item.code),
+                            onRatingClick = { ratingTarget = item },
+                            onPlay = {
+                                viewModel.playItem(item) { videoId -> onPlay(videoId) }
+                            },
                         )
                     }
                 }
             }
         }
+    }
+
+    ratingTarget?.let { item ->
+        RatingDialog(
+            code = item.code,
+            current = viewModel.ratingOf(item.code),
+            onDismiss = { ratingTarget = null },
+            onSave = { value ->
+                viewModel.updateRating(item.code, value)
+                ratingTarget = null
+            },
+        )
     }
 
     removeTarget?.let { item ->
@@ -303,6 +364,21 @@ fun FavGroupScreen(
             dismissButton = {
                 TextButton(onClick = { removeTarget = null }) { Text("取消") }
             },
+        )
+    }
+
+    if (showSort) {
+        SortDialog(
+            title = "排序 · 收藏夹",
+            entries = FavItemSortBase.entries.map { base ->
+                SortEntry(
+                    base.label,
+                    state.sort == base,
+                    if (state.sortAsc) base.ascLabel else base.descLabel,
+                )
+            },
+            onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
+            onDismiss = { showSort = false },
         )
     }
 }
