@@ -1,6 +1,7 @@
 package com.javboss.phone.ui.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.BuildConfig
+import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.api.dto.DirectoryDto
 
 /**
@@ -100,6 +103,31 @@ fun SettingsScreen(
         SectionTitle("显示")
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
+                Text("启动显示界面", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
+                LaunchTab.entries.forEach { option ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setLaunchTab(option) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = state.launchTab == option,
+                            onClick = { viewModel.setLaunchTab(option) },
+                        )
+                        Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "从桌面冷启动 App 时默认进入的页面（默认 JAV）；修改只在下次启动生效，当前不会跳转",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(10.dp))
                 Text("每行卡片数", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

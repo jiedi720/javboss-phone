@@ -45,6 +45,8 @@ import com.javboss.phone.ui.works.WorksScreen
  */
 @Composable
 fun MainScreen(
+    /** 冷启动时默认落在哪个 tab，来自设置里的「启动显示界面」（默认 JAV = 1） */
+    startTab: Int = 1,
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
     onPlay: (videoId: Long) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
@@ -52,7 +54,8 @@ fun MainScreen(
     onSessionExpired: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // rememberSaveable：转屏/去详情再回来保持当前 tab；从桌面冷启动没有保存值时才用 startTab
+    var tab by rememberSaveable { mutableIntStateOf(startTab) }
 
     Scaffold(
         bottomBar = {

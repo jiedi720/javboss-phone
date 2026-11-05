@@ -133,6 +133,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
         }
         composable(Routes.MAIN) {
             MainScreen(
+                startTab = app.container.settings.launchTab.index,
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
                 onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
                 onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.DirectoryCreateRequest
+import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.api.dto.DirectoryDto
 import com.javboss.phone.data.api.dto.DirectoryUpdateRequest
 import kotlinx.coroutines.launch
@@ -20,6 +21,8 @@ data class SettingsUiState(
     val gridColumns: Int = 2,
     /** 封面毛玻璃：作品/女优封面一直模糊显示 */
     val coverMask: Boolean = false,
+    /** 冷启动默认进入的 tab（默认 JAV） */
+    val launchTab: LaunchTab = LaunchTab.JAV,
     /** 服务端的「读取路径」列表 */
     val directories: List<DirectoryDto> = emptyList(),
     val loading: Boolean = false,
@@ -44,6 +47,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             serverUrl = container.session.serverUrl,
             gridColumns = container.settings.gridColumns,
             coverMask = container.settings.coverMask,
+            launchTab = container.settings.launchTab,
         ),
     )
         private set
@@ -65,6 +69,13 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         if (enabled == uiState.coverMask) return
         uiState = uiState.copy(coverMask = enabled)
         viewModelScope.launch { container.settings.saveCoverMask(enabled) }
+    }
+
+    /** 启动显示界面：只改设置，不动当前 tab，下次从桌面冷启动才生效 */
+    fun setLaunchTab(tab: LaunchTab) {
+        if (tab == uiState.launchTab) return
+        uiState = uiState.copy(launchTab = tab)
+        viewModelScope.launch { container.settings.saveLaunchTab(tab) }
     }
 
     fun refreshDirectories() {

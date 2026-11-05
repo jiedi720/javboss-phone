@@ -73,6 +73,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,7 +92,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
 import com.javboss.phone.data.SeekSensitivity
-import com.javboss.phone.ui.components.coverFrost
 import com.javboss.phone.ui.components.coverImageModel
 import com.javboss.phone.ui.components.formatDuration
 import kotlinx.coroutines.delay
@@ -169,7 +170,7 @@ fun PlayerScreen(
         if (fullscreen) {
             Box(Modifier.fillMaxSize().background(Color.Black))
         } else {
-            FrostedCoverBackdrop(state.coverUrl)
+            FrostedCoverBackdrop(state.coverUrl, state.thumbnailUrl)
         }
 
         val density = LocalDensity.current
@@ -245,17 +246,25 @@ fun PlayerScreen(
 /** 竖屏窗口顶部拖动把手高度（宽度仍是整屏） */
 private val DRAG_HANDLE_HEIGHT = 22.dp
 
-/** 毛玻璃封面上的压暗遮罩：别压太狠，否则又变成一片黑 */
-private const val BACKDROP_SCRIM = 0.28f
+/** 背景的适度模糊：比隐私打码的 22dp 轻，仍看得出封面轮廓与颜色 */
+private val BACKDROP_BLUR = 16.dp
+
+/** 半透明质感：封面整体带一点透明度，微微透出底下的中性渐变 */
+private const val BACKDROP_ALPHA = 0.82f
+
+/** 压暗遮罩：保证把手、加载提示、控制条清晰可读；别压太狠，否则又变成一片黑 */
+private const val BACKDROP_SCRIM = 0.30f
 
 /**
- * 竖屏背景：整屏铺一张毛玻璃化的封面。
- * API 31+ 用 RenderEffect 模糊，API 26–30 退化成 28px 小解码 + 双线性放大，
- * 两者都是项目里已有的封面毛玻璃逻辑（coverImageModel / coverFrost）。
- * 底层还垫了一层中性渐变：普通视频没有 JAV 封面时也不会退回 #121212 的纯黑。
+ * 竖屏背景：整屏铺「当前正在播放视频」的封面，适度毛玻璃 + 半透明。
+ * 优先 JAV 封面，底下垫一张每个视频都有的视频缩略图：封面 404 / 没番号时
+ * Coil 不绘制上层，缩略图自然露出，不会再退回一片灰。
+ * API 31+ 用 RenderEffect 模糊，API 26–30 退化成 28px 小解码 + 双线性放大。
+ * 只对竖屏播放页生效：横屏仍是纯黑舞台，其它界面完全不动。
  */
 @Composable
-private fun FrostedCoverBackdrop(coverUrl: String?) {
+private fun FrostedCoverBackdrop(coverUrl: String?, thumbnailUrl: String?) {
+    val blurSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     Box(
         Modifier
             .fillMaxSize()
@@ -268,19 +277,27 @@ private fun FrostedCoverBackdrop(coverUrl: String?) {
                 ),
             ),
     ) {
-        if (coverUrl != null) {
-            AsyncImage(
-                model = coverImageModel(coverUrl, Build.VERSION.SDK_INT < Build.VERSION_CODES.S),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .coverFrost(true),
-            )
-            // 压暗一层保证把手、加载提示、控制条可读
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_SCRIM)))
+        Box(Modifier.fillMaxSize().alpha(BACKDROP_ALPHA)) {
+            if (thumbnailUrl != null) FrostedBackdropImage(thumbnailUrl, blurSupported)
+            if (coverUrl != null && coverUrl != thumbnailUrl) {
+                FrostedBackdropImage(coverUrl, blurSupported)
+            }
         }
+        // 压暗一层保证前景播放器与控制条清晰可读
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_SCRIM)))
     }
+}
+
+@Composable
+private fun FrostedBackdropImage(url: String, blurSupported: Boolean) {
+    AsyncImage(
+        model = coverImageModel(url, !blurSupported),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (blurSupported) Modifier.blur(BACKDROP_BLUR) else Modifier),
+    )
 }
 
 @Composable

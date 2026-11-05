@@ -29,8 +29,10 @@ data class PlayerUiState(
     val fallbackPositionMs: Long = 0,
     /** 全屏拖动 seek 灵敏度偏好 */
     val seekSensitivity: SeekSensitivity = SeekSensitivity.MEDIUM,
-    /** 竖屏背景用的毛玻璃封面（拿不到就退回中性渐变，不影响播放） */
+    /** 竖屏背景用的 JAV 封面（有番号时优先） */
     val coverUrl: String? = null,
+    /** 每个视频都有的缩略图：封面接口失败或普通视频没有 JAV 封面时的兜底背景 */
+    val thumbnailUrl: String? = null,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -47,14 +49,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     var uiState by mutableStateOf(PlayerUiState())
         private set
 
+    /** 只认最后一次 load 的 videoId，防止切视频后旧封面异步写回来 */
+    @Volatile
+    private var currentVideoId: Long = 0L
+
     val cookieHeader: String get() = container.cookieJar.cookieHeader()
 
     fun load(videoId: Long) {
+        currentVideoId = videoId
+        // 切换视频：立刻清掉上一个视频的封面，同时把一定存在的视频缩略图作为背景兜底
+        val thumbnail = container.apiClient.videoThumbnailUrl(videoId)
+        uiState = uiState.copy(coverUrl = null, thumbnailUrl = thumbnail)
         viewModelScope.launch {
             try {
                 val source = container.videoRepository.resolvePlayable(videoId)
                 if (source.urls.isEmpty()) {
-                    uiState = PlayerUiState(loading = false, error = "没有可用的播放源")
+                    uiState = PlayerUiState(
+                        loading = false, error = "没有可用的播放源", thumbnailUrl = thumbnail,
+                    )
                 } else {
                     val mode = container.settings.engineMode
                     uiState = PlayerUiState(
@@ -63,25 +75,30 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         engineMode = mode,
                         activeEngine = if (mode == EngineMode.VLC) EngineMode.VLC else EngineMode.EXO,
                         seekSensitivity = container.settings.seekSensitivity,
+                        thumbnailUrl = thumbnail,
                     )
                     container.videoRepository.reportPlay(videoId)
                     startPlaybackReporter(videoId, source.locationId)
                     loadCover(videoId)
                 }
             } catch (e: Exception) {
-                uiState = PlayerUiState(loading = false, error = e.message ?: "获取播放源失败")
+                uiState = PlayerUiState(
+                    loading = false, error = e.message ?: "获取播放源失败", thumbnailUrl = thumbnail,
+                )
             }
         }
     }
 
     /**
-     * 竖屏背景要一张毛玻璃封面：先由 /videos/{id} 拿到番号，再拼封面地址。
-     * 单独起协程，失败或普通视频没有 JAV 信息都只是没有封面，绝不能挡住起播。
+     * 竖屏背景优先用当前作品的 JAV 封面：先由 /videos/{id} 拿到番号，再拼封面地址。
+     * 拿不到番号时 PlayerScreen 会用 thumbnailUrl 兜底；单独起协程，绝不能挡住起播。
      */
     private fun loadCover(videoId: Long) {
         viewModelScope.launch {
             val code = runCatching { container.videoRepository.getVideo(videoId) }
                 .getOrNull()?.jav?.code?.takeIf { it.isNotBlank() } ?: return@launch
+            // 切视频期间旧的封面请求可能才返回，丢弃它
+            if (currentVideoId != videoId) return@launch
             uiState = uiState.copy(coverUrl = container.apiClient.javCoverUrl(code))
         }
     }

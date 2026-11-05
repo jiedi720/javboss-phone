@@ -25,6 +25,19 @@ enum class SeekSensitivity(val label: String, val factor: Float) {
     HIGH("高", 2f),
 }
 
+/** 冷启动时底部导航默认落在哪个 tab；默认 JAV（与服务端 Web 端主入口一致） */
+enum class LaunchTab(val index: Int, val label: String) {
+    VIDEOS(0, "视频"),
+    JAV(1, "JAV"),
+    FAVORITES(2, "收藏夹"),
+    SETTINGS(3, "设置"),
+    ;
+
+    companion object {
+        fun fromIndex(index: Int): LaunchTab = entries.firstOrNull { it.index == index } ?: JAV
+    }
+}
+
 /** 应用设置持久化（播放引擎偏好、拖动 seek 灵敏度） */
 class SettingsManager(private val context: Context) {
 
@@ -40,6 +53,7 @@ class SettingsManager(private val context: Context) {
     private val keyFavSortAsc = booleanPreferencesKey("fav_sort_asc")
     private val keyFavItemSort = stringPreferencesKey("fav_item_sort")
     private val keyFavItemSortAsc = booleanPreferencesKey("fav_item_sort_asc")
+    private val keyLaunchTab = stringPreferencesKey("launch_tab")
 
     @Volatile
     var engineMode: EngineMode = EngineMode.AUTO
@@ -100,6 +114,11 @@ class SettingsManager(private val context: Context) {
     var favItemSortAsc: Boolean = true
         private set
 
+    /** 冷启动默认 tab：默认 JAV，设置页可改 */
+    @Volatile
+    var launchTab: LaunchTab = LaunchTab.JAV
+        private set
+
     suspend fun restore() {
         val prefs = context.settingsDataStore.data.first()
         engineMode = prefs[keyEngineMode]
@@ -118,6 +137,9 @@ class SettingsManager(private val context: Context) {
         favSortAsc = prefs[keyFavSortAsc] ?: true
         favItemSortName = prefs[keyFavItemSort]
         favItemSortAsc = prefs[keyFavItemSortAsc] ?: true
+        launchTab = prefs[keyLaunchTab]
+            ?.let { runCatching { LaunchTab.valueOf(it) }.getOrNull() }
+            ?: LaunchTab.JAV
     }
 
     suspend fun saveEngineMode(mode: EngineMode) {
@@ -176,5 +198,11 @@ class SettingsManager(private val context: Context) {
     suspend fun saveCoverMask(enabled: Boolean) {
         _coverMask.value = enabled
         context.settingsDataStore.edit { it[keyCoverMask] = enabled }
+    }
+
+    /** 启动显示界面：只在下次冷启动生效，当前会话不跳转，避免把用户从设置页弹走 */
+    suspend fun saveLaunchTab(tab: LaunchTab) {
+        launchTab = tab
+        context.settingsDataStore.edit { it[keyLaunchTab] = tab.name }
     }
 }
