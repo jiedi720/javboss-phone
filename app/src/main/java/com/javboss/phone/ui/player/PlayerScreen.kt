@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
@@ -26,13 +27,18 @@ import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -57,11 +63,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -144,37 +153,97 @@ fun PlayerScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             // 全屏才是纯黑舞台；竖屏小窗改用主题背景色，避免看起来像「整屏黑边」
             .background(if (fullscreen) Color.Black else MaterialTheme.colorScheme.background),
-        contentAlignment = if (fullscreen) Alignment.Center else Alignment.TopCenter,
+        contentAlignment = Alignment.Center,
     ) {
+        val density = LocalDensity.current
+        // 竖屏小窗：宽度取屏宽的 82%，默认居中；按住顶部把手可上下左右拖动，
+        // 拖动范围限制在屏幕内，位置在本页内记住（切全屏/回来不丢）。
+        val windowWidth = maxWidth * if (fullscreen) 1f else PLAYER_WINDOW_WIDTH_FRACTION
+        val handleHeight = if (fullscreen) 0.dp else DRAG_HANDLE_HEIGHT
+        val windowHeight = handleHeight + windowWidth * 9f / 16f
+        val horizontalRoom = ((maxWidth - windowWidth) / 2f - 8.dp).let { if (it < 0.dp) 0.dp else it }
+        val verticalRoom = ((maxHeight - windowHeight) / 2f - 8.dp).let { if (it < 0.dp) 0.dp else it }
+        val maxOffsetX = with(density) { horizontalRoom.toPx() }
+        val maxOffsetY = with(density) { verticalRoom.toPx() }
+        var dragX by rememberSaveable { mutableFloatStateOf(0f) }
+        var dragY by rememberSaveable { mutableFloatStateOf(0f) }
+
         when {
-            state.loading -> Text("加载播放源…", color = Color.White)
+            state.loading -> Text("加载播放源…", color = if (fullscreen) Color.White else MaterialTheme.colorScheme.onBackground)
             state.error != null -> Text("无法播放：${state.error}", color = MaterialTheme.colorScheme.error)
-            else -> UnifiedPlayerStage(
-                urls = state.urls,
-                engineMode = state.engineMode,
-                activeEngine = state.activeEngine,
-                autoFallback = state.engineMode == EngineMode.AUTO,
-                startPositionMs = state.fallbackPositionMs,
-                seekSensitivity = state.seekSensitivity,
-                cookieHeader = viewModel.cookieHeader,
-                proxyUrl = viewModel::proxyUrl,
-                fullscreen = fullscreen,
-                onToggleFullscreen = { fullscreen = !fullscreen },
-                onSwitchToVlc = viewModel::switchToVlc,
-                onEngineModeChange = viewModel::selectEngineMode,
-                onSeekSensitivityChange = viewModel::selectSeekSensitivity,
-                onPlaybackState = viewModel::onPlaybackState,
-                onAllSourcesFailed = { viewModel.failPlayback("所有播放源均播放失败") },
-                onBack = onBack,
-            )
+            else -> Column(
+                Modifier
+                    .then(
+                        if (fullscreen) Modifier.fillMaxSize()
+                        else Modifier.fillMaxWidth(PLAYER_WINDOW_WIDTH_FRACTION)
+                    )
+                    .offset {
+                        if (fullscreen) IntOffset.Zero
+                        else IntOffset(
+                            dragX.coerceIn(-maxOffsetX, maxOffsetX).roundToInt(),
+                            dragY.coerceIn(-maxOffsetY, maxOffsetY).roundToInt(),
+                        )
+                    }
+                    .then(if (fullscreen) Modifier else Modifier.clip(RoundedCornerShape(14.dp))),
+            ) {
+                if (!fullscreen) {
+                    // 把手独立于视频区域，播放器原有的 seek / 亮度 / 音量 / 双击手势完全不受影响
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(DRAG_HANDLE_HEIGHT)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .pointerInput(maxOffsetX, maxOffsetY) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    dragX = (dragX + dragAmount.x).coerceIn(-maxOffsetX, maxOffsetX)
+                                    dragY = (dragY + dragAmount.y).coerceIn(-maxOffsetY, maxOffsetY)
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
+                        )
+                    }
+                }
+                UnifiedPlayerStage(
+                    urls = state.urls,
+                    engineMode = state.engineMode,
+                    activeEngine = state.activeEngine,
+                    autoFallback = state.engineMode == EngineMode.AUTO,
+                    startPositionMs = state.fallbackPositionMs,
+                    seekSensitivity = state.seekSensitivity,
+                    cookieHeader = viewModel.cookieHeader,
+                    proxyUrl = viewModel::proxyUrl,
+                    fullscreen = fullscreen,
+                    onToggleFullscreen = { fullscreen = !fullscreen },
+                    onSwitchToVlc = viewModel::switchToVlc,
+                    onEngineModeChange = viewModel::selectEngineMode,
+                    onSeekSensitivityChange = viewModel::selectSeekSensitivity,
+                    onPlaybackState = viewModel::onPlaybackState,
+                    onAllSourcesFailed = { viewModel.failPlayback("所有播放源均播放失败") },
+                    onBack = onBack,
+                )
+            }
         }
     }
 }
+
+/** 竖屏小窗宽度占屏宽比例：留出左右边距，仍有足够宽度给进度条 */
+private const val PLAYER_WINDOW_WIDTH_FRACTION = 0.82f
+
+/** 竖屏小窗顶部拖动把手高度 */
+private val DRAG_HANDLE_HEIGHT = 22.dp
 
 @Composable
 private fun UnifiedPlayerStage(
@@ -383,16 +452,14 @@ private fun UnifiedPlayerStage(
             }
         }
 
-    // 竖屏小窗：顶部一张 16:9 圆角小窗，四周留边，页面其余部分是主题背景色；
+    // 竖屏小窗：一张 16:9 画面，父级 Column 已负责 82% 宽、圆角裁剪与拖动位置；
     // 只有全屏才铺满整屏（纯黑舞台）
     val stageSizeModifier = if (fullscreen) {
         Modifier.fillMaxSize()
     } else {
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp)
             .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(14.dp))
             .background(Color.Black)
     }
 
@@ -585,12 +652,27 @@ private fun PlaybackControls(
     modifier: Modifier = Modifier,
 ) {
     Surface(color = Color.Black.copy(alpha = 0.65f), modifier = modifier.fillMaxWidth()) {
+        // 竖屏小窗只有 82% 屏宽，IconButton 默认 48dp 的触控区会把进度条挤没，
+        // 所以窄屏用 34dp 按钮 + 20dp 图标；全屏保持原尺寸
+        val buttonSize = if (fullscreen) 48.dp else 34.dp
+        val iconSize = if (fullscreen) 24.dp else 20.dp
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = if (fullscreen) 8.dp else 2.dp),
         ) {
-            IconButton(onClick = { onPlayingChange(!isPlaying) }) {
-                Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (isPlaying) "暂停" else "播放", tint = Color.White)
+            Box(
+                Modifier
+                    .size(buttonSize)
+                    .clip(CircleShape)
+                    .clickable { onPlayingChange(!isPlaying) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    if (isPlaying) "暂停" else "播放",
+                    tint = Color.White,
+                    modifier = Modifier.size(iconSize),
+                )
             }
             // 竖屏小窗宽度只有整屏，时间和引擎标识全排上会把进度条挤成一小截：
             // 窄屏用更小的字号、更紧的间距，并把「当前引擎」让到全屏再显示（设置浮层里也有）
@@ -608,11 +690,18 @@ private fun PlaybackControls(
                     .padding(horizontal = if (fullscreen) 8.dp else 4.dp),
             )
             Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
-            IconButton(onClick = onToggleFullscreen) {
+            Box(
+                Modifier
+                    .size(buttonSize)
+                    .clip(CircleShape)
+                    .clickable(onClick = onToggleFullscreen),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                     contentDescription = if (fullscreen) "退出全屏" else "全屏",
                     tint = Color.White,
+                    modifier = Modifier.size(iconSize),
                 )
             }
             if (fullscreen) {

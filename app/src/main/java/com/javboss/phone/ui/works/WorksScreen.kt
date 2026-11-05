@@ -1,7 +1,9 @@
 package com.javboss.phone.ui.works
 
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -12,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -30,7 +34,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -48,7 +51,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.api.dto.JavDto
@@ -115,50 +120,38 @@ fun WorksScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // 顶栏：四个视角按钮（窄屏可横滑）+ 排序 / 搜索 / 筛选 三个图标
-        // 每行卡片数已挪到「设置」页，这里不再占位置，图标才不会被挤出屏幕外
+        // 顶栏：四个紧凑视角按钮 + 排序 / 搜索 / 筛选 三个紧凑图标，
+        // 不再横滑，也不再被 48dp 的 IconButton 挤掉，窄屏也能一行完整显示
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(
-                Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                LibraryTab.entries.forEach { tab ->
-                    FilterChip(
-                        selected = state.tab == tab,
-                        onClick = { viewModel.onTabChange(tab) },
-                        label = { Text(tab.label) },
-                    )
-                }
-            }
-            // 排序：作品 / 女优两个视角各有一套维度（与 Web 端一致）
-            if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
-                IconButton(onClick = { showSort = true }) {
-                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序")
-                }
-            }
-            IconButton(onClick = {
-                searchOpen = !searchOpen
-                if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
-            }) {
-                Icon(
-                    if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
-                    contentDescription = if (searchOpen) "收起搜索" else "搜索",
+            LibraryTab.entries.forEach { tab ->
+                CompactTabChip(
+                    label = tab.label,
+                    selected = state.tab == tab,
+                    onClick = { viewModel.onTabChange(tab) },
                 )
             }
+            Spacer(Modifier.weight(1f))
+            // 排序：作品 / 女优两个视角各有一套维度（与 Web 端一致）
+            if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
+                CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序") { showSort = true }
+            }
+            CompactIconButton(
+                if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
+                if (searchOpen) "收起搜索" else "搜索",
+            ) {
+                searchOpen = !searchOpen
+                if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
+            }
             if (state.tab == LibraryTab.WORKS) {
-                IconButton(onClick = {
+                CompactIconButton(Icons.Filled.FilterAlt, "筛选") {
                     viewModel.loadFilterOptions()
                     showFilter = true
-                }) {
-                    Icon(Icons.Filled.FilterAlt, contentDescription = "筛选")
                 }
             }
         }
@@ -369,6 +362,59 @@ fun WorksScreen(
             )
             else -> Unit
         }
+    }
+}
+
+/** 顶栏紧凑视角按钮：高 30dp、左右各 9dp，四个视角 + 三个图标能在窄屏一行排完 */
+@Composable
+private fun CompactTabChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val container = if (selected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = if (selected) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        Modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(container)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = content, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+    }
+}
+
+/** 顶栏紧凑图标按钮：32dp 触控区，避免 IconButton 默认 48dp 把左侧 chip 挤到截断 */
+@Composable
+private fun CompactIconButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector,
+            contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
