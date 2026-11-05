@@ -33,6 +33,7 @@ import com.javboss.phone.data.api.dto.StudioListResponse
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
+import com.javboss.phone.data.api.dto.VideoLocationRenameRequest
 import com.javboss.phone.data.api.dto.VideoListResponse
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
@@ -84,6 +85,23 @@ interface JavBossApi {
 
     @GET("videos/{id}/streams")
     suspend fun getStreams(@Path("id") id: Long): StreamsResponse
+
+    /**
+     * 文件位置操作：/jav 内嵌的 videos 是「每个文件一条」，id 是作品视频 id，
+     * locationId 才是这条文件记录的 id。服务端会同时改/删磁盘上的真实文件。
+     */
+    @PATCH("videos/{id}/locations/{locationId}")
+    suspend fun renameVideoLocation(
+        @Path("id") id: Long,
+        @Path("locationId") locationId: Long,
+        @Body body: VideoLocationRenameRequest,
+    )
+
+    @DELETE("videos/{id}/locations/{locationId}")
+    suspend fun deleteVideoLocation(
+        @Path("id") id: Long,
+        @Path("locationId") locationId: Long,
+    )
 
     @POST("videos/{id}/play")
     suspend fun incrementPlayCount(@Path("id") id: Long)

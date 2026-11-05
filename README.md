@@ -63,7 +63,9 @@
 - **详情页**：封面、番号、发行日期、时长、片商、系列、演员、标签、视频截图，**服务端统计的观看时长**
   （`jav.watched_ms`，每个文件版本另显示各自「已看 xx」），
   以及**该作品的每一个文件版本**（文件名 + 磁盘完整路径 + 体积/时长/已看，当前播放的那条标「当前」，
-  一部作品挂多个视频文件时全部列出、可长按复制路径）；
+  一部作品挂多个视频文件时全部列出）；**长按文件卡片**弹出操作面板：查看文件大小、复制完整路径、
+  **重命名 / 删除文件**——后两者走 `PATCH`/`DELETE /videos/{id}/locations/{locationId}`，
+  服务端会同步改/删磁盘上的真实文件（删除有二次确认且不可撤销），成功后原地刷新详情页；
   片商/系列/演员/标签均可点击跳转到对应过滤作品列表；外部链接直达 JavDB；
   操作栏含播放、收藏（勾选收藏夹 + 新建收藏夹）、编辑（标题/发行日期/时长/片商/系列/演员/标签，支持新建标签）
 - **播放**：统一播放页 + 双引擎（引擎只负责解码渲染，页面和控制条只有一套，
@@ -159,7 +161,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 22`、`versionName = 0.3.18-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 23`、`versionName = 0.3.19-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

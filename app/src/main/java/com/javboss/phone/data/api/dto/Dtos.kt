@@ -53,8 +53,12 @@ data class VideoDto(
     @SerialName("play_count") val playCount: Long = 0,
     /** 服务端统计的该文件累计观看时长（毫秒） */
     @SerialName("watched_ms") val watchedMs: Long = 0,
+    /** 文件位置 id：/jav 内嵌的 videos 是「每个文件一条」，改名/删除要用它 */
+    @SerialName("location_id") val locationId: Long = 0,
     val jav: JavDto? = null,
     val tags: List<TagDto> = emptyList(),
+    /** /videos/{id} 会给出该视频的全部文件位置，用于 locationId 缺失时按路径反查 */
+    val locations: List<VideoLocationDto> = emptyList(),
 ) {
     /** 展示用标题：优先 JAV 番号 + 标题，否则文件名 */
     val displayTitle: String
@@ -249,6 +253,12 @@ data class PlaybackSessionReportRequest(
     @SerialName("watched_ms") val watchedMs: Long = 0,
 )
 
+/** 重命名某个文件位置：只传新文件名，不含路径与扩展名之外的目录部分 */
+@Serializable
+data class VideoLocationRenameRequest(
+    val filename: String = "",
+)
+
 @Serializable
 data class StreamSourceDto(
     val kind: String = "",
@@ -269,6 +279,15 @@ data class ScreenshotListResponse(
 )
 
 // ---------- 收藏夹（/jav/jav-favorite-groups） ----------
+
+/** 文件位置：/videos/{id} 的 locations 数组元素 */
+@Serializable
+data class VideoLocationDto(
+    val id: Long = 0,
+    val filename: String = "",
+    @SerialName("relative_path") val relativePath: String = "",
+    @SerialName("directory_path") val directoryPath: String = "",
+)
 
 @Serializable
 data class FavoriteGroupDto(

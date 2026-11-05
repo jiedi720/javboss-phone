@@ -2,8 +2,10 @@ package com.javboss.phone.ui.detail
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -21,7 +23,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -56,7 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -82,7 +85,7 @@ private fun formatReleaseDate(releaseUnix: Long): String =
     else Instant.ofEpochSecond(releaseUnix).atZone(ZoneId.systemDefault()).toLocalDate().format(DATE_FORMAT)
 
 /** 详情页：封面 + 元数据 + 可点击的片商/系列/演员/标签 + 外部链接 + 收藏/编辑 */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DetailScreen(
     videoId: Long,
@@ -98,6 +101,11 @@ fun DetailScreen(
     val scope = rememberCoroutineScope()
     var showFavorite by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
+    // 长按文件卡片 → 操作面板；再从中进入重命名 / 删除确认
+    var fileMenuTarget by remember { mutableStateOf<VideoDto?>(null) }
+    var renameTarget by remember { mutableStateOf<VideoDto?>(null) }
+    var deleteTarget by remember { mutableStateOf<VideoDto?>(null) }
+    val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(videoId, javCode) { viewModel.load(videoId, javCode) }
     LaunchedEffect(state.sessionExpired) {
@@ -225,56 +233,64 @@ fun DetailScreen(
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Spacer(Modifier.height(8.dp))
-                    SelectionContainer {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            files.forEach { file ->
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = file.filename.ifBlank { "（无文件名）" },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        if (file.id == video?.id) {
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                text = "当前",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                            )
-                                        }
-                                    }
-                                    val fullPath = file.fullPath
-                                    Spacer(Modifier.height(3.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        files.forEach { file ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                    .combinedClickable(
+                                        onClick = {},
+                                        onLongClick = { fileMenuTarget = file },
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = fullPath.ifBlank { "（服务端未返回路径）" },
+                                        text = file.filename.ifBlank { "（无文件名）" },
                                         style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (file.id == video?.id) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = "当前",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                                val fullPath = file.fullPath
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    text = fullPath.ifBlank { "（服务端未返回路径）" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                val extra = listOfNotNull(
+                                    file.size.takeIf { it > 0 }?.let { formatFileSize(it) },
+                                    file.durationSec.takeIf { it > 0 }?.let { formatDuration(it) },
+                                    formatWatchedTime(file.watchedMs).takeIf { it.isNotEmpty() }
+                                        ?.let { "已看 $it" },
+                                ).joinToString(" · ")
+                                if (extra.isNotBlank()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = extra,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    val extra = listOfNotNull(
-                                        file.size.takeIf { it > 0 }?.let { formatFileSize(it) },
-                                        file.durationSec.takeIf { it > 0 }?.let { formatDuration(it) },
-                                        formatWatchedTime(file.watchedMs).takeIf { it.isNotEmpty() }
-                                            ?.let { "已看 $it" },
-                                    ).joinToString(" · ")
-                                    if (extra.isNotBlank()) {
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            text = extra,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
                                 }
                             }
                         }
                     }
+                    Text(
+                        "长按文件卡片：查看大小、复制路径、重命名或删除",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                 }
 
                 // 片商 / 系列（可点击）
@@ -398,6 +414,133 @@ fun DetailScreen(
             onDismiss = { showEdit = false },
         )
     }
+
+    fileMenuTarget?.let { file ->
+        FileActionDialog(
+            file = file,
+            onCopyPath = {
+                clipboard.setText(AnnotatedString(file.fullPath))
+                Toast.makeText(context, "已复制完整路径", Toast.LENGTH_SHORT).show()
+                fileMenuTarget = null
+            },
+            onRename = {
+                fileMenuTarget = null
+                renameTarget = file
+            },
+            onDelete = {
+                fileMenuTarget = null
+                deleteTarget = file
+            },
+            onDismiss = { fileMenuTarget = null },
+        )
+    }
+
+    renameTarget?.let { file ->
+        RenameFileDialog(
+            initial = file.filename.substringAfterLast('/').substringAfterLast('\\'),
+            onConfirm = { name ->
+                renameTarget = null
+                viewModel.renameFile(file, name)
+            },
+            onDismiss = { renameTarget = null },
+        )
+    }
+
+    deleteTarget?.let { file ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("删除文件") },
+            text = {
+                Text("确定删除「${file.filename}」吗？服务端会同步删除这个文件（磁盘上的真实文件也会被删除），不可撤销。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    viewModel.deleteFile(file)
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
+        )
+    }
+}
+
+/** 长按文件卡片：大小 / 路径 / 时长 / 已看 + 复制路径、重命名、删除 */
+@Composable
+private fun FileActionDialog(
+    file: VideoDto,
+    onCopyPath: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(file.filename.ifBlank { "文件" }, maxLines = 2) },
+        text = {
+            Column {
+                Text(
+                    "文件大小：${if (file.size > 0) formatFileSize(file.size) else "服务端未返回"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (file.durationSec > 0) {
+                    Text("视频时长：${formatDuration(file.durationSec)}", style = MaterialTheme.typography.bodySmall)
+                }
+                formatWatchedTime(file.watchedMs).takeIf { it.isNotEmpty() }?.let {
+                    Text("已看：$it", style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    file.fullPath.ifBlank { "（服务端未返回路径）" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                TextButton(onClick = onCopyPath, modifier = Modifier.fillMaxWidth()) { Text("复制完整路径") }
+                TextButton(onClick = onRename, modifier = Modifier.fillMaxWidth()) { Text("重命名文件（同步服务端）") }
+                TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                    Text("删除文件（同步服务端）", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+/** 只改文件名，不含路径；服务端会同步改磁盘上的真实文件名 */
+@Composable
+private fun RenameFileDialog(
+    initial: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initial) }
+    val valid = name.isNotBlank() && !name.contains('/') && !name.contains('\\')
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("重命名文件") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("新文件名") },
+                    singleLine = true,
+                    isError = !valid && name.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "只填文件名（含扩展名），不要带路径。服务端会同步改名磁盘上的真实文件。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(name.trim()) }, enabled = valid) { Text("确定") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 /** 收藏弹窗：勾选收藏夹 + 新建收藏夹，保存时全量替换 */

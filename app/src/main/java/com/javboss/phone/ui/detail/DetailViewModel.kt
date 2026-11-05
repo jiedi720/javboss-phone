@@ -17,6 +17,7 @@ import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.StudioDto
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.VideoDto
+import com.javboss.phone.data.api.dto.VideoLocationRenameRequest
 import kotlinx.coroutines.launch
 
 data class DetailUiState(
@@ -39,19 +40,26 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
     var uiState by mutableStateOf(DetailUiState())
         private set
 
+    /** 记住本次加载参数，文件改名/删除后原地刷新用 */
+    private var loadedVideoId: Long = 0
+    private var loadedJavCode: String? = null
+
     /**
      * @param javCode 从列表页带过来的番号；/videos/{id} 详情不内嵌 JAV 元数据，
      *   需要用它搜索 /jav 精确匹配出完整条目（对齐网页版 JavDetailModal 的数据源）
      */
     fun load(videoId: Long, javCode: String?) {
+        loadedVideoId = videoId
+        loadedJavCode = javCode
         viewModelScope.launch {
             uiState = uiState.copy(loading = true, error = null)
             try {
                 var code = javCode
                 if (videoId > 0) {
-                    val video = container.videoRepository.getVideo(videoId)
+                    // 删掉当前文件后 /videos/{id} 可能 404，这时仍要按番号展示作品元数据
+                    val video = runCatching { container.videoRepository.getVideo(videoId) }.getOrNull()
                     uiState = uiState.copy(video = video)
-                    if (code.isNullOrBlank()) code = video.jav?.code
+                    if (code.isNullOrBlank()) code = video?.jav?.code
                 }
 
                 if (!code.isNullOrBlank()) {
@@ -91,6 +99,76 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(loading = false, error = e.message ?: "加载失败")
+            }
+        }
+    }
+
+    // ---------- 文件位置：查看详情 / 重命名 / 删除 ----------
+
+    /**
+     * 改名/删除必须用「文件位置 id」，猜错会改/删到别的文件。
+     * /jav 内嵌的 videos 正常自带 location_id；缺失时用 /videos/{id} 的 locations
+     * 按文件名 + 相对路径精确反查，只有唯一命中（或该视频只有一个位置）才允许操作。
+     */
+    private suspend fun locationIdOf(file: VideoDto): Long {
+        if (file.locationId > 0) return file.locationId
+        val detail = runCatching { container.videoRepository.getVideo(file.id) }.getOrNull() ?: return 0
+        if (detail.locations.isEmpty()) return 0
+        if (detail.locations.size == 1) return detail.locations.first().id
+        val name = file.filename.substringAfterLast('/')
+        val matches = detail.locations.filter {
+            it.filename == name || it.filename == file.filename
+        }
+        if (matches.size == 1) return matches.first().id
+        val path = file.path.trim().trimStart('/')
+        return matches.firstOrNull { it.relativePath.trim().trimStart('/') == path }?.id ?: 0
+    }
+
+    /** 服务端会同时改磁盘上的真实文件名，成功后按当前参数原地刷新详情页 */
+    fun renameFile(file: VideoDto, newFilename: String) {
+        val name = newFilename.trim()
+        if (name.isBlank() || name.contains('/') || name.contains('\\')) {
+            uiState = uiState.copy(notice = "文件名不能为空，也不能包含路径分隔符")
+            return
+        }
+        viewModelScope.launch {
+            val locationId = locationIdOf(file)
+            if (locationId <= 0) {
+                uiState = uiState.copy(notice = "无法确定此文件的位置 ID，已取消重命名以免误改其它文件")
+                return@launch
+            }
+            try {
+                container.apiClient.api().renameVideoLocation(
+                    file.id,
+                    locationId,
+                    VideoLocationRenameRequest(name),
+                )
+                uiState = uiState.copy(notice = "已重命名，服务端已同步")
+                load(loadedVideoId, loadedJavCode)
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(notice = "重命名失败：${e.message ?: "网络异常"}")
+            }
+        }
+    }
+
+    /** 服务端会同时删除磁盘上的真实文件，成功后原地刷新详情页 */
+    fun deleteFile(file: VideoDto) {
+        viewModelScope.launch {
+            val locationId = locationIdOf(file)
+            if (locationId <= 0) {
+                uiState = uiState.copy(notice = "无法确定此文件的位置 ID，已取消删除以免误删其它文件")
+                return@launch
+            }
+            try {
+                container.apiClient.api().deleteVideoLocation(file.id, locationId)
+                uiState = uiState.copy(notice = "已删除，服务端已同步")
+                load(loadedVideoId, loadedJavCode)
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(notice = "删除失败：${e.message ?: "网络异常"}")
             }
         }
     }
