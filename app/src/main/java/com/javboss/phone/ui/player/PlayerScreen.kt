@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
@@ -64,6 +65,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -143,8 +145,11 @@ fun PlayerScreen(
     }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black),
-        contentAlignment = Alignment.Center,
+        Modifier
+            .fillMaxSize()
+            // 全屏才是纯黑舞台；竖屏小窗改用主题背景色，避免看起来像「整屏黑边」
+            .background(if (fullscreen) Color.Black else MaterialTheme.colorScheme.background),
+        contentAlignment = if (fullscreen) Alignment.Center else Alignment.TopCenter,
     ) {
         when {
             state.loading -> Text("加载播放源…", color = Color.White)
@@ -378,13 +383,17 @@ private fun UnifiedPlayerStage(
             }
         }
 
-    // 竖屏小窗时视频按 16:9 居中，四周留黑；全屏时铺满
+    // 竖屏小窗：顶部一张 16:9 圆角小窗，四周留边，页面其余部分是主题背景色；
+    // 只有全屏才铺满整屏（纯黑舞台）
     val stageSizeModifier = if (fullscreen) {
         Modifier.fillMaxSize()
     } else {
         Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 12.dp)
             .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.Black)
     }
 
     Box(stageSizeModifier.then(gestureModifier)) {
@@ -576,17 +585,29 @@ private fun PlaybackControls(
     modifier: Modifier = Modifier,
 ) {
     Surface(color = Color.Black.copy(alpha = 0.65f), modifier = modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = if (fullscreen) 8.dp else 2.dp),
+        ) {
             IconButton(onClick = { onPlayingChange(!isPlaying) }) {
                 Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (isPlaying) "暂停" else "播放", tint = Color.White)
             }
-            Text(formatDuration(positionMs / 1000).ifEmpty { "0:00" }, color = Color.White, style = MaterialTheme.typography.labelMedium)
+            // 竖屏小窗宽度只有整屏，时间和引擎标识全排上会把进度条挤成一小截：
+            // 窄屏用更小的字号、更紧的间距，并把「当前引擎」让到全屏再显示（设置浮层里也有）
+            val timeStyle = if (fullscreen) {
+                MaterialTheme.typography.labelMedium
+            } else {
+                MaterialTheme.typography.labelSmall
+            }
+            Text(formatDuration(positionMs / 1000).ifEmpty { "0:00" }, color = Color.White, style = timeStyle, maxLines = 1)
             Slider(
                 value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
                 onValueChange = { if (durationMs > 0) onSeek((it * durationMs).toLong()) },
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = if (fullscreen) 8.dp else 4.dp),
             )
-            Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = MaterialTheme.typography.labelMedium)
+            Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
             IconButton(onClick = onToggleFullscreen) {
                 Icon(
                     if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
@@ -594,7 +615,14 @@ private fun PlaybackControls(
                     tint = Color.White,
                 )
             }
-            Text(if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer", color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+            if (fullscreen) {
+                Text(
+                    if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer",
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(start = 8.dp, end = 4.dp),
+                )
+            }
         }
     }
 }

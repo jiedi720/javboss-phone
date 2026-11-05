@@ -65,8 +65,9 @@
   片商/系列/演员/标签均可点击跳转到对应过滤作品列表；外部链接直达 JavDB；
   操作栏含播放、收藏（勾选收藏夹 + 新建收藏夹）、编辑（标题/发行日期/时长/片商/系列/演员/标签，支持新建标签）
 - **播放**：统一播放页 + 双引擎（引擎只负责解码渲染，页面和控制条只有一套，
-  自绘控制条点按显隐：播放/暂停、进度拖动、时间、当前引擎标识、全屏、缓冲指示），
-  进入时**先竖屏小窗播放**（视频按 16:9 居中、保留系统状态栏，不强制横屏），
+  自绘控制条点按显隐：播放/暂停、进度拖动、时间、全屏、缓冲指示；当前引擎标识只在全屏显示，
+  竖屏小窗把宽度让给进度条），
+  进入时**先竖屏小窗播放**（顶部一张 16:9 圆角小窗、四周留边，页面用主题底色而不是整屏黑，不强制横屏），
   点控制条右侧的全屏按钮才切横屏 + 沉浸模式，再点退出全屏回竖屏；
   左侧设置浮层可切换引擎/字幕/拖动灵敏度并显示
   解码状态，右侧可锁定控制；横滑调进度（灵敏度可选低/中/高）、左侧竖滑调
@@ -156,7 +157,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 20`、`versionName = 0.3.16-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 21`、`versionName = 0.3.17-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），
