@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -26,9 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -742,15 +740,69 @@ fun LabeledValue(label: String, value: String) {
     }
 }
 
-/** 排序面板里的一项：已选中的那项额外显示当前方向（如「发行时间 近→远」） */
+/** 排序列表里的一项：仿 Web 端，每行都显示「维度: 方向」（如「发行时间: 近→远」） */
 data class SortEntry(val label: String, val selected: Boolean, val direction: String)
 
 /**
- * 排序面板：一排维度 chip，点未选中的切换维度（用该维度默认方向），
- * 点已选中的切换升/降序——与 Web 端排序按钮的行为一致。
- * 作品 / 女优 / 收藏夹三处共用同一套 UI。
+ * 与服务端 Web 端一致的纵向排序列表：一行一个维度，左侧「维度: 方向」，右侧 ↑↓ 图标。
+ * 点未选中的行切到该维度（用它的默认方向），点已选中的行切换升 / 降序 —— 与 Web 端行为一致。
+ * 作品库 / 女优 / 收藏夹以及「排序 + 筛选」合并菜单共用同一套 UI。
  */
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SortList(
+    entries: List<SortEntry>,
+    onPick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        entries.forEachIndexed { index, entry ->
+            val background = if (entry.selected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                Color.Transparent
+            }
+            val foreground = if (entry.selected) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(background)
+                    .clickable { onPick(index) }
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${entry.label}: ${entry.direction}",
+                    color = foreground,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    Icons.Filled.SwapVert,
+                    contentDescription = "切换方向",
+                    tint = foreground.copy(alpha = 0.65f),
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clickable { onPick(index) },
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "点一下切换排序维度，再点一次切换方向",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 只有排序的菜单（收藏夹内页用）；作品库的排序 + 筛选合并菜单直接复用 [SortList] */
 @Composable
 fun SortDialog(
     title: String,
@@ -761,29 +813,7 @@ fun SortDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = {
-            Column {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    entries.forEachIndexed { index, entry ->
-                        FilterChip(
-                            selected = entry.selected,
-                            onClick = { onPick(index) },
-                            label = {
-                                Text(
-                                    if (entry.selected) "${entry.label} ${entry.direction}" else entry.label,
-                                )
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "再点一次已选中的维度可切换升 / 降序",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
+        text = { SortList(entries, onPick) },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
     )
 }

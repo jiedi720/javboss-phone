@@ -371,11 +371,15 @@ fun FavGroupScreen(
         SortDialog(
             title = "排序 · 收藏夹",
             entries = FavItemSortBase.entries.map { base ->
-                SortEntry(
-                    base.label,
-                    state.sort == base,
-                    if (state.sortAsc) base.ascLabel else base.descLabel,
-                )
+                val selected = state.sort == base
+                val direction = if (selected) {
+                    if (state.sortAsc) base.ascLabel else base.descLabel
+                } else if (base.defaultAsc) {
+                    base.ascLabel
+                } else {
+                    base.descLabel
+                }
+                SortEntry(base.label, selected, direction)
             },
             onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
             onDismiss = { showSort = false },

@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,8 +61,8 @@ import com.javboss.phone.ui.components.EntityCard
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.IdolCard
 import com.javboss.phone.ui.components.RatingDialog
-import com.javboss.phone.ui.components.SortDialog
 import com.javboss.phone.ui.components.SortEntry
+import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.WorkCard
 import com.javboss.phone.ui.components.idolInfoRows
@@ -84,9 +83,8 @@ fun WorksScreen(
     val state = viewModel.uiState
     val gridState = rememberLazyGridState()
     var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var showFilter by remember { mutableStateOf(false) }
-    // 排序面板（作品 / 女优两个视角共用）
-    var showSort by remember { mutableStateOf(false) }
+    // 排序 + 筛选共用一个菜单（作品视角带筛选区，女优视角只有排序）
+    var showSortFilter by remember { mutableStateOf(false) }
     // 正在改评分的作品
     var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
     // 一部作品有多个视频文件时，只在点播放钮时弹选择框
@@ -137,9 +135,12 @@ fun WorksScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
-            // 排序：作品 / 女优两个视角各有一套维度（与 Web 端一致）
+            // 排序 / 筛选：只留一个按钮，打开后是同一个菜单（作品视角多一段筛选区）
             if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
-                CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序") { showSort = true }
+                CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
+                    if (state.tab == LibraryTab.WORKS) viewModel.loadFilterOptions()
+                    showSortFilter = true
+                }
             }
             CompactIconButton(
                 if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
@@ -147,12 +148,6 @@ fun WorksScreen(
             ) {
                 searchOpen = !searchOpen
                 if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
-            }
-            if (state.tab == LibraryTab.WORKS) {
-                CompactIconButton(Icons.Filled.FilterAlt, "筛选") {
-                    viewModel.loadFilterOptions()
-                    showFilter = true
-                }
             }
         }
 
@@ -302,19 +297,6 @@ fun WorksScreen(
         }
     }
 
-    if (showFilter) {
-        ModalBottomSheet(onDismissRequest = { showFilter = false }) {
-            FilterSheet(
-                state = state,
-                onPrefixChange = viewModel::onPrefixChange,
-                onTagToggle = viewModel::onTagToggle,
-                onSoloChange = viewModel::onSoloChange,
-                onRandomChange = viewModel::onRandomChange,
-                onClear = viewModel::clearFilters,
-            )
-        }
-    }
-
     playPickerTarget?.let { jav ->
         VideoPickDialog(
             title = jav.code,
@@ -340,27 +322,74 @@ fun WorksScreen(
         )
     }
 
-    if (showSort) {
-        when (state.tab) {
-            LibraryTab.WORKS -> SortDialog(
-                title = "排序 · JAV",
-                entries = JavSortBase.entries.map { base ->
-                    val selected = state.sort == base && !state.random
-                    SortEntry(base.label, selected, if (state.sortAsc) base.ascLabel else base.descLabel)
-                },
-                onPick = { viewModel.onSortClick(JavSortBase.entries[it]) },
-                onDismiss = { showSort = false },
-            )
-            LibraryTab.IDOLS -> SortDialog(
-                title = "排序 · 女优",
-                entries = IdolSortBase.entries.map { base ->
-                    val selected = state.idolsSort == base
-                    SortEntry(base.label, selected, if (state.idolsSortAsc) base.ascLabel else base.descLabel)
-                },
-                onPick = { viewModel.onIdolSortClick(IdolSortBase.entries[it]) },
-                onDismiss = { showSort = false },
-            )
-            else -> Unit
+    // 排序 + 筛选共用一个菜单：上半是与 Web 端一样的「维度: 方向 + ↑↓」列表，
+    // 作品视角下半接原来的筛选区（番号前缀 / 标签 / 仅单体 / 随机）
+    if (showSortFilter) {
+        ModalBottomSheet(onDismissRequest = { showSortFilter = false }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp),
+            ) {
+                Text(
+                    if (state.tab == LibraryTab.WORKS) "排序 / 筛选" else "排序 · 女优",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "排序",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                when (state.tab) {
+                    LibraryTab.WORKS -> SortList(
+                        entries = JavSortBase.entries.map { base ->
+                            val selected = state.sort == base && !state.random
+                            // 未选中的维度也按 Web 端显示自己的默认方向，而不是全局方向
+                            val direction = if (state.sort == base) {
+                                if (state.sortAsc) base.ascLabel else base.descLabel
+                            } else if (base.defaultAsc) {
+                                base.ascLabel
+                            } else {
+                                base.descLabel
+                            }
+                            SortEntry(base.label, selected, direction)
+                        },
+                        onPick = { viewModel.onSortClick(JavSortBase.entries[it]) },
+                    )
+                    LibraryTab.IDOLS -> SortList(
+                        entries = IdolSortBase.entries.map { base ->
+                            val selected = state.idolsSort == base
+                            val direction = if (selected) {
+                                if (state.idolsSortAsc) base.ascLabel else base.descLabel
+                            } else if (base.defaultAsc) {
+                                base.ascLabel
+                            } else {
+                                base.descLabel
+                            }
+                            SortEntry(base.label, selected, direction)
+                        },
+                        onPick = { viewModel.onIdolSortClick(IdolSortBase.entries[it]) },
+                    )
+                    else -> Unit
+                }
+                if (state.tab == LibraryTab.WORKS) {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(4.dp))
+                    FilterSection(
+                        state = state,
+                        onPrefixChange = viewModel::onPrefixChange,
+                        onTagToggle = viewModel::onTagToggle,
+                        onSoloChange = viewModel::onSoloChange,
+                        onRandomChange = viewModel::onRandomChange,
+                        onClear = viewModel::clearFilters,
+                    )
+                }
+            }
         }
     }
 }
@@ -420,7 +449,7 @@ private fun CompactIconButton(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterSheet(
+private fun FilterSection(
     state: WorksUiState,
     onPrefixChange: (String) -> Unit,
     onTagToggle: (Long) -> Unit,
@@ -429,15 +458,10 @@ private fun FilterSheet(
     onClear: () -> Unit,
 ) {
     // 番号前缀/标签列表一次只展开一个，避免面板过长
+    // 滚动与左右留白由外层合并菜单负责，这里不要再套一层 verticalScroll
     var openSection by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 32.dp),
-    ) {
+    Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
