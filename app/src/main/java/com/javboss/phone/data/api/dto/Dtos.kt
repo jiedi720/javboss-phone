@@ -60,9 +60,13 @@ data class VideoDto(
     /** /videos/{id} 会给出该视频的全部文件位置，用于 locationId 缺失时按路径反查 */
     val locations: List<VideoLocationDto> = emptyList(),
 ) {
-    /** 展示用标题：优先 JAV 番号 + 标题，否则文件名 */
+    /** 展示用标题：优先 JAV 番号 + 标题，否则文件名（去掉扩展名） */
     val displayTitle: String
-        get() = jav?.let { "${it.code} ${it.title}" }?.trim() ?: filename
+        get() = jav?.let { "${it.code} ${it.title}" }?.trim()
+            ?: run {
+                val dot = filename.lastIndexOf('.')
+                if (dot > 0) filename.substring(0, dot) else filename
+            }
 
     /** 完整文件路径：目录绝对路径 + 相对路径，缺任意一半就退化成有的那个 */
     val fullPath: String

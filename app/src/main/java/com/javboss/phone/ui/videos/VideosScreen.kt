@@ -135,7 +135,6 @@ fun VideosScreen(
                             thumbnailUrl = viewModel.thumbnailUrl(video.id),
                             title = video.displayTitle,
                             durationSec = video.durationSec,
-                            playCount = video.playCount,
                             watchedMs = video.watchedMs,
                             onClick = { onVideoClick(video.id, video.jav?.code) },
                         )

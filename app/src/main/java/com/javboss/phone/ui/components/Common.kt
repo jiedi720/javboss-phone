@@ -5,6 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -31,7 +33,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -67,7 +69,6 @@ import coil3.request.ImageRequest
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.PrivacyMask
 import java.time.LocalDate
-import kotlin.math.roundToInt
 import java.time.Period
 import kotlinx.coroutines.delay
 
@@ -203,7 +204,6 @@ fun VideoCard(
     thumbnailUrl: String,
     title: String,
     durationSec: Long,
-    playCount: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     /** 服务端统计的该视频累计观看时长；> 0 才在封面右上角显示已观看图标 */
@@ -236,24 +236,15 @@ fun VideoCard(
                     )
                 }
             }
-            Column(Modifier.padding(8.dp)) {
-                // 与作品卡一样：标题恒定两行，短标题也留出第二行，卡片才能等高对齐
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    minLines = 2,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                // 播放次数这行也恒定占位（0 次时填一个空格），否则有无播放记录的卡片会一高一低
-                Text(
-                    text = if (playCount > 0) "播放 $playCount 次" else " ",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
+            // 信息栏只保留一行：标题单行省略，卡片不再被「两行标题 + 播放次数行」撑高。
+            // 观看 / 播放时间统一由封面右上角的「已观看」图标 + 浮层显示，与 JAV 卡片同一套。
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
         }
     }
 }
@@ -758,7 +749,7 @@ fun VideoPickDialog(
     )
 }
 
-/** 喜爱度编辑：0..5、步长 0.5，与 Web 端封面左上角的星级同一份数据（作品墙与收藏夹共用） */
+/** 喜爱度编辑：0..5、步长 0.5，与 Web 端封面左上角的爱心同一份数据（作品墙与收藏夹共用） */
 @Composable
 fun RatingDialog(
     code: String,
@@ -766,33 +757,42 @@ fun RatingDialog(
     onDismiss: () -> Unit,
     onSave: (Double) -> Unit,
 ) {
-    var value by remember(current) { mutableStateOf(current) }
+    var value by remember(current) { mutableStateOf(current.coerceIn(0.0, 5.0)) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("喜爱度 · $code") },
         text = {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (value > 0.0) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        tint = Color(0xFFFBBF24),
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (value <= 0.0) "未评分" else "%.1f 分".format(value),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                // 一排 5 颗爱心：点左半给 0.5 分、右半给 1 分（对齐 Web 端 MUI Rating 的半星）
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    for (index in 0 until 5) {
+                        RatingHeart(
+                            fill = when {
+                                value >= index + 1.0 -> 1f
+                                value >= index + 0.5 -> 0.5f
+                                else -> 0f
+                            },
+                            onHalf = { value = index + 0.5 },
+                            onFull = { value = index + 1.0 },
+                        )
+                    }
                 }
-                Slider(
-                    value = value.toFloat(),
-                    onValueChange = { v -> value = (v * 2f).roundToInt() / 2.0 },
-                    valueRange = 0f..5f,
-                    steps = 9,
-                )
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    "0 分等于清除评分；改动会直接写回服务端",
+                    text = if (value <= 0.0) "未评分" else "%.1f 分".format(value),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                TextButton(onClick = { value = 0.0 }) { Text("清除评分") }
+                Text(
+                    "点爱心左半给 0.5 分、右半给 1 分；改动会直接写回服务端",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -801,6 +801,66 @@ fun RatingDialog(
         confirmButton = { TextButton(onClick = { onSave(value) }) { Text("保存") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+/**
+ * 评分用的一颗爱心：底层描边空心，上层实心按 fill 裁出左侧一部分（0.5 分显示半颗）。
+ * 左右两个透明点击区分别对应 0.5 / 1 分；去掉点击波纹，避免盖住爱心。
+ */
+@Composable
+private fun RatingHeart(
+    fill: Float,
+    onHalf: () -> Unit,
+    onFull: () -> Unit,
+) {
+    val gold = Color(0xFFFBBF24)
+    val iconSize = 40.dp
+    Box(Modifier.size(iconSize)) {
+        Icon(
+            imageVector = Icons.Filled.FavoriteBorder,
+            contentDescription = null,
+            tint = gold.copy(alpha = 0.35f),
+            modifier = Modifier.size(iconSize),
+        )
+        if (fill > 0f) {
+            Box(
+                Modifier
+                    .width(iconSize * fill)
+                    .height(iconSize)
+                    .clipToBounds(),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Favorite,
+                    contentDescription = null,
+                    tint = gold,
+                    // requiredSize 忽略父级 width 约束，整颗心画出来再由父 Box 裁掉右半
+                    modifier = Modifier.requiredSize(iconSize),
+                )
+            }
+        }
+        Row(Modifier.size(iconSize)) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(iconSize)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onHalf,
+                    ),
+            )
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(iconSize)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onFull,
+                    ),
+            )
+        }
+    }
 }
 
 /** 瀑布流底部状态：加载中转圈 / 到底提示 */@Composable

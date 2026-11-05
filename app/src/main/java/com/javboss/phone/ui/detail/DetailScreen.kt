@@ -388,13 +388,16 @@ fun DetailScreen(
                     }
                 }
 
-                // 标签（可点击）
-                if (!jav?.tags.isNullOrEmpty()) {
+                // 标签（可点击）：服务端视频自身 tags + 作品 jav.tags，合并去重后一起展示，
+                // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签
+                val tags = (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
+                    .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" }
+                if (tags.isNotEmpty()) {
                     Spacer(Modifier.height(16.dp))
                     Text("标签", style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.height(8.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        jav!!.tags.forEach { tag ->
+                        tags.forEach { tag ->
                             AssistChip(
                                 onClick = {
                                     onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
