@@ -41,8 +41,10 @@
   - **女优卡**：竖版封面左上角「作品 N」角标，封面下方显示名字（主名 + 日文名/罗马名）
     与**固定两行**数据（生日+年龄 / 身高·三围·罩杯，缺的用「生日未录入」这类占位补齐，
     行数恒定才能让网格对齐）；别名不在卡片里显示
+  - **点封面进详情**：无论一部作品挂了几个视频文件，点封面都**直接进作品详情**
+    （详情页自己列出全部文件版本，并标出「当前」那条），不再弹文件选择框
   - **封面直接起播**：作品卡封面右下角有播放钮，点它不经过详情页直接进播放页；
-    一部作品挂多个视频文件时先弹文件选择框（与进详情时的选择框同款）
+    **只有这里**，当一部作品挂多个视频文件时才弹文件选择框（单文件则直接起播）
   - **喜爱度评分**：封面左上角显示与 Web 端一致的爱心胶囊（实心心 + 分数），点它弹评分框
     （0–5、0.5 步长），保存后 `PUT /jav/items/{id}` 直接写回服务端，Web 端同步看到
     （排序/番号前缀/标签多选/仅单体/随机）；点女优/片商/系列卡片跳对应过滤作品列表
@@ -157,7 +159,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 21`、`versionName = 0.3.17-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 22`、`versionName = 0.3.18-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

@@ -27,8 +27,8 @@ android {
         applicationId = "com.javboss.phone.preset"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.3.17-modified"
+        versionCode = 22
+        versionName = "0.3.18-modified"
 
         // 设置页展示的打包时间（本地时区，精确到分钟）
         // 注意：Kotlin DSL 里 `java` 会被解析成 JavaPluginExtension，必须走顶部的具名 import

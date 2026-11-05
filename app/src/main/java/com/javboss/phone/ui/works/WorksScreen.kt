@@ -84,9 +84,7 @@ fun WorksScreen(
     var showSort by remember { mutableStateOf(false) }
     // 正在改评分的作品
     var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
-    // 一部作品有多个视频文件时，先弹选择框
-    var pickerTarget by remember { mutableStateOf<JavDto?>(null) }
-    // 点封面播放钮但作品有多个视频文件时，弹播放用的选择框
+    // 一部作品有多个视频文件时，只在点播放钮时弹选择框
     var playPickerTarget by remember { mutableStateOf<JavDto?>(null) }
 
     LaunchedEffect(state.sessionExpired) {
@@ -101,12 +99,10 @@ fun WorksScreen(
             }
     }
 
+    // 点封面：不管挂了几个视频文件都直接进作品详情（详情页自己会列出全部文件版本），
+    // 只有点封面右下角的播放钮才需要选具体文件
     val onWorkClick: (JavDto) -> Unit = { jav ->
-        when {
-            jav.videos.isEmpty() -> onOpenDetail(0, jav.code)
-            jav.videos.size == 1 -> onOpenDetail(jav.videos.first().id, jav.code)
-            else -> pickerTarget = jav
-        }
+        onOpenDetail(jav.videos.firstOrNull()?.id ?: 0, jav.code)
     }
 
     // 封面右下角的播放钮：一个视频直接起播，多个先选，没视频就没有按钮
@@ -324,19 +320,6 @@ fun WorksScreen(
                 onClear = viewModel::clearFilters,
             )
         }
-    }
-
-    pickerTarget?.let { jav ->
-        VideoPickDialog(
-            title = jav.code,
-            hint = "选择要查看的视频文件",
-            options = jav.videos.map { it.id to it.filename },
-            onPick = { videoId ->
-                pickerTarget = null
-                onOpenDetail(videoId, jav.code)
-            },
-            onDismiss = { pickerTarget = null },
-        )
     }
 
     playPickerTarget?.let { jav ->
