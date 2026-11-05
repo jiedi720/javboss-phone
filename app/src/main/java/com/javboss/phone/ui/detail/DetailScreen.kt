@@ -593,7 +593,7 @@ fun DetailScreen(
  * 交互：
  * - **双指捏合缩放**（1x ~ 5x），放大后单指拖动可以平移看细节；
  * - **多张时左右拖拽切换**（也能点箭头）；
- * - **长按图片**下载到本机「下载/JavBoss」；
+ * - **长按图片**弹出「保存图片」确认菜单，确认后才下载到本机「下载/JavBoss」；
  * - 点空白处或右上角 × 关闭。
  */
 @Composable
@@ -611,6 +611,8 @@ private fun ImageViewerDialog(
     // 横向滑动切图时的实时位移（松手才真正换图）
     var slideX by remember(state) { mutableFloatStateOf(0f) }
     var imageBoxSize by remember(state) { mutableStateOf(IntSize.Zero) }
+    // 长按后先弹保存菜单，确认了才真正下载（非 null = 菜单打开，值为待保存的图片 URL）
+    var saveMenuUrl by remember { mutableStateOf<String?>(null) }
     // pointerInput 的 key 只有图片数量，块里的 url / 回调要用最新值就得走 rememberUpdatedState
     val currentUrl by rememberUpdatedState(items[index].url)
     val saveAction by rememberUpdatedState(onSave)
@@ -646,10 +648,10 @@ private fun ImageViewerDialog(
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 var totalDx = 0f
                                 var multiTouch = false
-                                // 长按：到期就存图；一旦移动就取消
+                                // 长按：到期只弹出保存菜单，由用户确认后才存图；一旦移动就取消
                                 val longPressJob = launch {
                                     delay(viewConfiguration.longPressTimeoutMillis)
-                                    saveAction(currentUrl)
+                                    saveMenuUrl = currentUrl
                                 }
                                 do {
                                     val event = awaitPointerEvent()
@@ -786,12 +788,30 @@ private fun ImageViewerDialog(
                     }
                 }
                 Text(
-                    "双指缩放 · 左右拖动切换 · 长按保存到本地",
+                    "双指缩放 · 左右拖动切换 · 长按弹出保存菜单",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.75f),
                 )
             }
         }
+    }
+
+    // 长按图片后弹出的保存确认菜单：不直接下载，点「保存到本地」才执行
+    saveMenuUrl?.let { url ->
+        AlertDialog(
+            onDismissRequest = { saveMenuUrl = null },
+            title = { Text("保存图片") },
+            text = { Text("是否将这张图片保存到本地「下载/JavBoss」？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    saveMenuUrl = null
+                    saveAction(url)
+                }) { Text("保存到本地") }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveMenuUrl = null }) { Text("取消") }
+            },
+        )
     }
 }
 

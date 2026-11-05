@@ -52,7 +52,8 @@
     **只有这里**，当一部作品挂多个视频文件时才弹文件选择框（单文件则直接起播）
   - **已观看图标**：作品卡 / 视频卡封面右上角，只有服务端 `watched_ms > 0` 才显示青色时钟徽标，
     点它**在图标旁边浮出一行小字**「已观看：x 小时 y 分钟 z 秒」（不是大弹窗），
-    点别处自动收起；文案与 Web 端 `watch-time-icons` 同一份服务端数据、同一套格式，
+    再点徽标 / 点浮层即可收起，几秒后也会自动消失；浮层不拦截触摸，列表照常点击与滚动。
+    文案与 Web 端 `watch-time-icons` 同一份服务端数据、同一套格式，
     没有观看记录的卡片右上角**什么都不显示**
   - **喜爱度评分**：封面左上角显示与 Web 端一致的爱心胶囊（实心心 + 分数），点它弹评分框
     （0–5、0.5 步长），保存后 `PUT /jav/items/{id}` 直接写回服务端，Web 端同步看到
@@ -78,7 +79,8 @@
   `.../{index}/thumbnail` / `.../{index}/detail`）与**视频截图**（`GET /videos/{id}/screenshots`）
   两区，缩略图点开进同一个全屏大图查看器；
   大图查看器支持**双指捏合缩放**（1x–5x，放大后单指拖动看细节）、**多张时左右拖拽切换**
-  （也可点箭头）、**长按图片下载到本机「下载/JavBoss」**（API 29+ 走 MediaStore 免权限，
+  （也可点箭头）、**长按图片弹出「保存图片」菜单**（保存到本地 / 取消），确认后才下载到本机
+  「下载/JavBoss」（API 29+ 走 MediaStore 免权限，
   低版本落到公共 Download 目录，无写权限则退回应用私有目录并提示完整路径）；
   并列出**该作品的每一个文件版本**（文件名 + 磁盘完整路径 + 体积/时长/已看，当前播放的那条标「当前」，
   一部作品挂多个视频文件时全部列出）；**长按文件卡片**弹出操作面板：查看文件大小、复制完整路径、
@@ -189,7 +191,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 29`、`versionName = 0.3.25-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 30`、`versionName = 0.3.26-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

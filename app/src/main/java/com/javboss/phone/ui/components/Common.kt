@@ -35,6 +35,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
@@ -68,6 +69,7 @@ import com.javboss.phone.data.PrivacyMask
 import java.time.LocalDate
 import kotlin.math.roundToInt
 import java.time.Period
+import kotlinx.coroutines.delay
 
 /** 秒 → "mm:ss" 或 "h:mm:ss" */
 fun formatDuration(totalSec: Long): String {
@@ -584,6 +586,13 @@ private fun BoxScope.WatchedBadge(watchedMs: Long) {
     var showWatched by remember { mutableStateOf(false) }
     val text = "已观看：${formatWatchedTime(watchedMs).ifEmpty { "不足 1 秒" }}"
     val gapPx = with(LocalDensity.current) { 6.dp.roundToPx() }
+    // 显示后自动收起；配合点徽标 / 点浮层随时可关，避免小浮层一直挂在封面上
+    LaunchedEffect(showWatched) {
+        if (showWatched) {
+            delay(3000)
+            showWatched = false
+        }
+    }
     Box(
         Modifier
             .align(Alignment.TopEnd)
@@ -603,8 +612,12 @@ private fun BoxScope.WatchedBadge(watchedMs: Long) {
         if (showWatched) {
             Popup(
                 popupPositionProvider = WatchedTooltipPositionProvider(gapPx),
+                // 必须给 onDismissRequest：v0.3.25 缺了它，点外部 / 返回键都关不掉
+                onDismissRequest = { showWatched = false },
                 properties = PopupProperties(
-                    focusable = true,
+                    // focusable=false 才不拦截外部触摸，列表能照常点击 / 滚动
+                    // （v0.3.25 用 true 是「无法点击其他操作」的根因）
+                    focusable = false,
                     dismissOnBackPress = true,
                     dismissOnClickOutside = true,
                 ),
@@ -612,7 +625,9 @@ private fun BoxScope.WatchedBadge(watchedMs: Long) {
                 Box(
                     Modifier
                         .background(Color(0xE61C1C1C), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        // 点浮层本身也能收起
+                        .clickable { showWatched = false },
                 ) {
                     Text(
                         text = text,
