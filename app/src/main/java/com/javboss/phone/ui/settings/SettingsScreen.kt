@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,8 +46,9 @@ import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.api.dto.DirectoryDto
 
 /**
- * 设置页：账号 / 关于 / 读取路径。
- * 读取路径与服务端设置页是同一份数据（/directories），App 里增删会直接影响服务端扫描范围。
+ * 设置页：账号 / 读取路径 / 关于（放最下面）。
+ * 读取路径照服务端「目录管理」设计，与服务端是同一份数据（/directories）：
+ * 增删、启用 / 停用都会直接影响服务端扫描范围与内容展示。
  */
 @Composable
 fun SettingsScreen(
@@ -169,19 +171,6 @@ fun SettingsScreen(
             }
         }
 
-        // ---------- 关于 ----------
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("关于")
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp)) {
-                InfoRow("版本", "${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）")
-                Spacer(Modifier.height(6.dp))
-                InfoRow("打包时间", BuildConfig.BUILD_TIME)
-                Spacer(Modifier.height(6.dp))
-                InfoRow("包名", BuildConfig.APPLICATION_ID)
-            }
-        }
-
         // ---------- 读取路径 ----------
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -212,6 +201,7 @@ fun SettingsScreen(
                         DirectoryRow(
                             dir = dir,
                             enabled = !state.busy,
+                            onToggleEnabled = { viewModel.setDirectoryEnabled(dir.id, dir.path, it) },
                             onScan = { viewModel.scanDirectory(dir.id, dir.path) },
                             onDelete = { deleteTarget = dir },
                         )
@@ -229,10 +219,24 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "与服务端设置页是同一份数据：这里的增删会直接改变服务端扫描的目录；路径是服务端容器内的绝对路径（如 /media/JAV）。",
+            "与服务端「目录管理」是同一份数据：增删、启用 / 停用都会直接改变服务端扫描范围；" +
+                "停用的目录不再扫描、内容也不再展示。路径是服务端容器内的绝对路径（如 /media/JAV）。",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        // ---------- 关于（放最下面）----------
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("关于")
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                InfoRow("版本", "${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）")
+                Spacer(Modifier.height(6.dp))
+                InfoRow("打包时间", BuildConfig.BUILD_TIME)
+                Spacer(Modifier.height(6.dp))
+                InfoRow("包名", BuildConfig.APPLICATION_ID)
+            }
+        }
         Spacer(Modifier.height(24.dp))
     }
 
@@ -304,45 +308,84 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
+/**
+ * 读取路径一行，照服务端「目录管理」的布局：左侧路径 + 已扫描/已刮削统计，
+ * 右上「启用」开关（是否显示此目录里的内容），右下扫描 / 删除按钮；停用额外给出提示。
+ */
 @Composable
 private fun DirectoryRow(
     dir: DirectoryDto,
     enabled: Boolean,
+    onToggleEnabled: (Boolean) -> Unit,
     onScan: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(dir.path, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                buildString {
-                    append("${dir.scannedVideoCount} 个视频")
-                    if (dir.isScanning) append(" · 扫描中")
-                    if (!dir.enabled) append(" · 已停用")
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(dir.path, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    buildString {
+                        append("${dir.scannedVideoCount} 个视频")
+                        append(" · 已刮削 ${dir.scrapedVideoCount}")
+                        if (dir.isScanning) append(" · 扫描中")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    if (dir.enabled) "启用" else "停用",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (dir.enabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                Switch(
+                    checked = dir.enabled,
+                    onCheckedChange = onToggleEnabled,
+                    enabled = enabled,
+                )
+            }
         }
-        IconButton(onClick = onScan, enabled = enabled) {
-            Icon(
-                Icons.Filled.Search,
-                contentDescription = "扫描此路径",
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        IconButton(onClick = onDelete, enabled = enabled) {
-            Icon(
-                Icons.Filled.Delete,
-                contentDescription = "移除",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.error,
-            )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!dir.enabled) {
+                Text(
+                    "已停用 · 不参与扫描与展示",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            IconButton(onClick = onScan, enabled = enabled) {
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = "扫描此路径",
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onDelete, enabled = enabled) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "移除",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }

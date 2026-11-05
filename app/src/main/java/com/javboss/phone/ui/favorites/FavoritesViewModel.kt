@@ -93,18 +93,27 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
 
 // ---------- 收藏夹详情 ----------
 
-/** 收藏夹条目对应的 JAV：用于显示星级（收藏夹接口本身不返回 favorite_rating） */
+/**
+ * 收藏夹条目对应的 JAV：星级、观看时长，以及与 JAV 界面一致的排序维度所需字段
+ * （收藏夹接口本身只给番号/标题，这些都要从 /jav?favorite_group_id= 的完整 JavDto 补回来）。
+ * javId 同时作为「加入时间」排序的代理：自增主键顺序 ≈ 服务端 recent（加入库时间）顺序。
+ */
 data class FavRating(
     val javId: Long,
     val rating: Double,
     /** 服务端统计的该作品累计观看时长（jav.watched_ms） */
     val watchedMs: Long = 0,
+    /** 时长（分钟），对应 JavDto.duration_min */
+    val durationMin: Int = 0,
+    /** 发行时间（unix 秒），对应 JavDto.release_unix */
+    val releaseUnix: Long = 0,
 )
 
 /**
  * 收藏夹**内部条目**（封面网格）的排序维度。
- * 每条只有番号 / 标题 / name 和喜爱度（喜爱度靠 /jav?favorite_group_id= 补回来），
- * 没有加入时间，所以维度就这四样。
+ * 与 JAV 界面（JavSortBase）对齐：加入时间 / 番号 / 时长 / 发行时间 / 观看时长 / 喜爱度
+ * 六项的文案与默认方向全部照搬；另外保留收藏夹自己的「默认顺序」（服务端返回顺序）和「标题」。
+ * 时长 / 发行 / 观看 / 喜爱度都从 /jav?favorite_group_id= 拉回的完整 JavDto 补回来（见 FavRating）。
  */
 enum class FavItemSortBase(
     val label: String,
@@ -113,8 +122,12 @@ enum class FavItemSortBase(
     val defaultAsc: Boolean,
 ) {
     DEFAULT("默认顺序", "原序", "倒序", true),
+    RECENT("加入时间", "远→近", "近→远", false),
     CODE("番号", "A→Z", "Z→A", true),
     TITLE("标题", "A→Z", "Z→A", true),
+    DURATION("时长", "短→长", "长→短", false),
+    RELEASE("发行时间", "远→近", "近→远", false),
+    WATCHED("观看时长", "短→长", "长→短", false),
     RATING("喜爱度", "低→高", "高→低", false),
 }
 
@@ -146,12 +159,18 @@ data class FavGroupUiState(
                         it.name.contains(keyword, ignoreCase = true)
                 }
             }
+            val metaOf = { item: FavoriteItemDto -> ratings[item.code.uppercase()] }
             val sorted = when (sort) {
                 FavItemSortBase.DEFAULT -> filtered
+                // 加入时间：JavDto.id 是自增主键，顺序与服务端 recent（加入库时间）一致
+                FavItemSortBase.RECENT -> filtered.sortedBy { metaOf(it)?.javId ?: 0L }
                 FavItemSortBase.CODE -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.code })
                 FavItemSortBase.TITLE -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+                FavItemSortBase.DURATION -> filtered.sortedBy { metaOf(it)?.durationMin ?: 0 }
+                FavItemSortBase.RELEASE -> filtered.sortedBy { metaOf(it)?.releaseUnix ?: 0L }
+                FavItemSortBase.WATCHED -> filtered.sortedBy { metaOf(it)?.watchedMs ?: 0L }
                 // 没评过分的按 0 算，排在一端
-                FavItemSortBase.RATING -> filtered.sortedBy { ratings[it.code.uppercase()]?.rating ?: 0.0 }
+                FavItemSortBase.RATING -> filtered.sortedBy { metaOf(it)?.rating ?: 0.0 }
             }
             return if (sortAsc) sorted else sorted.reversed()
         }
@@ -201,7 +220,13 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                         .searchJavs(limit = 500, offset = 0, favoriteGroupId = groupId)
                         .items
                         .associate {
-                            it.code.uppercase() to FavRating(it.id, it.favoriteRating, it.watchedMs)
+                            it.code.uppercase() to FavRating(
+                                javId = it.id,
+                                rating = it.favoriteRating,
+                                watchedMs = it.watchedMs,
+                                durationMin = it.durationMin,
+                                releaseUnix = it.releaseUnix,
+                            )
                         }
                 }.getOrDefault(emptyMap())
                 uiState = uiState.copy(items = items, ratings = ratings, loading = false)

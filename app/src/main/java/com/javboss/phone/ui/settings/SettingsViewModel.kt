@@ -36,8 +36,9 @@ data class SettingsUiState(
 
 /**
  * 设置页：账号信息、版本信息、以及和服务端一致的「读取路径」管理。
- * 读取路径走 /directories 系列接口（与 Web 端设置页同一套）：
- *   GET /directories、POST /directories、PATCH /directories/{id}、POST /directories/{id}/scan
+ * 读取路径走 /directories 系列接口（与 Web 端「目录管理」同一套）：
+ *   GET /directories、POST /directories、PATCH /directories/{id}（改路径 / enabled / is_delete）、
+ *   POST /directories/{id}/scan
  */
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as JavBossApp).container
@@ -142,6 +143,31 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(busy = false, sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(busy = false, error = e.message ?: "触发扫描失败")
+            }
+        }
+    }
+
+    /**
+     * 启用 / 停用读取路径：与 Web 端目录管理里的「启用」开关同一套接口，
+     * PATCH /directories/{id} body { enabled }，停用后服务端不再扫描、也不展示该目录里的内容。
+     */
+    fun setDirectoryEnabled(id: Long, path: String, enabled: Boolean) {
+        viewModelScope.launch {
+            uiState = uiState.copy(busy = true, error = null)
+            try {
+                container.apiClient.api()
+                    .updateDirectory(id, DirectoryUpdateRequest(enabled = enabled))
+                uiState = uiState.copy(
+                    busy = false,
+                    notice = if (enabled) "已启用 $path" else "已停用 $path",
+                )
+                refreshDirectories()
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(busy = false, sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(busy = false, error = e.message ?: "切换启用状态失败")
+                // 失败也要拉一次，避免开关停在错误的状态
+                refreshDirectories()
             }
         }
     }
