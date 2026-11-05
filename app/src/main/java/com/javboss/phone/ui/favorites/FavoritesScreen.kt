@@ -34,6 +34,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -56,8 +57,8 @@ import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.RatingDialog
-import com.javboss.phone.ui.components.SortDialog
 import com.javboss.phone.ui.components.SortEntry
+import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.WorkCard
 
 /** 收藏夹 tab：作品收藏夹列表，支持新建/重命名/删除 */
@@ -369,22 +370,32 @@ fun FavGroupScreen(
         )
     }
 
+    // 排序：与 JAV 界面同一个底部功能菜单（不是 AlertDialog），样式跟服务端 Web 端一致
     if (showSort) {
-        SortDialog(
-            title = "排序 · 收藏夹",
-            entries = FavItemSortBase.entries.map { base ->
-                val selected = state.sort == base
-                val direction = if (selected) {
-                    if (state.sortAsc) base.ascLabel else base.descLabel
-                } else if (base.defaultAsc) {
-                    base.ascLabel
-                } else {
-                    base.descLabel
-                }
-                SortEntry(base.label, selected, direction)
-            },
-            onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
-            onDismiss = { showSort = false },
-        )
+        ModalBottomSheet(onDismissRequest = { showSort = false }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp),
+            ) {
+                Text("排序", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(12.dp))
+                SortList(
+                    entries = FavItemSortBase.entries.map { base ->
+                        val selected = state.sort == base
+                        val direction = if (selected) {
+                            if (state.sortAsc) base.ascLabel else base.descLabel
+                        } else if (base.defaultAsc) {
+                            base.ascLabel
+                        } else {
+                            base.descLabel
+                        }
+                        SortEntry(base.label, selected, direction)
+                    },
+                    onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
+                )
+            }
+        }
     }
 }

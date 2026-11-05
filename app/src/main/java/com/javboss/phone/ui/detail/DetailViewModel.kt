@@ -18,7 +18,11 @@ import com.javboss.phone.data.api.dto.StudioDto
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.data.api.dto.VideoLocationRenameRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.Request
+import java.io.File
 
 data class DetailUiState(
     /** videoId <= 0 时为纯元数据模式（作品没有关联视频），video 保持 null */
@@ -289,6 +293,73 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sampleDetailUrl(index: Int): String =
         container.apiClient.javSampleDetailUrl(uiState.sampleJavId, index)
+
+    // ---------- 大图长按：保存到本地 ----------
+
+    /**
+     * 把服务端的一张图下载到本机「下载/JavBoss」，返回给界面展示的提示文案。
+     * 用 App 自己的 OkHttp（带会话 Cookie）取图：封面/样品图/截图都要登录态才能拿到。
+     * API 29+ 走 MediaStore.Downloads（免权限）；API 26–28 写公共 Download 目录，
+     * 没有写权限就退回应用私有目录，并把完整路径告诉用户。
+     */
+    suspend fun saveImageToLocal(url: String): String = withContext(Dispatchers.IO) {
+        val context = getApplication<Application>()
+        val request = Request.Builder().url(url).build()
+        val response = container.apiClient.okHttpClient.newCall(request).execute()
+        response.use {
+            if (!it.isSuccessful) throw IllegalStateException("下载失败：HTTP ${it.code}")
+            val bytes = it.body?.bytes() ?: throw IllegalStateException("下载失败：内容为空")
+            val mime = it.header("Content-Type").orEmpty().lowercase()
+            val ext = when {
+                mime.contains("png") -> "png"
+                mime.contains("webp") -> "webp"
+                mime.contains("gif") -> "gif"
+                else -> "jpg"
+            }
+            val name = "javboss_${System.currentTimeMillis()}.$ext"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                    put(
+                        android.provider.MediaStore.Downloads.MIME_TYPE,
+                        if (ext == "jpg") "image/jpeg" else "image/$ext",
+                    )
+                    put(
+                        android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_DOWNLOADS + "/JavBoss",
+                    )
+                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = context.contentResolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values,
+                ) ?: throw IllegalStateException("保存失败：无法创建文件")
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(bytes)
+                } ?: throw IllegalStateException("保存失败：无法写入")
+                values.clear()
+                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                context.contentResolver.update(uri, values, null, null)
+                "已保存到「下载/JavBoss/$name」"
+            } else {
+                // API 26–28：公共目录要 WRITE_EXTERNAL_STORAGE，没有就存应用私有目录
+                val publicDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS,
+                )
+                val target = File(publicDir, "JavBoss")
+                val canWrite = runCatching { target.mkdirs() || target.isDirectory }.getOrDefault(false)
+                val dir = if (canWrite) target else context.getExternalFilesDir(null)
+                    ?: File(context.filesDir, "downloads")
+                dir.mkdirs()
+                val file = File(dir, name)
+                file.writeBytes(bytes)
+                android.media.MediaScannerConnection.scanFile(
+                    context, arrayOf(file.absolutePath), null, null,
+                )
+                "已保存到 ${file.absolutePath}"
+            }
+        }
+    }
 
     fun consumeNotice() {
         uiState = uiState.copy(notice = null)

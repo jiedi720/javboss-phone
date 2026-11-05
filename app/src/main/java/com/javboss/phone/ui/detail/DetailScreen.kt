@@ -6,6 +6,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,19 +59,28 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -80,6 +95,8 @@ import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.formatDuration
 import com.javboss.phone.ui.components.formatFileSize
 import com.javboss.phone.ui.components.formatWatchedTime
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -559,23 +576,45 @@ fun DetailScreen(
     preview?.let { current ->
         ImageViewerDialog(
             state = current,
-            onIndexChange = { index -> preview = current.copy(index = index) },
             onDismiss = { preview = null },
+            onSave = { url ->
+                Toast.makeText(context, "正在保存到本地…", Toast.LENGTH_SHORT).show()
+                scope.launch {
+                    val message = viewModel.saveImageToLocal(url)
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            },
         )
     }
 }
 
 /**
- * 全屏大图：完整封面用 ContentScale.Fit，不按 2:3 裁切，能看到整张封面；
- * 样品图 / 视频截图同理，多张时可左右翻页。点空白处或右上角 × 关闭。
+ * 全屏大图：完整封面用 ContentScale.Fit，不按 2:3 裁切，能看到整张封面。
+ * 交互：
+ * - **双指捏合缩放**（1x ~ 5x），放大后单指拖动可以平移看细节；
+ * - **多张时左右拖拽切换**（也能点箭头）；
+ * - **长按图片**下载到本机「下载/JavBoss」；
+ * - 点空白处或右上角 × 关闭。
  */
 @Composable
 private fun ImageViewerDialog(
     state: PreviewState,
-    onIndexChange: (Int) -> Unit,
     onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
 ) {
-    val item = state.items.getOrNull(state.index) ?: return
+    val items = state.items
+    if (items.isEmpty()) return
+    var index by remember(state) { mutableIntStateOf(state.index.coerceIn(0, items.lastIndex)) }
+    // 缩放与平移状态：换图时复位
+    var scale by remember(state) { mutableFloatStateOf(1f) }
+    var offset by remember(state) { mutableStateOf(Offset.Zero) }
+    // 横向滑动切图时的实时位移（松手才真正换图）
+    var slideX by remember(state) { mutableFloatStateOf(0f) }
+    var imageBoxSize by remember(state) { mutableStateOf(IntSize.Zero) }
+    // pointerInput 的 key 只有图片数量，块里的 url / 回调要用最新值就得走 rememberUpdatedState
+    val currentUrl by rememberUpdatedState(items[index].url)
+    val saveAction by rememberUpdatedState(onSave)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -587,17 +626,110 @@ private fun ImageViewerDialog(
                 .clickable(onClick = onDismiss),
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(
-                model = item.url,
-                contentDescription = item.label,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
+            val current = items[index]
+            Box(
+                Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(0.88f)
-                    .clickable { /* 吃掉点击，避免点图片就关闭 */ },
-            )
+                    .onSizeChanged { imageBoxSize = it }
+                    // 吞掉图片上的点击：点图片不关闭大图（关闭只留空白处和右上角 ×）
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { }
+                    .graphicsLayer {
+                        translationX = slideX
+                    }
+                    .pointerInput(items.size) {
+                        coroutineScope {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var totalDx = 0f
+                                var multiTouch = false
+                                // 长按：到期就存图；一旦移动就取消
+                                val longPressJob = launch {
+                                    delay(viewConfiguration.longPressTimeoutMillis)
+                                    saveAction(currentUrl)
+                                }
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.count { it.pressed }
+                                    val zoomChange = event.calculateZoom()
+                                    val panChange = event.calculatePan()
+                                    if (pressed >= 2) {
+                                        multiTouch = true
+                                        // 双指：以两指中心为锚点缩放，同时跟着平移
+                                        val newScale = (scale * zoomChange).coerceIn(1f, 5f)
+                                        val center = Offset(
+                                            imageBoxSize.width / 2f,
+                                            imageBoxSize.height / 2f,
+                                        )
+                                        val focal = event.calculateCentroid()
+                                        val anchor = (focal - center) * scale * (zoomChange - 1f)
+                                        scale = newScale
+                                        offset = clampOffset(
+                                            offset + anchor + panChange * scale,
+                                            newScale,
+                                            imageBoxSize,
+                                        )
+                                        event.changes.forEach { it.consume() }
+                                    } else if (pressed == 1) {
+                                        if (scale > 1f) {
+                                            // 已放大：单指拖动画面
+                                            offset = clampOffset(
+                                                offset + panChange,
+                                                scale,
+                                                imageBoxSize,
+                                            )
+                                            event.changes.forEach { it.consume() }
+                                        } else {
+                                            // 未放大：单指横向拖动 → 切换上一张 / 下一张
+                                            totalDx += panChange.x
+                                            slideX = totalDx
+                                        }
+                                    }
+                                    if (multiTouch || event.changes.any { it.positionChanged() }) {
+                                        // 一旦动了就不再算长按
+                                        longPressJob.cancel()
+                                    }
+                                } while (event.changes.any { it.pressed })
+                                longPressJob.cancel()
+
+                                if (!multiTouch && scale <= 1f && items.size > 1) {
+                                    // 未放大时的单指横向拖动 → 切上一张 / 下一张
+                                    val threshold = imageBoxSize.width * 0.18f
+                                    if (kotlin.math.abs(totalDx) > threshold) {
+                                        val target = if (totalDx < 0) index + 1 else index - 1
+                                        if (target in items.indices) {
+                                            index = target
+                                            scale = 1f
+                                            offset = Offset.Zero
+                                        }
+                                    }
+                                }
+                                slideX = 0f
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = current.url,
+                    contentDescription = current.label,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = offset.x
+                            translationY = offset.y
+                        },
+                )
+            }
+
             Text(
-                item.label,
+                current.label,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White,
                 maxLines = 1,
@@ -612,42 +744,66 @@ private fun ImageViewerDialog(
             ) {
                 Icon(Icons.Filled.Close, contentDescription = "关闭", tint = Color.White)
             }
-            if (state.items.size > 1) {
-                Row(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = {
-                            onIndexChange((state.index - 1 + state.items.size) % state.items.size)
-                        },
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "上一张",
-                            tint = Color.White,
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (items.size > 1) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                index = (index - 1 + items.size) % items.size
+                                scale = 1f
+                                offset = Offset.Zero
+                            },
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "上一张",
+                                tint = Color.White,
+                            )
+                        }
+                        Text(
+                            "${index + 1} / ${items.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White,
                         )
-                    }
-                    Text(
-                        "${state.index + 1} / ${state.items.size}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White,
-                    )
-                    IconButton(
-                        onClick = { onIndexChange((state.index + 1) % state.items.size) },
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "下一张",
-                            tint = Color.White,
-                        )
+                        IconButton(
+                            onClick = {
+                                index = (index + 1) % items.size
+                                scale = 1f
+                                offset = Offset.Zero
+                            },
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "下一张",
+                                tint = Color.White,
+                            )
+                        }
                     }
                 }
+                Text(
+                    "双指缩放 · 左右拖动切换 · 长按保存到本地",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
             }
         }
     }
+}
+
+/** 放大后限制平移范围，避免图片被拖出屏幕；缩回 1x 时自动归零 */
+private fun clampOffset(offset: Offset, scale: Float, size: IntSize): Offset {
+    if (scale <= 1f) return Offset.Zero
+    val maxX = (size.width * (scale - 1f)) / 2f
+    val maxY = (size.height * (scale - 1f)) / 2f
+    return Offset(
+        offset.x.coerceIn(-maxX, maxX),
+        offset.y.coerceIn(-maxY, maxY),
+    )
 }
 
 /** 长按文件卡片：大小 / 路径 / 时长 / 已看 + 复制路径、重命名、删除 */

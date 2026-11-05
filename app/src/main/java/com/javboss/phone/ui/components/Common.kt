@@ -52,7 +52,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
@@ -568,12 +575,15 @@ fun WorkCard(
 
 /**
  * 服务端有观看记录才出现的右上角「已观看」徽标（没有记录时整个图标都不画）。
- * 点开显示该作品/视频在服务端累计的总播放时间，对齐 Web 端 `已观看：x 小时 y 分钟 z 秒`。
+ * 点开在图标旁边浮出一行小字（不是大弹窗），写明该作品/视频在服务端累计的总播放时间，
+ * 文案与 Web 端 `已观看：x 小时 y 分钟 z 秒` 一致。
  */
 @Composable
 private fun BoxScope.WatchedBadge(watchedMs: Long) {
     if (watchedMs <= 0) return
     var showWatched by remember { mutableStateOf(false) }
+    val text = "已观看：${formatWatchedTime(watchedMs).ifEmpty { "不足 1 秒" }}"
+    val gapPx = with(LocalDensity.current) { 6.dp.roundToPx() }
     Box(
         Modifier
             .align(Alignment.TopEnd)
@@ -581,7 +591,7 @@ private fun BoxScope.WatchedBadge(watchedMs: Long) {
             .size(24.dp)
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.55f))
-            .clickable { showWatched = true },
+            .clickable { showWatched = !showWatched },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -590,14 +600,47 @@ private fun BoxScope.WatchedBadge(watchedMs: Long) {
             tint = Color(0xFF14B8A6),
             modifier = Modifier.size(15.dp),
         )
+        if (showWatched) {
+            Popup(
+                popupPositionProvider = WatchedTooltipPositionProvider(gapPx),
+                properties = PopupProperties(
+                    focusable = true,
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true,
+                ),
+            ) {
+                Box(
+                    Modifier
+                        .background(Color(0xE61C1C1C), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
-    if (showWatched) {
-        AlertDialog(
-            onDismissRequest = { showWatched = false },
-            title = { Text("累计播放时间") },
-            text = { Text("已观看：${formatWatchedTime(watchedMs).ifEmpty { "不足 1 秒" }}") },
-            confirmButton = { TextButton(onClick = { showWatched = false }) { Text("关闭") } },
-        )
+}
+
+/** 「已观看」浮层贴在图标左侧（图标在封面右上角），垂直居中对齐 */
+private class WatchedTooltipPositionProvider(
+    private val gapPx: Int,
+) : PopupPositionProvider {
+    // 注意：Compose 1.7.x 的 PopupPositionProvider.calculatePosition 不是 @Composable，
+    // 加了 @Composable 会被当成另一个重载而报「Conflicting overloads」
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val x = (anchorBounds.left - popupContentSize.width - gapPx).coerceAtLeast(0)
+        val y = anchorBounds.top + (anchorBounds.height - popupContentSize.height) / 2
+        return IntOffset(x, y)
     }
 }
 
@@ -847,18 +890,3 @@ fun SortList(
     }
 }
 
-/** 只有排序的菜单（收藏夹内页用）；作品库的排序 + 筛选合并菜单直接复用 [SortList] */
-@Composable
-fun SortDialog(
-    title: String,
-    entries: List<SortEntry>,
-    onPick: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { SortList(entries, onPick) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
-    )
-}
