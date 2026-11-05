@@ -44,7 +44,8 @@ fun JavListScreen(
     studioId: Long,
     seriesId: Long,
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
-    onPlay: (videoId: Long) -> Unit,
+    /** code 原样带到播放页，保证竖屏背景用的就是这张 JAV 封面 */
+    onPlay: (videoId: Long, code: String?) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: JavListViewModel = viewModel(),
@@ -75,7 +76,7 @@ fun JavListScreen(
     val onWorkPlay: (JavDto) -> Unit = { jav ->
         when {
             jav.videos.isEmpty() -> Unit
-            jav.videos.size == 1 -> onPlay(jav.videos.first().id)
+            jav.videos.size == 1 -> onPlay(jav.videos.first().id, jav.code)
             else -> playPickerTarget = jav
         }
     }
@@ -121,6 +122,7 @@ fun JavListScreen(
                             title = jav.title,
                             onClick = { onWorkClick(jav) },
                             cropPosition = jav.coverCropPosition,
+                            watchedMs = jav.watchedMs,
                             onPlay = playAction,
                         )
                     }
@@ -139,7 +141,7 @@ fun JavListScreen(
             options = jav.videos.map { it.id to it.filename },
             onPick = { videoId ->
                 playPickerTarget = null
-                onPlay(videoId)
+                onPlay(videoId, jav.code)
             },
             onDismiss = { playPickerTarget = null },
         )

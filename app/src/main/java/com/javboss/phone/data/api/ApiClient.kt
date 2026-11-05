@@ -37,6 +37,7 @@ import com.javboss.phone.data.api.dto.VideoLocationRenameRequest
 import com.javboss.phone.data.api.dto.VideoListResponse
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -169,6 +170,14 @@ interface JavBossApi {
     @GET("videos/{id}/screenshots")
     suspend fun listVideoScreenshots(@Path("id") id: Long): ScreenshotListResponse
 
+    /**
+     * 作品的样品图像列表（Web 端 KO 组件的数据源）。
+     * 返回 { sample_images: [...] }，元素可能是字符串也可能是对象，
+     * 这里只取数组长度，所以用 JsonObject 容错解析。
+     */
+    @POST("jav/items/{id}/sample-images")
+    suspend fun listJavSampleImages(@Path("id") id: Long): JsonObject
+
     @GET("jav/tags")
     suspend fun listJavTags(): List<TagDto>
 
@@ -293,6 +302,13 @@ class ApiClient(
     fun javCoverUrl(code: String) = absoluteUrl("jav/$code/cover")
     fun videoScreenshotUrl(videoId: Long, name: String) =
         absoluteUrl("videos/$videoId/screenshots/${android.net.Uri.encode(name)}")
+
+    /** 样品图按数组下标取图：缩略图走列表，点开看大图走 detail */
+    fun javSampleThumbnailUrl(javId: Long, index: Int) =
+        absoluteUrl("jav/items/$javId/sample-images/$index/thumbnail")
+
+    fun javSampleDetailUrl(javId: Long, index: Int) =
+        absoluteUrl("jav/items/$javId/sample-images/$index/detail")
 
     /** 把错误响应体解析成可读信息 */
     fun parseError(body: String?): String =

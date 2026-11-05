@@ -27,6 +27,10 @@ data class DetailUiState(
     val javMeta: JavDto? = null,
     val seriesName: String = "",
     val screenshots: List<ScreenshotDto> = emptyList(),
+    /** 服务端样品图像数量（POST /jav/items/{id}/sample-images）；0 = 没有样品图，不显示这一区 */
+    val sampleImageCount: Int = 0,
+    /** 样品图所属作品 id，拼 .../sample-images/{index}/thumbnail|detail 用 */
+    val sampleJavId: Long = 0,
     val loading: Boolean = true,
     val error: String? = null,
     /** 一次性提示（收藏/编辑成功失败），UI 用 Toast 展示 */
@@ -52,7 +56,14 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
         loadedVideoId = videoId
         loadedJavCode = javCode
         viewModelScope.launch {
-            uiState = uiState.copy(loading = true, error = null)
+            // 换作品 / 刷新时先清掉上一部的样品图与截图，避免串图
+            uiState = uiState.copy(
+                loading = true,
+                error = null,
+                screenshots = emptyList(),
+                sampleImageCount = 0,
+                sampleJavId = 0,
+            )
             try {
                 var code = javCode
                 if (videoId > 0) {
@@ -68,6 +79,12 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
                             .items.firstOrNull { it.code.equals(code, ignoreCase = true) }
                     }.getOrNull()
                     uiState = uiState.copy(javMeta = meta)
+
+                    // 样品图像：服务端按数组下标取图，这里只需要个数；接口异常返回 0，就不显示这一区
+                    if (meta != null && meta.id > 0) {
+                        val count = container.videoRepository.listJavSampleImageCount(meta.id)
+                        uiState = uiState.copy(sampleImageCount = count, sampleJavId = meta.id)
+                    }
 
                     // /videos/{id} 有时不含目录信息，用同一部作品里内嵌的视频对象补齐路径
                     val current = uiState.video
@@ -260,8 +277,18 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
             ?: uiState.video?.let { container.apiClient.videoThumbnailUrl(it.id) }
     }
 
+    /** 完整封面：与 JAV 列表用的是同一张 jav/{code}/cover，查看器用 Fit 不裁剪 */
+    fun fullCoverUrl(): String? = coverUrl()
+
     fun screenshotUrl(videoId: Long, name: String): String =
         container.apiClient.videoScreenshotUrl(videoId, name)
+
+    /** 样品图列表用 thumbnail，点开放大用 detail（与 Web 端 KO 组件一致） */
+    fun sampleThumbnailUrl(index: Int): String =
+        container.apiClient.javSampleThumbnailUrl(uiState.sampleJavId, index)
+
+    fun sampleDetailUrl(index: Int): String =
+        container.apiClient.javSampleDetailUrl(uiState.sampleJavId, index)
 
     fun consumeNotice() {
         uiState = uiState.copy(notice = null)

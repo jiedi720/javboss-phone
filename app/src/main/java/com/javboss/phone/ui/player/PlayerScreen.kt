@@ -92,6 +92,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
 import com.javboss.phone.data.SeekSensitivity
+import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.coverImageModel
 import com.javboss.phone.ui.components.formatDuration
 import kotlinx.coroutines.delay
@@ -108,6 +109,8 @@ import kotlin.math.roundToInt
 @Composable
 fun PlayerScreen(
     videoId: Long,
+    /** 列表页传来的番号：用它拼出的封面与 JAV 界面 WorkCard 完全同源 */
+    javCode: String? = null,
     onBack: () -> Unit,
     viewModel: PlayerViewModel = viewModel(),
 ) {
@@ -117,7 +120,7 @@ fun PlayerScreen(
     var fullscreen by remember { mutableStateOf(false) }
     val previousOrientation = remember(activity) { activity?.requestedOrientation }
 
-    LaunchedEffect(videoId) { viewModel.load(videoId) }
+    LaunchedEffect(videoId, javCode) { viewModel.load(videoId, javCode) }
 
     DisposableEffect(Unit) {
         // 进入播放页：先竖屏、窗口横向铺满（不横屏、不隐藏系统栏）
@@ -249,22 +252,24 @@ private val DRAG_HANDLE_HEIGHT = 22.dp
 /** 背景的适度模糊：比隐私打码的 22dp 轻，仍看得出封面轮廓与颜色 */
 private val BACKDROP_BLUR = 16.dp
 
-/** 半透明质感：封面整体带一点透明度，微微透出底下的中性渐变 */
-private const val BACKDROP_ALPHA = 0.82f
+/** 半透明质感：封面只轻微透出底下的中性色，主体仍是 JAV 界面那张封面 */
+private const val BACKDROP_ALPHA = 0.90f
 
 /** 压暗遮罩：保证把手、加载提示、控制条清晰可读；别压太狠，否则又变成一片黑 */
-private const val BACKDROP_SCRIM = 0.30f
+private const val BACKDROP_SCRIM = 0.32f
 
 /**
- * 竖屏背景：整屏铺「当前正在播放视频」的封面，适度毛玻璃 + 半透明。
- * 优先 JAV 封面，底下垫一张每个视频都有的视频缩略图：封面 404 / 没番号时
- * Coil 不绘制上层，缩略图自然露出，不会再退回一片灰。
+ * 竖屏背景：只铺「JAV 界面同一张封面」（同一个 javCoverUrl(code)），适度毛玻璃 + 半透明。
+ * 之前同时在底下垫视频缩略图、又给整层加透明度，两层图叠出重影，看起来就不是 JAV 封面了；
+ * 现在同一时刻只画一张图：有番号用 JAV 封面，实在没有番号（普通视频）才用视频缩略图。
+ * 半透明质感改由封面之上的半透明渐变罩实现，不再让另一张图透出来。
  * API 31+ 用 RenderEffect 模糊，API 26–30 退化成 28px 小解码 + 双线性放大。
  * 只对竖屏播放页生效：横屏仍是纯黑舞台，其它界面完全不动。
  */
 @Composable
 private fun FrostedCoverBackdrop(coverUrl: String?, thumbnailUrl: String?) {
     val blurSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val imageUrl = coverUrl ?: thumbnailUrl
     Box(
         Modifier
             .fillMaxSize()
@@ -277,14 +282,20 @@ private fun FrostedCoverBackdrop(coverUrl: String?, thumbnailUrl: String?) {
                 ),
             ),
     ) {
-        Box(Modifier.fillMaxSize().alpha(BACKDROP_ALPHA)) {
-            if (thumbnailUrl != null) FrostedBackdropImage(thumbnailUrl, blurSupported)
-            if (coverUrl != null && coverUrl != thumbnailUrl) {
-                FrostedBackdropImage(coverUrl, blurSupported)
-            }
+        if (imageUrl != null) {
+            FrostedBackdropImage(imageUrl, blurSupported)
         }
-        // 压暗一层保证前景播放器与控制条清晰可读
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_SCRIM)))
+        // 半透明质感 + 压暗：上半轻、下半重，前景播放器与控制条清晰可读
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.Black.copy(alpha = 0.12f),
+                        Color.Black.copy(alpha = BACKDROP_SCRIM),
+                    ),
+                ),
+            ),
+        )
     }
 }
 
@@ -294,8 +305,12 @@ private fun FrostedBackdropImage(url: String, blurSupported: Boolean) {
         model = coverImageModel(url, !blurSupported),
         contentDescription = null,
         contentScale = ContentScale.Crop,
+        // 与 JAV 列表卡片同一套裁切基准（cover_crop_position 默认 1 = 靠右），
+        // 保证背景取到的是同一张封面的同一侧，不会看起来像另一张图
+        alignment = coverCropAlignment(null),
         modifier = Modifier
             .fillMaxSize()
+            .alpha(BACKDROP_ALPHA)
             .then(if (blurSupported) Modifier.blur(BACKDROP_BLUR) else Modifier),
     )
 }

@@ -7,12 +7,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,13 +22,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
@@ -56,12 +60,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
@@ -80,6 +87,11 @@ import java.time.format.DateTimeFormatter
 
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
+/** 大图查看器里的一张图：完整封面 / 样品图像 / 视频截图共用 */
+private data class PreviewItem(val label: String, val url: String)
+
+private data class PreviewState(val items: List<PreviewItem>, val index: Int)
+
 private fun formatReleaseDate(releaseUnix: Long): String =
     if (releaseUnix <= 0) ""
     else Instant.ofEpochSecond(releaseUnix).atZone(ZoneId.systemDefault()).toLocalDate().format(DATE_FORMAT)
@@ -90,7 +102,8 @@ private fun formatReleaseDate(releaseUnix: Long): String =
 fun DetailScreen(
     videoId: Long,
     javCode: String?,
-    onPlay: (Long) -> Unit,
+    /** 带番号进播放页，竖屏背景才能用与 JAV 列表同一张封面 */
+    onPlay: (videoId: Long, code: String?) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
@@ -105,6 +118,8 @@ fun DetailScreen(
     var fileMenuTarget by remember { mutableStateOf<VideoDto?>(null) }
     var renameTarget by remember { mutableStateOf<VideoDto?>(null) }
     var deleteTarget by remember { mutableStateOf<VideoDto?>(null) }
+    // 点击封面 / 样品图 / 视频截图 → 全屏大图，可左右翻页
+    var preview by remember { mutableStateOf<PreviewState?>(null) }
     val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(videoId, javCode) { viewModel.load(videoId, javCode) }
@@ -160,15 +175,32 @@ fun DetailScreen(
             ) {
                 // 封面 + 基本信息
                 Row(Modifier.fillMaxWidth()) {
-                    AsyncImage(
-                        model = viewModel.coverUrl(),
-                        contentDescription = title,
-                        contentScale = ContentScale.Crop,
-                        alignment = coverCropAlignment(jav?.coverCropPosition),
-                        modifier = Modifier
-                            .width(140.dp)
-                            .aspectRatio(2f / 3f),
-                    )
+                    Column(Modifier.width(140.dp)) {
+                        AsyncImage(
+                            model = viewModel.coverUrl(),
+                            contentDescription = title,
+                            contentScale = ContentScale.Crop,
+                            alignment = coverCropAlignment(jav?.coverCropPosition),
+                            modifier = Modifier
+                                .width(140.dp)
+                                .aspectRatio(2f / 3f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    viewModel.fullCoverUrl()?.let { url ->
+                                        preview = PreviewState(
+                                            items = listOf(PreviewItem("完整封面 · $title", url)),
+                                            index = 0,
+                                        )
+                                    }
+                                },
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "点击查看完整封面",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.width(16.dp))
                     Column {
                         jav?.let {
@@ -200,7 +232,9 @@ fun DetailScreen(
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
-                        onClick = { video?.let { onPlay(it.id) } },
+                        onClick = {
+                            video?.let { onPlay(it.id, jav?.code ?: it.jav?.code ?: javCode) }
+                        },
                         enabled = video != null,
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null)
@@ -377,23 +411,82 @@ fun DetailScreen(
                     }
                 }
 
-                // 截图
-                if (video != null && state.screenshots.isNotEmpty()) {
+                // 样品图像：服务端 POST /jav/items/{id}/sample-images，按数组下标取 thumbnail / detail
+                if (state.sampleImageCount > 0 && state.sampleJavId > 0) {
                     Spacer(Modifier.height(16.dp))
-                    Text("截图", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "样品图像（${state.sampleImageCount}）",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                     Spacer(Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.screenshots, key = { it.name }) { shot ->
+                        items(state.sampleImageCount) { index ->
+                            AsyncImage(
+                                model = viewModel.sampleThumbnailUrl(index),
+                                contentDescription = "样品图像 ${index + 1}",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .height(120.dp)
+                                    .width(120.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                    .clickable {
+                                        preview = PreviewState(
+                                            items = (0 until state.sampleImageCount).map { i ->
+                                                PreviewItem(
+                                                    "样品图像 ${i + 1}",
+                                                    viewModel.sampleDetailUrl(i),
+                                                )
+                                            },
+                                            index = index,
+                                        )
+                                    },
+                            )
+                        }
+                    }
+                    Text(
+                        "点击可查看大图",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+
+                // 视频截图：服务端 /videos/{id}/screenshots，点开看完整截图
+                if (video != null && state.screenshots.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "视频截图（${state.screenshots.size}）",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        itemsIndexed(state.screenshots, key = { _, shot -> shot.name }) { index, shot ->
                             AsyncImage(
                                 model = viewModel.screenshotUrl(video.id, shot.name),
                                 contentDescription = shot.name,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .height(120.dp)
-                                    .aspectRatio(16f / 9f),
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        preview = PreviewState(
+                                            items = state.screenshots.map { s ->
+                                                PreviewItem(s.name, viewModel.screenshotUrl(video.id, s.name))
+                                            },
+                                            index = index,
+                                        )
+                                    },
                             )
                         }
                     }
+                    Text(
+                        "点击可查看完整截图",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
                 Spacer(Modifier.height(32.dp))
             }
@@ -461,6 +554,99 @@ fun DetailScreen(
             },
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
         )
+    }
+
+    preview?.let { current ->
+        ImageViewerDialog(
+            state = current,
+            onIndexChange = { index -> preview = current.copy(index = index) },
+            onDismiss = { preview = null },
+        )
+    }
+}
+
+/**
+ * 全屏大图：完整封面用 ContentScale.Fit，不按 2:3 裁切，能看到整张封面；
+ * 样品图 / 视频截图同理，多张时可左右翻页。点空白处或右上角 × 关闭。
+ */
+@Composable
+private fun ImageViewerDialog(
+    state: PreviewState,
+    onIndexChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val item = state.items.getOrNull(state.index) ?: return
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.94f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = item.url,
+                contentDescription = item.label,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .clickable { /* 吃掉点击，避免点图片就关闭 */ },
+            )
+            Text(
+                item.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp),
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = "关闭", tint = Color.White)
+            }
+            if (state.items.size > 1) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = {
+                            onIndexChange((state.index - 1 + state.items.size) % state.items.size)
+                        },
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "上一张",
+                            tint = Color.White,
+                        )
+                    }
+                    Text(
+                        "${state.index + 1} / ${state.items.size}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                    )
+                    IconButton(
+                        onClick = { onIndexChange((state.index + 1) % state.items.size) },
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "下一张",
+                            tint = Color.White,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -55,17 +55,21 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     val cookieHeader: String get() = container.cookieJar.cookieHeader()
 
-    fun load(videoId: Long) {
+    fun load(videoId: Long, javCode: String?) {
         currentVideoId = videoId
-        // 切换视频：立刻清掉上一个视频的封面，同时把一定存在的视频缩略图作为背景兜底
+        // 切换视频：立刻换成新视频的封面，同时把一定存在的视频缩略图作为最后兜底。
+        // javCode 由列表页传入，和 JAV 界面 WorkCard 用的是同一个 javCoverUrl(code)。
         val thumbnail = container.apiClient.videoThumbnailUrl(videoId)
-        uiState = uiState.copy(coverUrl = null, thumbnailUrl = thumbnail)
+        val cover = javCode?.takeIf { it.isNotBlank() }
+            ?.let { container.apiClient.javCoverUrl(it) }
+        uiState = uiState.copy(coverUrl = cover, thumbnailUrl = thumbnail)
         viewModelScope.launch {
             try {
                 val source = container.videoRepository.resolvePlayable(videoId)
                 if (source.urls.isEmpty()) {
                     uiState = PlayerUiState(
-                        loading = false, error = "没有可用的播放源", thumbnailUrl = thumbnail,
+                        loading = false, error = "没有可用的播放源",
+                        coverUrl = cover, thumbnailUrl = thumbnail,
                     )
                 } else {
                     val mode = container.settings.engineMode
@@ -75,15 +79,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         engineMode = mode,
                         activeEngine = if (mode == EngineMode.VLC) EngineMode.VLC else EngineMode.EXO,
                         seekSensitivity = container.settings.seekSensitivity,
+                        coverUrl = cover,
                         thumbnailUrl = thumbnail,
                     )
                     container.videoRepository.reportPlay(videoId)
                     startPlaybackReporter(videoId, source.locationId)
-                    loadCover(videoId)
+                    // 只有没带番号进来（普通视频/旧入口）才反查一次
+                    if (cover == null) loadCover(videoId)
                 }
             } catch (e: Exception) {
                 uiState = PlayerUiState(
-                    loading = false, error = e.message ?: "获取播放源失败", thumbnailUrl = thumbnail,
+                    loading = false, error = e.message ?: "获取播放源失败",
+                    coverUrl = cover, thumbnailUrl = thumbnail,
                 )
             }
         }

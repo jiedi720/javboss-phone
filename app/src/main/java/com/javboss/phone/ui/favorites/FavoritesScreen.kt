@@ -233,7 +233,8 @@ fun FavGroupScreen(
     groupId: Long,
     groupName: String,
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
-    onPlay: (videoId: Long) -> Unit,
+    /** code 原样带到播放页，保证竖屏背景用的就是这张 JAV 封面 */
+    onPlay: (videoId: Long, code: String?) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: FavGroupViewModel = viewModel(),
@@ -328,8 +329,9 @@ fun FavGroupScreen(
                             onLongClick = { removeTarget = item },
                             rating = viewModel.ratingOf(item.code),
                             onRatingClick = { ratingTarget = item },
+                            watchedMs = viewModel.watchedMsOf(item.code),
                             onPlay = {
-                                viewModel.playItem(item) { videoId -> onPlay(videoId) }
+                                viewModel.playItem(item) { videoId -> onPlay(videoId, item.code) }
                             },
                         )
                     }

@@ -75,7 +75,8 @@ import com.javboss.phone.ui.components.idolInfoRows
 @Composable
 fun WorksScreen(
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
-    onPlay: (videoId: Long) -> Unit,
+    /** code 原样带到播放页，保证竖屏背景用的就是这张 JAV 封面 */
+    onPlay: (videoId: Long, code: String?) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: WorksViewModel = viewModel(),
@@ -112,7 +113,7 @@ fun WorksScreen(
     val onWorkPlay: (JavDto) -> Unit = { jav ->
         when {
             jav.videos.isEmpty() -> Unit
-            jav.videos.size == 1 -> onPlay(jav.videos.first().id)
+            jav.videos.size == 1 -> onPlay(jav.videos.first().id, jav.code)
             else -> playPickerTarget = jav
         }
     }
@@ -217,6 +218,7 @@ fun WorksScreen(
                                 cropPosition = jav.coverCropPosition,
                                 rating = jav.favoriteRating,
                                 onRatingClick = { ratingTarget = jav },
+                                watchedMs = jav.watchedMs,
                                 onPlay = playAction,
                             )
                         }
@@ -304,7 +306,7 @@ fun WorksScreen(
             options = jav.videos.map { it.id to it.filename },
             onPick = { videoId ->
                 playPickerTarget = null
-                onPlay(videoId)
+                onPlay(videoId, jav.code)
             },
             onDismiss = { playPickerTarget = null },
         )

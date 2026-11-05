@@ -48,7 +48,7 @@ fun MainScreen(
     /** 冷启动时默认落在哪个 tab，来自设置里的「启动显示界面」（默认 JAV = 1） */
     startTab: Int = 1,
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
-    onPlay: (videoId: Long) -> Unit,
+    onPlay: (videoId: Long, code: String?) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onFavGroupClick: (groupId: Long, name: String) -> Unit,
     onSessionExpired: () -> Unit,

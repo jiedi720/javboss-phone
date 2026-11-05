@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -195,6 +197,8 @@ fun VideoCard(
     playCount: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 服务端统计的该视频累计观看时长；> 0 才在封面右上角显示已观看图标 */
+    watchedMs: Long = 0,
 ) {
     Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
         Column {
@@ -209,6 +213,7 @@ fun VideoCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
+                WatchedBadge(watchedMs)
                 val duration = formatDuration(durationSec)
                 if (duration.isNotEmpty()) {
                     Text(
@@ -485,6 +490,8 @@ fun WorkCard(
     cropPosition: Double? = null,
     rating: Double = 0.0,
     onRatingClick: (() -> Unit)? = null,
+    /** 服务端统计的该作品累计观看时长（jav.watched_ms）；> 0 才在封面右上角显示已观看图标 */
+    watchedMs: Long = 0,
     /** 非 null 时在封面右下角显示播放钮；点击不进入详情，直接起播 */
     onPlay: (() -> Unit)? = null,
 ) {
@@ -519,6 +526,8 @@ fun WorkCard(
                         RatingBadge(rating, onRatingClick)
                     }
                 }
+                // 服务端已有观看记录才显示（对齐 Web 端的 watch-time-icons / 「已观看：…」）
+                WatchedBadge(watchedMs)
                 if (code.isNotBlank()) {
                     Text(
                         text = code,
@@ -553,6 +562,42 @@ fun WorkCard(
                 modifier = Modifier.padding(8.dp),
             )
         }
+    }
+
+}
+
+/**
+ * 服务端有观看记录才出现的右上角「已观看」徽标（没有记录时整个图标都不画）。
+ * 点开显示该作品/视频在服务端累计的总播放时间，对齐 Web 端 `已观看：x 小时 y 分钟 z 秒`。
+ */
+@Composable
+private fun BoxScope.WatchedBadge(watchedMs: Long) {
+    if (watchedMs <= 0) return
+    var showWatched by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .align(Alignment.TopEnd)
+            .padding(6.dp)
+            .size(24.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable { showWatched = true },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.Schedule,
+            contentDescription = "已观看",
+            tint = Color(0xFF14B8A6),
+            modifier = Modifier.size(15.dp),
+        )
+    }
+    if (showWatched) {
+        AlertDialog(
+            onDismissRequest = { showWatched = false },
+            title = { Text("累计播放时间") },
+            text = { Text("已观看：${formatWatchedTime(watchedMs).ifEmpty { "不足 1 秒" }}") },
+            confirmButton = { TextButton(onClick = { showWatched = false }) { Text("关闭") } },
+        )
     }
 }
 

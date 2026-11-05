@@ -94,7 +94,12 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
 // ---------- 收藏夹详情 ----------
 
 /** 收藏夹条目对应的 JAV：用于显示星级（收藏夹接口本身不返回 favorite_rating） */
-data class FavRating(val javId: Long, val rating: Double)
+data class FavRating(
+    val javId: Long,
+    val rating: Double,
+    /** 服务端统计的该作品累计观看时长（jav.watched_ms） */
+    val watchedMs: Long = 0,
+)
 
 /**
  * 收藏夹**内部条目**（封面网格）的排序维度。
@@ -195,7 +200,9 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                     container.videoRepository
                         .searchJavs(limit = 500, offset = 0, favoriteGroupId = groupId)
                         .items
-                        .associate { it.code.uppercase() to FavRating(it.id, it.favoriteRating) }
+                        .associate {
+                            it.code.uppercase() to FavRating(it.id, it.favoriteRating, it.watchedMs)
+                        }
                 }.getOrDefault(emptyMap())
                 uiState = uiState.copy(items = items, ratings = ratings, loading = false)
             } catch (e: AuthExpiredException) {
@@ -207,6 +214,9 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun ratingOf(code: String): Double = uiState.ratings[code.uppercase()]?.rating ?: 0.0
+
+    /** 服务端统计的累计观看时长，给封面右上角的「已观看」图标用 */
+    fun watchedMsOf(code: String): Long = uiState.ratings[code.uppercase()]?.watchedMs ?: 0L
 
     /** 改喜爱度：写回服务端后同步本地映射（收藏夹卡片左上角那颗星） */
     fun updateRating(code: String, rating: Double) {

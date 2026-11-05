@@ -67,7 +67,7 @@ object Routes {
     const val LOGIN = "login"
     const val MAIN = "main"
     const val DETAIL = "detail/{videoId}?code={code}"
-    const val PLAYER = "player/{videoId}"
+    const val PLAYER = "player/{videoId}?code={code}"
     const val JAVLIST =
         "javlist?title={title}&idolIds={idolIds}&tagIds={tagIds}&studioId={studioId}&seriesId={seriesId}"
     const val FAVGROUP = "favgroup/{groupId}?name={name}"
@@ -77,7 +77,10 @@ object Routes {
         "detail/$videoId" + (code?.takeIf { it.isNotBlank() }
             ?.let { "?code=${android.net.Uri.encode(it)}" } ?: "")
 
-    fun player(videoId: Long) = "player/$videoId"
+    /** code 与列表页封面用的是同一个番号，播放页拿它拼出完全一致的封面地址 */
+    fun player(videoId: Long, code: String? = null) =
+        "player/$videoId" + (code?.takeIf { it.isNotBlank() }
+            ?.let { "?code=${android.net.Uri.encode(it)}" } ?: "")
 
     fun javList(
         title: String,
@@ -135,7 +138,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
             MainScreen(
                 startTab = app.container.settings.launchTab.index,
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
-                onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
+                onPlay = { videoId, code -> navController.navigate(Routes.player(videoId, code)) },
                 onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->
                     navController.navigate(Routes.javList(title, idolIds, tagIds, studioId, seriesId))
                 },
@@ -156,10 +159,11 @@ fun JavBossNavGraph(startWithSession: Boolean) {
             ),
         ) { entry ->
             val videoId = entry.arguments?.getLong("videoId") ?: return@composable
+            val detailCode = entry.arguments?.getString("code")
             DetailScreen(
                 videoId = videoId,
-                javCode = entry.arguments?.getString("code"),
-                onPlay = { navController.navigate(Routes.player(videoId)) },
+                javCode = detailCode,
+                onPlay = { id, code -> navController.navigate(Routes.player(id, code)) },
                 onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->
                     navController.navigate(Routes.javList(title, idolIds, tagIds, studioId, seriesId))
                 },
@@ -185,7 +189,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 studioId = args.getLong("studioId"),
                 seriesId = args.getLong("seriesId"),
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
-                onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
+                onPlay = { videoId, code -> navController.navigate(Routes.player(videoId, code)) },
                 onBack = { navController.popBackStack() },
                 onSessionExpired = goLogin,
             )
@@ -202,14 +206,21 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 groupId = groupId,
                 groupName = entry.arguments?.getString("name").orEmpty(),
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
-                onPlay = { videoId -> navController.navigate(Routes.player(videoId)) },
+                onPlay = { videoId, code -> navController.navigate(Routes.player(videoId, code)) },
                 onBack = { navController.popBackStack() },
                 onSessionExpired = goLogin,
             )
         }
         composable(
             route = Routes.PLAYER,
-            arguments = listOf(navArgument("videoId") { type = NavType.LongType }),
+            arguments = listOf(
+                navArgument("videoId") { type = NavType.LongType },
+                navArgument("code") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
             enterTransition = { playerFadeEnter },
             exitTransition = { playerFadeExit },
             popEnterTransition = { playerFadeEnter },
@@ -218,6 +229,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
             val videoId = entry.arguments?.getLong("videoId") ?: return@composable
             PlayerScreen(
                 videoId = videoId,
+                javCode = entry.arguments?.getString("code"),
                 onBack = { navController.popBackStack() },
             )
         }

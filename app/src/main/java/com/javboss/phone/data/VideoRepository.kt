@@ -17,6 +17,7 @@ import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.data.api.dto.VideoListResponse
+import kotlinx.serialization.json.jsonArray
 import retrofit2.HttpException
 
 /** 可直接播放的源地址 + 本次命中的文件位置（观看时长要按位置归账） */
@@ -161,6 +162,16 @@ class VideoRepository(private val apiClient: ApiClient) {
 
     suspend fun listVideoScreenshots(videoId: Long) =
         runCatching { apiClient.api().listVideoScreenshots(videoId).items }.getOrDefault(emptyList())
+
+    /**
+     * 样品图像数量。服务端 POST /jav/items/{id}/sample-images 返回 {sample_images:[...]}，
+     * 图片 URL 只用下标（.../{index}/thumbnail、.../{index}/detail），所以客户端只需要个数。
+     * 元素类型不固定，用 JsonArray.size 容错；接口失败返回 0，详情页就不显示这一区。
+     */
+    suspend fun listJavSampleImageCount(javId: Long): Int =
+        runCatching {
+            apiClient.api().listJavSampleImages(javId)["sample_images"]?.jsonArray?.size ?: 0
+        }.getOrDefault(0)
 
     // ---------- 标签管理 / 作品编辑 / 外部链接 ----------
 
