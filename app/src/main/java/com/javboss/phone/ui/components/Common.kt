@@ -283,34 +283,35 @@ fun entityCropAlignment(
 
 // ---------- 女优卡片正文的数据行（复刻 Web 端 wT() / xT() / yT() / CT()） ----------
 
-/** 罩杯数字 → "E罩杯"（1=A … 11=K），<=0 视为无值 */
+/** 罩杯数字 → "E"（1=A … 11=K），<=0 视为无值；移动端只留字母省空间 */
 fun cupLabel(cup: Int): String {
     if (cup <= 0) return ""
     val letter = 'A' + (cup - 1).coerceAtMost(25)
-    return "${letter}罩杯"
+    return letter.toString()
 }
 
-/** 三围 → "胸88-腰58-臀86"（三项都有才显示，与 Web 端 xT() 一致） */
+/** 三围 → "88-58-86"（三项都有才显示；移动端省略中文前缀，只留数字） */
 fun bwhLabel(bust: Int, waist: Int, hips: Int): String =
-    if (bust > 0 && waist > 0 && hips > 0) "胸$bust-腰$waist-臀$hips" else ""
+    if (bust > 0 && waist > 0 && hips > 0) "$bust-$waist-$hips" else ""
 
-/** 生日 → "1996-03-01（29岁）"；解析失败时原样返回，未来日期不带年龄 */
+/** 生日 → "1996-03-01（29）"；解析失败时原样返回，未来日期不带年龄（移动端省略「岁」字） */
 fun birthWithAgeLabel(birthDate: String, today: LocalDate = LocalDate.now()): String {
     val raw = birthDate.trim().take(10)
     if (raw.isEmpty()) return ""
     val date = runCatching { LocalDate.parse(raw) }.getOrNull() ?: return birthDate.trim()
     if (date.isAfter(today)) return raw
-    return "$raw（${Period.between(date, today).years}岁）"
+    return "$raw（${Period.between(date, today).years}）"
 }
 
 /**
  * 女优卡片封面下方的数据行，**永远是固定两行**：
- *  1. `1996-03-01（30岁）`（没录入 → `生日未录入`）
- *  2. `158cm · 胸88-腰58-臀86 · E罩杯`（都没录入 → `身体数据未录入`）
+ *  1. `1996-03-01（30）`（没录入 → `生日未录入`）
+ *  2. `158 · 88-58-86 · E`（都没录入 → `身体数据未录入`）
  *
  * 固定行数是硬要求：行数随数据多少变化会让卡片高矮不一，
  * 瀑布流里就再也对不齐（Web 端是等高网格，看起来才整齐）。
  * 别名不在这两行里显示（Web 端有，但卡片信息栏太挤，用户要求去掉）。
+ * 移动端窄卡片：身高去 cm、三围去中文前缀、罩杯去「罩杯」、年龄去「岁」，只留数字/字母。
  */
 fun idolInfoRows(
     birthDate: String,
@@ -323,7 +324,7 @@ fun idolInfoRows(
 ): List<String> {
     val birth = birthWithAgeLabel(birthDate, today).ifBlank { "生日未录入" }
     val body = listOfNotNull(
-        heightCm.takeIf { it > 0 }?.let { "${it}cm" },
+        heightCm.takeIf { it > 0 }?.let { it.toString() },
         bwhLabel(bust, waist, hips).takeIf { it.isNotEmpty() },
         cupLabel(cup).takeIf { it.isNotEmpty() },
     ).joinToString(" · ").ifBlank { "身体数据未录入" }

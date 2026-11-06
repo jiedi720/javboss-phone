@@ -47,7 +47,8 @@
     - 女优：作品数量 / 加入时间 / 年龄 / 身高 / 胸围 / 臀围 / 腰围 / 罩杯
   - **女优卡**：竖版封面左上角「作品 N」角标，封面下方显示名字（主名 + 日文名/罗马名）
     与**固定两行**数据（生日+年龄 / 身高·三围·罩杯，缺的用「生日未录入」这类占位补齐，
-    行数恒定才能让网格对齐）；别名不在卡片里显示
+    行数恒定才能让网格对齐）；移动端窄卡片只留数字/字母：身高去 cm、三围去中文前缀、
+    罩杯只留字母、年龄去「岁」；别名不在卡片里显示
   - **点封面进详情**：无论一部作品挂了几个视频文件，点封面都**直接进作品详情**
     （详情页自己列出全部文件版本，并标出「当前」那条），不再弹文件选择框
   - **封面直接起播**：作品卡封面右下角有播放钮，点它不经过详情页直接进播放页；
@@ -202,7 +203,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 34`、`versionName = 0.3.30-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 35`、`versionName = 0.3.31-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），
