@@ -37,6 +37,9 @@
   **按当前应用窗口宽度自动切换导航形式**：窄窗口（手机竖屏 / 窄分屏）用底部 `NavigationBar`，
   达到 Medium / Expanded 阈值的窗口（平板、宽分屏、手机横屏）改用左侧 `NavigationRail`，
   窗口缩放实时切换且当前 tab 与页面状态保留（详见 v0.3.42 段）；
+  **横屏 / Rail 模式下，视频与 JAV 页原顶栏的视角 / 排序 / 搜索功能并入这条原左侧栏**
+  （紧凑工具项，不新增第二条工具条、不加宽 rail；详见 v0.3.50 段），
+  Compact 手机竖屏仍用页面顶栏；
   **冷启动默认进 JAV**，可在设置页「启动显示界面」改成 视频 / JAV（只在下次启动生效，当前会话不跳转）
   页面转场重写过：Navigation Compose 默认是 700ms 淡入淡出（手感明显慢半拍），
   这里统一改成 200ms「1/12 屏宽轻推 + 淡入淡出」，进/出详情立刻跟手；播放页转屏只用 150ms 淡入淡出
@@ -376,6 +379,28 @@
   - 新增 `ColumnChoiceTest` 9 例（自动档 3/6、候选集互不越界、
     合法值按方向隔离、旧值迁移、自动与手选都真的排到目标列数）；
     全量单测 **113/113**。
+- **横屏顶栏功能并入原左侧栏（v0.3.50）**：
+  - 用户要求「以最新的为主、无视标签高度与顶部间隙那两条旧反馈」：横屏（Rail）时把
+    JAV 页左上四个视角按钮 + 右上「排序 / 筛选」「搜索」，以及视频页右上
+    「排序 / 筛选」「搜索」全部移到**原有左侧 NavigationRail**；视频和 JAV 一样处理。
+    **不在内容区左侧新增竖向工具条、不加宽 rail**（仍 64dp），工具项紧凑排布。
+  - 实现：新增 `ui/components/PageTools.kt` 的 `PageToolsState` + `rememberPageToolsState()`，
+    把 4 个开关（JAV/视频各「搜索框展开」「排序弹层」）提升到 `MainScreen`；
+    `WorksViewModel` / `VideosViewModel` 同样提到 `MainScreen`（仍是同一个
+    `ViewModelStoreOwner` 的实例），rail 里可直接读当前视角、切视角、打开排序前
+    加载筛选项、收起搜索时清空关键词。
+  - `MainScreen` 的 rail 在主 tab 之后加一条分隔线，再放当前页的紧凑工具项
+    （图标 + 一行短标签、44dp 高）：视频 = 排序 / 搜索；JAV = JAV / 女优 / 片商 / 系列
+    四个视角（选中态高亮）+ 排序（片商 / 系列视角仍无排序入口）+ 搜索。
+    功能区单独可滚动，手机横屏这类矮窗口里 6 个工具项也够得到，不会挤掉主 tab。
+  - `WorksScreen` / `VideosScreen` 的顶栏 `Row` 改为 `if (!toolsInRail)` 才画；
+    搜索框展开、`ModalBottomSheet` 排序菜单仍留在内容区（入口在栏上，结果在内容区），
+    两处读写同一份状态，旋转 / 分屏 / 自由窗口切换导航形式时搜索词与工具开关不重置。
+    切换主 tab 时 `closeSheets()` 关掉瞬时排序弹层，避免切回来莫名弹出菜单。
+  - Compact 手机竖屏完全不变：底部 `NavigationBar` + 页面原横向顶栏；
+    收藏夹 / 设置页不新增工具项。
+  - 新增 `PageToolsStateTest` 4 例（初始全关、两页开关互不干扰、
+    `closeSheets()` 只关弹层不动搜索框、关后可再打开）；全量单测 **117/117**。
 
 ## 使用
 
@@ -447,7 +472,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 53`、`versionName = 0.3.49-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 54`、`versionName = 0.3.50-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

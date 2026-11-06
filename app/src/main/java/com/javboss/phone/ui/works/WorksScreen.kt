@@ -44,7 +44,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -56,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.PageToolsState
 import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.EntityCard
 import com.javboss.phone.ui.components.GridFooter
@@ -85,13 +85,17 @@ fun WorksScreen(
     onPlay: (videoId: Long, code: String?) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onSessionExpired: () -> Unit,
+    /** v0.3.50：横屏（Rail）时顶栏功能并入原左侧栏，开关由 MainScreen 统一下发 */
+    tools: PageToolsState,
+    toolsInRail: Boolean,
     viewModel: WorksViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
     val gridState = rememberLazyGridState()
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
-    // 排序 + 筛选共用一个菜单（作品视角带筛选区，女优视角只有排序）
-    var showSortFilter by remember { mutableStateOf(false) }
+    // 两个开关提到 MainScreen：顶部按钮和原左侧栏写的是同一份状态，
+    // 切换导航形式 / 旋转时搜索框与排序菜单不会重置。
+    val searchOpen = tools.worksSearchOpen
+    val showSortFilter = tools.worksSortOpen
     // 正在改评分的作品
     var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
     // 一部作品有多个视频文件时，只在点播放钮时弹选择框
@@ -125,36 +129,41 @@ fun WorksScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // 顶栏：四个紧凑视角按钮 + 排序 / 搜索 / 筛选 三个紧凑图标，
-        // 不再横滑，也不再被 48dp 的 IconButton 挤掉，窄屏也能一行完整显示
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            LibraryTab.entries.forEach { tab ->
-                CompactTabChip(
-                    label = tab.label,
-                    selected = state.tab == tab,
-                    onClick = { viewModel.onTabChange(tab) },
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            // 排序 / 筛选：只留一个按钮，打开后是同一个菜单（作品视角多一段筛选区）
-            if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
-                CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
-                    if (state.tab == LibraryTab.WORKS) viewModel.loadFilterOptions()
-                    showSortFilter = true
-                }
-            }
-            CompactIconButton(
-                if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
-                if (searchOpen) "收起搜索" else "搜索",
+        // v0.3.50：Rail 模式下这一栏功能并入原左侧 NavigationRail，
+        // 内容区顶部不再画工具条；Compact 手机竖屏保持原样。
+        if (!toolsInRail) {
+            // 顶栏：四个紧凑视角按钮 + 排序 / 搜索 / 筛选 三个紧凑图标，
+            // 不再横滑，也不再被 48dp 的 IconButton 挤掉，窄屏也能一行完整显示
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                searchOpen = !searchOpen
-                if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
+                LibraryTab.entries.forEach { tab ->
+                    CompactTabChip(
+                        label = tab.label,
+                        selected = state.tab == tab,
+                        onClick = { viewModel.onTabChange(tab) },
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                // 排序 / 筛选：只留一个按钮，打开后是同一个菜单（作品视角多一段筛选区）
+                if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
+                    CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
+                        if (state.tab == LibraryTab.WORKS) viewModel.loadFilterOptions()
+                        tools.worksSortOpen = true
+                    }
+                }
+                CompactIconButton(
+                    if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
+                    if (searchOpen) "收起搜索" else "搜索",
+                ) {
+                    val next = !tools.worksSearchOpen
+                    tools.worksSearchOpen = next
+                    if (!next && state.search.isNotEmpty()) viewModel.onSearchChange("")
+                }
             }
         }
 
@@ -334,7 +343,7 @@ fun WorksScreen(
     // 排序 + 筛选共用一个菜单：上半是与 Web 端一样的「维度: 方向 + ↑↓」列表，
     // 作品视角下半接原来的筛选区（番号前缀 / 标签 / 仅单体 / 随机）
     if (showSortFilter) {
-        ModalBottomSheet(onDismissRequest = { showSortFilter = false }) {
+        ModalBottomSheet(onDismissRequest = { tools.worksSortOpen = false }) {
             // 宽窗口里收窄居中，排序项不横跨整块平板屏
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(

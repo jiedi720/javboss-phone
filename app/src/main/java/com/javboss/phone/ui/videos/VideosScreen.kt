@@ -34,11 +34,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.PageToolsState
 import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoCard
@@ -64,13 +60,17 @@ fun VideosScreen(
     onVideoClick: (videoId: Long, code: String?) -> Unit,
     onPlay: (videoId: Long, code: String?) -> Unit,
     onSessionExpired: () -> Unit,
+    /** v0.3.50：横屏（Rail）时顶栏功能并入原左侧栏，开关由 MainScreen 统一下发 */
+    tools: PageToolsState,
+    toolsInRail: Boolean,
     viewModel: VideosViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
     val gridState = rememberLazyGridState()
-    // 搜索框点搜索图标才展开；排序按钮点开底部菜单 —— 与 JAV 页一致
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var showSort by remember { mutableStateOf(false) }
+    // 两个开关提到 MainScreen：顶部按钮和原左侧栏写的是同一份状态，
+    // 切换导航形式 / 旋转时搜索框与排序菜单不会重置。
+    val searchOpen = tools.videosSearchOpen
+    val showSort = tools.videosSortOpen
 
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) onSessionExpired()
@@ -86,26 +86,31 @@ fun VideosScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // 顶栏：左边保留本页标题（JAV 页左边是四个视角按钮，这里按需求不强行一致），
-        // 右边两个紧凑图标按钮与 JAV 页完全一致：排序 / 筛选、搜索（展开后变关闭）
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("视频", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.weight(1f))
-            CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
-                showSort = true
-            }
-            CompactIconButton(
-                if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
-                if (searchOpen) "收起搜索" else "搜索",
+        // v0.3.50：Rail 模式下这一栏功能并入原左侧 NavigationRail，
+        // 内容区顶部不再画工具条；Compact 手机竖屏保持原样。
+        if (!toolsInRail) {
+            // 顶栏：左边保留本页标题（JAV 页左边是四个视角按钮，这里按需求不强行一致），
+            // 右边两个紧凑图标按钮与 JAV 页完全一致：排序 / 筛选、搜索（展开后变关闭）
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                searchOpen = !searchOpen
-                if (!searchOpen && state.search.isNotEmpty()) viewModel.onSearchChange("")
+                Text("视频", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.weight(1f))
+                CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
+                    tools.videosSortOpen = true
+                }
+                CompactIconButton(
+                    if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
+                    if (searchOpen) "收起搜索" else "搜索",
+                ) {
+                    val next = !tools.videosSearchOpen
+                    tools.videosSearchOpen = next
+                    if (!next && state.search.isNotEmpty()) viewModel.onSearchChange("")
+                }
             }
         }
 
@@ -205,7 +210,7 @@ fun VideosScreen(
     // 排序菜单：与 JAV 页一样用底部弹层承载，选项仍是视频页原有的 8 个排序值，
     // 选中项高亮；点击即应用并关闭，不改变排序逻辑与服务端参数。
     if (showSort) {
-        ModalBottomSheet(onDismissRequest = { showSort = false }) {
+        ModalBottomSheet(onDismissRequest = { tools.videosSortOpen = false }) {
             // 宽窗口里把内容收窄并居中，避免排序项横跨整块平板屏
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(
@@ -237,7 +242,7 @@ fun VideosScreen(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(background)
                                 .clickable {
-                                    showSort = false
+                                    tools.videosSortOpen = false
                                     viewModel.onSortChange(sort)
                                 }
                                 .padding(horizontal = 12.dp),
