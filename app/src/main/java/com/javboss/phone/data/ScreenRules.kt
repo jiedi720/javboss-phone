@@ -93,7 +93,9 @@ object WindowSizeRules {
     /** 竖版封面卡（2:3 / 100:143.1）的最小宽度 */
     const val CARD_MIN_WIDTH_DP = 150
 
-    /** 横向视频卡（16:9）的最小宽度：更宽才看得清标题与角标 */
+    /** 横向视频卡（16:9）的最小宽度：更宽才看得清标题与角标。
+     *  视频页不再用它单独算列数，改由 [videoGridColumns] 恒比 JAV 少一列；
+     *  此值保留给 [gridColumns] 的通用参数能力与对应单测。 */
     const val WIDE_CARD_MIN_WIDTH_DP = 200
 
     /**
@@ -173,6 +175,17 @@ object WindowSizeRules {
             .coerceIn(1, GRID_MAX_COLUMNS)
         return if (choice > 0) dynamic.coerceAtMost(choice.coerceIn(1, GRID_MAX_COLUMNS)) else dynamic
     }
+
+    /**
+     * 视频网格列数：恒等于同一窗口下 JAV 网格列数减一（至少 1 列）。
+     *
+     * 视频是 16:9 横版封面、JAV 是 2:3 竖版封面，同样宽度下横版卡更宽，
+     * 每行少放一个才舒服。以 JAV 列数为基准（同一个窗口宽度、同一份手选上限），
+     * 而不是另取一套「横版卡最小宽度」独立计算——那样取整或手选钳制会出现
+     * 「跟 JAV 一样多」或「一下少了两列」，差值不稳定。
+     * 极窄窗口 JAV 只剩 1 列时，视频保底 1 列（不能为 0）。
+     */
+    fun videoGridColumns(javColumns: Int): Int = (javColumns - 1).coerceAtLeast(1)
 
     /** 对话框最大宽度；Compact 交给平台默认，不加限制 */
     fun dialogMaxWidth(widthDp: Int): Int = when (classify(widthDp)) {

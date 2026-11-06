@@ -47,7 +47,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.GridFooter
@@ -55,8 +54,8 @@ import com.javboss.phone.ui.components.VideoCard
 import com.javboss.phone.ui.components.adaptiveSearchWidth
 import com.javboss.phone.ui.components.adaptiveSheetWidth
 import com.javboss.phone.ui.components.rememberAdaptivePadding
-import com.javboss.phone.ui.components.rememberGridColumns
 import com.javboss.phone.ui.components.rememberGridSpacing
+import com.javboss.phone.ui.components.rememberVideoGridColumns
 
 /** 视频 tab：自适应列网格 + 顶栏（与 JAV 页同款排序 / 搜索按钮）+ 下拉刷新 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -157,13 +156,11 @@ fun VideosScreen(
                 state.videos.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.videos.isEmpty() && state.error != null -> CenterMessage(state.error)
                 state.videos.isEmpty() -> CenterMessage("没有视频")
-                // 等高行网格：列数与作品 / JAV / 收藏夹共用同一套设置，平板自动更多列
+                // 等高行网格：视频是 16:9 横版封面，每行恒比 JAV / 作品 / 收藏夹少一列
                 else -> LazyVerticalGrid(
-                    // 列数按「当前窗口实际宽度 ÷ 16:9 卡片最小宽度」动态算，
-                    // 不再按设备/方向固定，也不再横屏一律翻倍
-                    columns = GridCells.Fixed(
-                        rememberGridColumns(WindowSizeRules.WIDE_CARD_MIN_WIDTH_DP)
-                    ),
+                    // 以 JAV 列数为基准减一，同一窗口 / 同一份手选上限，差值稳定；
+                    // 极窄窗口保底 1 列，不按设备或方向另算一套最小宽度
+                    columns = GridCells.Fixed(rememberVideoGridColumns()),
                     state = gridState,
                     contentPadding = PaddingValues(rememberAdaptivePadding()),
                     horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),

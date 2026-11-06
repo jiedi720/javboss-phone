@@ -188,6 +188,45 @@ class WindowSizeRulesTest {
         assertTrue(ultraWide <= WindowSizeRules.GRID_MAX_COLUMNS)
     }
 
+    // ---------- 视频列数恒比 JAV 少一列 ----------
+
+    @Test
+    fun `video grid is always exactly one column behind jav`() {
+        for (jav in 2..WindowSizeRules.GRID_MAX_COLUMNS) {
+            assertEquals(
+                "jav=$jav 列时视频应恰好少一列",
+                jav - 1,
+                WindowSizeRules.videoGridColumns(jav),
+            )
+        }
+        assertEquals(1, WindowSizeRules.videoGridColumns(2))
+        assertEquals(7, WindowSizeRules.videoGridColumns(8))
+    }
+
+    @Test
+    fun `video grid never equals jav grid except the one column floor`() {
+        for (width in 200..2400 step 20) {
+            val jav = WindowSizeRules.gridColumns(width, reservedDp = 80)
+            val video = WindowSizeRules.videoGridColumns(jav)
+            assertTrue("视频列数至少 1：width=$width", video >= 1)
+            if (jav > 1) {
+                assertEquals("width=$width 视频应恰好比 JAV 少一列", jav - 1, video)
+            } else {
+                assertEquals("极窄窗口视频保底 1 列：width=$width", 1, video)
+            }
+        }
+    }
+
+    @Test
+    fun `manual column cap keeps video one behind jav`() {
+        // 手选上限把 JAV 钳到 3 列时，视频必须是 2 列，不能被钳成跟 JAV 一样
+        val jav = WindowSizeRules.gridColumns(1067, reservedDp = 80, choice = 3)
+        assertEquals(3, jav)
+        assertEquals(2, WindowSizeRules.videoGridColumns(jav))
+        val javNarrow = WindowSizeRules.gridColumns(360, choice = 2)
+        assertEquals(1, WindowSizeRules.videoGridColumns(javNarrow))
+    }
+
     // ---------- 播放页方向 ----------
 
     @Test

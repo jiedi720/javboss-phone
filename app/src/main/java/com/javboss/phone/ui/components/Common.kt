@@ -317,6 +317,15 @@ fun rememberGridColumns(minCardWidthDp: Int = WindowSizeRules.CARD_MIN_WIDTH_DP)
     )
 }
 
+/**
+ * 视频网格列数：恒等于同窗口下 JAV 网格列数减一（至少 1 列）。
+ * 16:9 横版封面比 2:3 竖版封面宽，同一窗口里少放一个才舒服；
+ * 与 JAV 共用同一个窗口宽度和同一份手选列数上限，差值稳定。
+ */
+@Composable
+fun rememberVideoGridColumns(): Int =
+    WindowSizeRules.videoGridColumns(rememberGridColumns())
+
 /** 兼容旧调用点：竖版封面网格 */
 @Composable
 fun rememberResolvedColumns(): Int = rememberGridColumns()
