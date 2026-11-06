@@ -38,7 +38,7 @@ enum class LaunchTab(val index: Int, val label: String) {
     }
 }
 
-/** 应用设置持久化（播放引擎偏好、拖动 seek 灵敏度） */
+/** 应用设置持久化（播放引擎偏好、拖动 seek 灵敏度、自动切换登录等） */
 class SettingsManager(private val context: Context) {
 
     private val keyEngineMode = stringPreferencesKey("engine_mode")
@@ -54,6 +54,11 @@ class SettingsManager(private val context: Context) {
     private val keyFavItemSort = stringPreferencesKey("fav_item_sort")
     private val keyFavItemSortAsc = booleanPreferencesKey("fav_item_sort_asc")
     private val keyLaunchTab = stringPreferencesKey("launch_tab")
+    // 按所在网络自动切换登录：总开关 + 两条预设角色 + 可选探测地址覆盖
+    private val keyAutoSwitch = booleanPreferencesKey("auto_switch_login")
+    private val keyLanPreset = stringPreferencesKey("auto_switch_lan_preset")
+    private val keyWanPreset = stringPreferencesKey("auto_switch_wan_preset")
+    private val keyProbeOverride = stringPreferencesKey("auto_switch_probe_override")
 
     @Volatile
     var engineMode: EngineMode = EngineMode.AUTO
@@ -119,6 +124,26 @@ class SettingsManager(private val context: Context) {
     var launchTab: LaunchTab = LaunchTab.JAV
         private set
 
+    /** 是否按当前网络在「家里 / 外面」两条登录预设间自动切换 */
+    @Volatile
+    var autoSwitchEnabled: Boolean = false
+        private set
+
+    /** 「家里（局域网）」用哪条预设，存归一化 url */
+    @Volatile
+    var lanPresetUrl: String = ""
+        private set
+
+    /** 「外面（外网）」用哪条预设，存归一化 url */
+    @Volatile
+    var wanPresetUrl: String = ""
+        private set
+
+    /** 探测地址覆盖值；留空 = 直接跟随「家里」预设的地址 */
+    @Volatile
+    var probeUrlOverride: String = ""
+        private set
+
     suspend fun restore() {
         val prefs = context.settingsDataStore.data.first()
         engineMode = prefs[keyEngineMode]
@@ -140,6 +165,10 @@ class SettingsManager(private val context: Context) {
         launchTab = prefs[keyLaunchTab]
             ?.let { runCatching { LaunchTab.valueOf(it) }.getOrNull() }
             ?: LaunchTab.JAV
+        autoSwitchEnabled = prefs[keyAutoSwitch] ?: false
+        lanPresetUrl = prefs[keyLanPreset].orEmpty()
+        wanPresetUrl = prefs[keyWanPreset].orEmpty()
+        probeUrlOverride = prefs[keyProbeOverride].orEmpty()
     }
 
     suspend fun saveEngineMode(mode: EngineMode) {
@@ -204,5 +233,26 @@ class SettingsManager(private val context: Context) {
     suspend fun saveLaunchTab(tab: LaunchTab) {
         launchTab = tab
         context.settingsDataStore.edit { it[keyLaunchTab] = tab.name }
+    }
+
+    suspend fun saveAutoSwitchEnabled(enabled: Boolean) {
+        autoSwitchEnabled = enabled
+        context.settingsDataStore.edit { it[keyAutoSwitch] = enabled }
+    }
+
+    /** 一次性写入「家里 / 外面」两条预设角色 */
+    suspend fun saveAutoSwitchRoles(lanUrl: String, wanUrl: String) {
+        lanPresetUrl = lanUrl
+        wanPresetUrl = wanUrl
+        context.settingsDataStore.edit {
+            it[keyLanPreset] = lanUrl
+            it[keyWanPreset] = wanUrl
+        }
+    }
+
+    /** 探测地址覆盖；留空表示跟随「家里」预设的地址 */
+    suspend fun saveProbeUrlOverride(value: String) {
+        probeUrlOverride = value
+        context.settingsDataStore.edit { it[keyProbeOverride] = value }
     }
 }

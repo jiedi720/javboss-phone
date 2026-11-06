@@ -4,6 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.PowerManager
 import androidx.activity.ComponentActivity
@@ -33,6 +37,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 回到前台 / 网络可用时检查一次该用哪条登录预设（切回家里 WiFi 尤其重要）
+    private var everStarted = false
+    private var connectivityManager: ConnectivityManager? = null
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            (application as? JavBossApp)?.container?.autoLoginSwitcher
+                ?.requestCheck("network")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // savedInstanceState == null 表示从桌面（启动器）冷启动：不继承上回的自动打码
@@ -43,6 +57,17 @@ class MainActivity : ComponentActivity() {
             IntentFilter(Intent.ACTION_SCREEN_OFF),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+        // 网络变化（连上家里 WiFi / 切到蜂窝）时触发自动切换检查；注册时若已有网络会立刻回调一次，
+        // 与 NavGraph 的冷启动检查由切换器内置节流合并，不会重复探测
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        runCatching {
+            connectivityManager?.registerNetworkCallback(
+                NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build(),
+                networkCallback,
+            )
+        }
         val startWithSession = (application as JavBossApp).container.session.hasSession
         // 上次闪退留下的记录：崩溃时进程已经死了，只能在下次启动时提示发送
         val crashReports = CrashReporter.pendingReports(this)
@@ -84,6 +109,18 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * 从后台切回前台再检查一次。首次冷启动不在这里触发——那时 Compose 还没组合好，
+     * 改由 NavGraph 组合完成后发起，保证切换结果一定能被界面收到。
+     */
+    override fun onStart() {
+        super.onStart()
+        if (everStarted) {
+            (application as JavBossApp).container.autoLoginSwitcher.requestCheck("resume")
+        }
+        everStarted = true
+    }
+
+    /**
      * 兜底：部分机型/ROM 的 ACTION_SCREEN_OFF 会晚到或漏发（国产 ROM 的省电策略尤其常见），
      * 这里在页面不可见时再判一次「屏幕是否已熄灭」。
      * 屏幕灭 = 锁屏 → 打码；只是切到别的 App（屏幕还亮着）则不打码。
@@ -96,6 +133,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenLockReceiver) }
+        runCatching { connectivityManager?.unregisterNetworkCallback(networkCallback) }
         super.onDestroy()
     }
 }

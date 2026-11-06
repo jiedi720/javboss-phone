@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -123,6 +124,11 @@ fun LoginScreen(
                     preset = preset,
                     selected = preset.url == state.activePresetUrl,
                     manageMode = state.manageMode,
+                    role = when (preset.url) {
+                        state.lanPresetUrl -> "家里"
+                        state.wanPresetUrl -> "外面"
+                        else -> null
+                    },
                     onSelect = { viewModel.selectPreset(preset, onLoginSuccess) },
                     onRename = { viewModel.requestRename(preset.url) },
                     onDelete = { viewModel.deletePreset(preset.url) },
@@ -197,6 +203,8 @@ private fun PresetRow(
     preset: ServerPreset,
     selected: Boolean,
     manageMode: Boolean,
+    /** 自动切换登录里这条预设扮演的角色（家里 / 外面） */
+    role: String? = null,
     onSelect: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
@@ -216,12 +224,29 @@ private fun PresetRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                preset.name,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    preset.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (role != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        role,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                RoundedCornerShape(4.dp),
+                            )
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
             Text(
                 preset.url,
                 style = MaterialTheme.typography.labelSmall,

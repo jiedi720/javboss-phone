@@ -49,6 +49,9 @@ data class LoginUiState(
     val manageMode: Boolean = false,
     /** 当前输入命中的预设（用于高亮 / 判断是否已保存） */
     val activePresetUrl: String? = null,
+    /** 自动切换登录里「家里 / 外面」两条预设的 url，用于在预设行上打小标签 */
+    val lanPresetUrl: String? = null,
+    val wanPresetUrl: String? = null,
     val dialog: PresetDialog? = null,
 )
 
@@ -244,6 +247,8 @@ class LoginViewModel(app: Application) : AndroidViewModel(app) {
         uiState = uiState.copy(
             presets = presets,
             activePresetUrl = activePreset(uiState.serverUrl, presets),
+            lanPresetUrl = container.settings.lanPresetUrl.takeIf { it.isNotBlank() },
+            wanPresetUrl = container.settings.wanPresetUrl.takeIf { it.isNotBlank() },
         )
     }
 

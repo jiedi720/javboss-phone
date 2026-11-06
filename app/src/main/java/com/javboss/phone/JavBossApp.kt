@@ -6,6 +6,7 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.javboss.phone.data.AuthRepository
+import com.javboss.phone.data.AutoLoginSwitcher
 import com.javboss.phone.data.CrashReporter
 import com.javboss.phone.data.FavoriteRepository
 import com.javboss.phone.data.PresetManager
@@ -32,6 +33,8 @@ class AppContainer(context: Application) {
     val favoriteRepository = FavoriteRepository(apiClient)
     // 本地鉴权代理：libVLC 播放时经它转发请求并附加会话 Cookie（懒启动）
     val authProxy = AuthProxy(apiClient.okHttpClient, apiClient::absoluteUrl, apiClient::isServerUrl)
+    // 按所在网络自动在「家里 / 外面」两条预设间切换（内部自带独立探测客户端与协程作用域）
+    val autoLoginSwitcher = AutoLoginSwitcher(context)
 }
 
 class JavBossApp : Application(), SingletonImageLoader.Factory {

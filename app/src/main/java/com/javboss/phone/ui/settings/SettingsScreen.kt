@@ -39,10 +39,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.BuildConfig
 import com.javboss.phone.data.LaunchTab
+import com.javboss.phone.data.ServerPreset
 import com.javboss.phone.data.api.dto.DirectoryDto
 
 /**
@@ -60,6 +62,8 @@ fun SettingsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<DirectoryDto?>(null) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    // 探测地址输入框的本地草稿；持久化值变化（保存成功）时同步刷新
+    var probeDraft by remember(state.probeUrlOverride) { mutableStateOf(state.probeUrlOverride) }
 
     LaunchedEffect(state.notice, state.error) {
         val message = state.notice ?: state.error
@@ -96,6 +100,102 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("退出登录", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+
+        // ---------- 按所在网络自动切换登录 ----------
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("自动切换登录")
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("根据网络自动切换登录", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "在家能连上「家里」地址就用局域网登录；连不上就自动切到「外面」",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = state.autoSwitchEnabled,
+                        onCheckedChange = viewModel::setAutoSwitch,
+                    )
+                }
+
+                if (state.autoSwitchEnabled) {
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+
+                    val presets = state.switchPresets
+                    if (presets.size < 2) {
+                        Text(
+                            "需要至少两条「已保存密码」的预设（一条家里、一条外面）。" +
+                                "请先在登录页把两条地址都登录并勾上「记住密码」。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        RoleOptions(
+                            title = "家里（局域网）",
+                            presets = presets,
+                            selected = state.lanPresetUrl,
+                            onSelect = viewModel::setLanPreset,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        RoleOptions(
+                            title = "外面（外网）",
+                            presets = presets,
+                            selected = state.wanPresetUrl,
+                            onSelect = viewModel::setWanPreset,
+                        )
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Text("探测地址", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = probeDraft,
+                        onValueChange = { probeDraft = it },
+                        placeholder = {
+                            Text(state.lanPresetUrl.ifBlank { "留空 = 家里预设的地址" })
+                        },
+                        supportingText = {
+                            Text(
+                                "留空直接探测「家里」那条预设的地址；能连上就认为在家。" +
+                                    "也可以另填一个地址（例如只探测 NAS 是否在线）。",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                        singleLine = true,
+                        isError = state.probeError != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    state.probeError?.let {
+                        Text(
+                            it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { viewModel.saveProbe(probeDraft) }) {
+                            Text("保存探测地址")
+                        }
+                        TextButton(onClick = viewModel::probeNow) { Text("立即检测") }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "打开 App、从后台切回、网络变化时自动检查；正在播放视频时不打断，" +
+                            "退出播放后再切。切换会用目标预设里保存的密码重新登录，" +
+                            "失败会保持原来的连接。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -282,6 +382,45 @@ fun SettingsScreen(
                 TextButton(onClick = { showLogoutConfirm = false }) { Text("取消") }
             },
         )
+    }
+}
+
+/** 「家里 / 外面」用哪条预设：列出全部已存密码的预设，单选 */
+@Composable
+private fun RoleOptions(
+    title: String,
+    presets: List<ServerPreset>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Text(title, style = MaterialTheme.typography.labelMedium)
+    presets.forEach { preset ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { onSelect(preset.url) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = preset.url == selected,
+                onClick = { onSelect(preset.url) },
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    preset.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    preset.url,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

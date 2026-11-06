@@ -1,5 +1,6 @@
 package com.javboss.phone.navigation
 
+import android.widget.Toast
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -9,6 +10,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
@@ -98,6 +101,28 @@ object Routes {
 @Composable
 fun JavBossNavGraph(startWithSession: Boolean) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    val app = context.applicationContext as JavBossApp
+    val switcher = app.container.autoLoginSwitcher
+
+    // 切换成功后：清掉旧返回栈重建各页面 ViewModel（服务器换了，缓存数据全部失效），并给出提示。
+    // 回调一律在主线程注册；界面还没组合好时切换器会缓存最后一条通知，注册后回放。
+    DisposableEffect(Unit) {
+        switcher.onNotice = { notice ->
+            if (notice.changed) {
+                navController.navigate(Routes.MAIN) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+            Toast.makeText(context, notice.message, Toast.LENGTH_SHORT).show()
+        }
+        onDispose { switcher.onNotice = null }
+    }
+
+    // 冷启动检查放在这里：此时界面已组合、回调已注册，结果不会丢
+    LaunchedEffect(Unit) {
+        switcher.requestCheck("app-start")
+    }
 
     val goLogin = {
         navController.navigate(Routes.LOGIN) {
@@ -107,7 +132,6 @@ fun JavBossNavGraph(startWithSession: Boolean) {
 
     // 主动登出：本地先行（立即清会话回登录页，不被网络阻塞）；
     // 服务端登出后台异步通知，需在清 Cookie 前发起才能带上会话
-    val app = LocalContext.current.applicationContext as JavBossApp
     val scope = rememberCoroutineScope()
     val doLogout: () -> Unit = {
         scope.launch {
@@ -226,6 +250,11 @@ fun JavBossNavGraph(startWithSession: Boolean) {
             popEnterTransition = { playerFadeEnter },
             popExitTransition = { playerFadeExit },
         ) { entry ->
+            // 播放期间禁止自动切换（换源会打断视频）；退出播放页时把期间攒下的检查补上
+            DisposableEffect(Unit) {
+                switcher.setPlaybackActive(true)
+                onDispose { switcher.setPlaybackActive(false) }
+            }
             val videoId = entry.arguments?.getLong("videoId") ?: return@composable
             PlayerScreen(
                 videoId = videoId,

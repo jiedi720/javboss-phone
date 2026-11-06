@@ -7,9 +7,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
-import com.javboss.phone.data.api.AuthExpiredException
-import com.javboss.phone.data.api.dto.DirectoryCreateRequest
+import com.javboss.phone.data.AutoSwitchRules
 import com.javboss.phone.data.LaunchTab
+import com.javboss.phone.data.ServerPreset
+import com.javboss.phone.data.api.AuthExpiredException
+import com.javboss.phone.data.api.ServerAddressRules
+import com.javboss.phone.data.api.dto.DirectoryCreateRequest
 import com.javboss.phone.data.api.dto.DirectoryDto
 import com.javboss.phone.data.api.dto.DirectoryUpdateRequest
 import kotlinx.coroutines.launch
@@ -23,6 +26,18 @@ data class SettingsUiState(
     val coverMask: Boolean = false,
     /** 冷启动默认进入的 tab（默认 JAV） */
     val launchTab: LaunchTab = LaunchTab.JAV,
+    /** 按所在网络自动切换登录：总开关 */
+    val autoSwitchEnabled: Boolean = false,
+    /** 「家里（局域网）」用哪条预设（归一化 url） */
+    val lanPresetUrl: String = "",
+    /** 「外面（外网）」用哪条预设（归一化 url） */
+    val wanPresetUrl: String = "",
+    /** 探测地址覆盖；留空 = 跟随家里预设的地址 */
+    val probeUrlOverride: String = "",
+    /** 可用于自动切换的预设（存过密码的），供设置页单选 */
+    val switchPresets: List<ServerPreset> = emptyList(),
+    /** 探测地址输入校验错误 */
+    val probeError: String? = null,
     /** 服务端的「读取路径」列表 */
     val directories: List<DirectoryDto> = emptyList(),
     val loading: Boolean = false,
@@ -35,7 +50,7 @@ data class SettingsUiState(
 )
 
 /**
- * 设置页：账号信息、版本信息、以及和服务端一致的「读取路径」管理。
+ * 设置页：账号信息、自动切换登录、版本信息、以及和服务端一致的「读取路径」管理。
  * 读取路径走 /directories 系列接口（与 Web 端「目录管理」同一套）：
  *   GET /directories、POST /directories、PATCH /directories/{id}（改路径 / enabled / is_delete）、
  *   POST /directories/{id}/scan
@@ -49,6 +64,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             gridColumns = container.settings.gridColumns,
             coverMask = container.settings.coverMask,
             launchTab = container.settings.launchTab,
+            autoSwitchEnabled = container.settings.autoSwitchEnabled,
+            lanPresetUrl = container.settings.lanPresetUrl,
+            wanPresetUrl = container.settings.wanPresetUrl,
+            probeUrlOverride = container.settings.probeUrlOverride,
+            switchPresets = container.presets.presets.filter { it.canAutoLogin },
         ),
     )
         private set
@@ -78,6 +98,72 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         uiState = uiState.copy(launchTab = tab)
         viewModelScope.launch { container.settings.saveLaunchTab(tab) }
     }
+
+    // ---------- 按所在网络自动切换登录 ----------
+
+    /**
+     * 总开关。第一次打开且两条角色都空时，按预设地址自动认：私网 IP = 家里，域名 / 公网 = 外面；
+     * 认得不准可在下面的单选里改。开启后立刻检查一次，让用户马上看到结果。
+     */
+    fun setAutoSwitch(enabled: Boolean) {
+        if (enabled == uiState.autoSwitchEnabled) return
+        uiState = uiState.copy(autoSwitchEnabled = enabled)
+        viewModelScope.launch {
+            if (enabled && uiState.lanPresetUrl.isBlank() && uiState.wanPresetUrl.isBlank()) {
+                val (lan, wan) = AutoSwitchRules.guessRoles(container.presets.presets)
+                container.settings.saveAutoSwitchRoles(lan, wan)
+                uiState = uiState.copy(lanPresetUrl = lan, wanPresetUrl = wan)
+            }
+            container.settings.saveAutoSwitchEnabled(enabled)
+            uiState = uiState.copy(switchPresets = usablePresets())
+            // 同一协程里、开关已落盘之后再检查，避免读到旧值被跳过
+            if (enabled) container.autoLoginSwitcher.requestCheck("enabled", force = true)
+        }
+    }
+
+    fun setLanPreset(url: String) {
+        val wan = uiState.wanPresetUrl.takeIf { it != url } ?: ""
+        viewModelScope.launch {
+            container.settings.saveAutoSwitchRoles(url, wan)
+            uiState = uiState.copy(lanPresetUrl = url, wanPresetUrl = wan)
+        }
+    }
+
+    fun setWanPreset(url: String) {
+        val lan = uiState.lanPresetUrl.takeIf { it != url } ?: ""
+        viewModelScope.launch {
+            container.settings.saveAutoSwitchRoles(lan, url)
+            uiState = uiState.copy(lanPresetUrl = lan, wanPresetUrl = url)
+        }
+    }
+
+    /** 保存探测地址覆盖值；留空 = 跟随「家里」预设地址 */
+    fun saveProbe(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isNotEmpty() && !ServerAddressRules.isValid(trimmed)) {
+            uiState = uiState.copy(probeError = "地址格式不正确，请填写 http:// 或 https:// 开头的完整地址")
+            return
+        }
+        val value = if (trimmed.isEmpty()) "" else ServerAddressRules.normalize(trimmed).orEmpty()
+        viewModelScope.launch {
+            container.settings.saveProbeUrlOverride(value)
+            uiState = uiState.copy(
+                probeUrlOverride = value,
+                probeError = null,
+                notice = if (value.isEmpty()) "已恢复为探测「家里」预设的地址" else "探测地址已更新",
+            )
+        }
+    }
+
+    /** 设置页「立即检测」：强制跑一次并给出结果提示 */
+    fun probeNow() {
+        container.autoLoginSwitcher.requestCheck("manual", force = true)
+    }
+
+    private fun usablePresets(): List<ServerPreset> =
+        container.presets.presets.filter { it.canAutoLogin }
+
+    // ---------- 读取路径 ----------
 
     fun refreshDirectories() {
         viewModelScope.launch {
