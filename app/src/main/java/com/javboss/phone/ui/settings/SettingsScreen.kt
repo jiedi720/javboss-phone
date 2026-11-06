@@ -232,18 +232,22 @@ fun SettingsScreen(
                 Spacer(Modifier.height(10.dp))
                 Text("每行卡片数", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    (2..4).forEach { n ->
-                        FilterChip(
-                            selected = state.gridColumns == n,
-                            onClick = { viewModel.setGridColumns(n) },
-                            label = { Text("$n 列") },
-                        )
+                // 6 个选项分两行排，窄屏也不会挤出屏幕；「自动」按屏幕尺寸/方向算，平板更多列
+                listOf(0, 2, 3, 4, 5, 6).chunked(3).forEach { group ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        group.forEach { n ->
+                            FilterChip(
+                                selected = state.gridColumnsChoice == n,
+                                onClick = { viewModel.setGridColumns(n) },
+                                label = { Text(if (n == 0) "自动" else "$n 列") },
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
-                Spacer(Modifier.height(6.dp))
                 Text(
-                    "影响作品墙、女优/片商/系列和收藏夹的列数；列数越多，一屏看到的越多，单张卡片越小",
+                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；选「自动」时按屏幕尺寸与方向计算，" +
+                        "平板和横屏会显示更多列（手机竖屏 2 / 手机横屏 3 / 平板竖屏 4 / 平板横屏 5）。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -261,10 +265,27 @@ fun SettingsScreen(
                     }
                     Switch(checked = state.coverMask, onCheckedChange = viewModel::setCoverMask)
                 }
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("锁屏自动打码", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "手机锁屏时自动给封面糊上毛玻璃，解锁后保持",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = state.autoMaskOnLock,
+                        onCheckedChange = viewModel::setAutoMaskOnLock,
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "另外：App 使用过程中手机锁屏，会自动给封面打码并在解锁后保持；解锁后点列表顶部的「显示封面」即可恢复" +
-                        "（彻底退出 App 再打开则不会自动打码）。",
+                    "关掉后锁屏不再自动打码，已打的码也会立刻解除；「封面毛玻璃」常开仍照常生效。" +
+                        "开启时解锁后点列表顶部的「显示封面」即可恢复（彻底退出 App 再打开不继承）。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

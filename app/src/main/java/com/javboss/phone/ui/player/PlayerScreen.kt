@@ -5,6 +5,7 @@ package com.javboss.phone.ui.player
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.os.Build
 import android.view.SurfaceHolder
@@ -80,6 +81,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -91,6 +93,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
+import com.javboss.phone.data.ScreenRules
 import com.javboss.phone.data.SeekSensitivity
 import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.coverImageModel
@@ -100,10 +103,12 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 手机播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
- * 进入时先竖屏播放：窗口宽度恒等于屏宽（16:9 横向铺满、无左右留白），
+ * 手机 / 平板播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
+ * 手机（以及平板竖屏）进入时先竖屏播放：窗口宽度恒等于屏宽（16:9 横向铺满、无左右留白），
  * 背景是一整张毛玻璃化的封面，按住顶部把手只能上下拖动；
- * 点控件条右侧的全屏按钮才切横屏沉浸；退出播放页恢复进来前的方向。
+ * 点控件条右侧的全屏按钮才切横屏沉浸。
+ * 平板横屏点封面右下角播放钮时直接全屏沉浸，不再强制进竖屏小窗。
+ * 退出播放页恢复进来前的方向。
  * 左上始终可返回，左中打开设置，右中锁定；锁定时只保留返回与解锁。
  */
 @Composable
@@ -117,19 +122,21 @@ fun PlayerScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val state = viewModel.uiState
-    var fullscreen by remember { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    // 平板横屏点封面右下角播放钮：直接全屏沉浸，不再强制进竖屏小窗。
+    // 只在首次组合时算一次；之后用户点全屏 / 退出全屏由 fullscreen 状态自己管。
+    val startFullscreen = remember {
+        ScreenRules.startFullscreen(
+            isTablet = ScreenRules.isTablet(configuration.smallestScreenWidthDp),
+            landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+        )
+    }
+    var fullscreen by remember { mutableStateOf(startFullscreen) }
     val previousOrientation = remember(activity) { activity?.requestedOrientation }
 
     LaunchedEffect(videoId, javCode) { viewModel.load(videoId, javCode) }
 
     DisposableEffect(Unit) {
-        // 进入播放页：先竖屏、窗口横向铺满（不横屏、不隐藏系统栏）
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        activity?.window?.let { window ->
-            WindowCompat.setDecorFitsSystemWindows(window, true)
-            WindowInsetsControllerCompat(window, window.decorView)
-                .show(WindowInsetsCompat.Type.systemBars())
-        }
         onDispose {
             // 离开播放页：结束会话并把最后一段观看时长补报给服务端
             viewModel.stopPlaybackReporter()
@@ -143,7 +150,10 @@ fun PlayerScreen(
         }
     }
 
-    // 只在用户手动切换全屏时改方向/系统栏；DisposableEffect 不随它重启，避免误停时长上报
+    // 首次组合与用户切换全屏时统一设置方向 / 系统栏：
+    // 平板横屏首次 fullscreen 即为 true → 直接 SENSOR_LANDSCAPE + 沉浸；
+    // 手机 / 平板竖屏首次为 false → PORTRAIT + 显示系统栏，仍是竖屏小窗。
+    // DisposableEffect 不随 fullscreen 重启，避免误停时长上报。
     LaunchedEffect(fullscreen) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowInsetsControllerCompat(window, window.decorView)

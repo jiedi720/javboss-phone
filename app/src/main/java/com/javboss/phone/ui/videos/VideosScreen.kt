@@ -50,8 +50,9 @@ import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoCard
+import com.javboss.phone.ui.components.rememberResolvedColumns
 
-/** 视频 tab：两列网格 + 顶栏（与 JAV 页同款排序 / 搜索按钮）+ 下拉刷新 */
+/** 视频 tab：自适应列网格 + 顶栏（与 JAV 页同款排序 / 搜索按钮）+ 下拉刷新 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VideosScreen(
@@ -147,9 +148,9 @@ fun VideosScreen(
                 state.videos.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.videos.isEmpty() && state.error != null -> CenterMessage(state.error)
                 state.videos.isEmpty() -> CenterMessage("没有视频")
-                // 等高行网格：两列严格对齐，不会像瀑布流那样各列独立堆叠、越差越多
+                // 等高行网格：列数与作品 / JAV / 收藏夹共用同一套设置，平板自动更多列
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(rememberResolvedColumns()),
                     state = gridState,
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

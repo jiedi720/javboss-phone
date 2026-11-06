@@ -17,8 +17,6 @@ data class JavListUiState(
     val loading: Boolean = false,
     val loadingMore: Boolean = false,
     val endReached: Boolean = false,
-    /** 卡片墙每行数量，跟随「作品」页的设置 */
-    val columns: Int = 2,
     val error: String? = null,
     val sessionExpired: Boolean = false,
 )
@@ -27,7 +25,7 @@ data class JavListUiState(
 class JavListViewModel(app: Application) : AndroidViewModel(app) {
     private val container = (app as JavBossApp).container
 
-    var uiState by mutableStateOf(JavListUiState(columns = container.settings.gridColumns))
+    var uiState by mutableStateOf(JavListUiState())
         private set
 
     private var idolIds: List<Long> = emptyList()

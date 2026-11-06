@@ -62,6 +62,7 @@ import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.WorkCard
+import com.javboss.phone.ui.components.rememberResolvedColumns
 
 /** 收藏夹 tab：作品收藏夹列表，支持新建/重命名/删除 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -314,7 +315,7 @@ fun FavGroupScreen(
                 state.noMatch -> CenterMessage("没有匹配「${state.search.trim()}」的作品")
                 state.items.isEmpty() -> CenterMessage("收藏夹是空的")
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(state.columns),
+                    columns = GridCells.Fixed(rememberResolvedColumns()),
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),

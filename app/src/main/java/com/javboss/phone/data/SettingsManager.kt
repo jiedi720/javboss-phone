@@ -38,17 +38,20 @@ enum class LaunchTab(val index: Int, val label: String) {
     }
 }
 
-/** 应用设置持久化（播放引擎偏好、拖动 seek 灵敏度、自动切换登录等） */
+/** 应用设置持久化（播放引擎偏好、拖动 seek 灵敏度、列数、封面打码、自动切换登录等） */
 class SettingsManager(private val context: Context) {
 
     private val keyEngineMode = stringPreferencesKey("engine_mode")
     private val keySeekSensitivity = stringPreferencesKey("seek_sensitivity")
+    // 列数「选择值」：0 = 自动（按屏幕尺寸/方向算），2..6 = 手选固定列数
     private val keyGridColumns = stringPreferencesKey("grid_columns")
     private val keyJavSort = stringPreferencesKey("jav_sort")
     private val keyJavSortAsc = booleanPreferencesKey("jav_sort_asc")
     private val keyIdolSort = stringPreferencesKey("idol_sort")
     private val keyIdolSortAsc = booleanPreferencesKey("idol_sort_asc")
     private val keyCoverMask = booleanPreferencesKey("cover_mask")
+    // 锁屏后自动给封面打码的总开关（默认开，保持旧行为）
+    private val keyAutoMaskOnLock = booleanPreferencesKey("auto_mask_on_lock")
     private val keyFavSort = stringPreferencesKey("fav_sort")
     private val keyFavSortAsc = booleanPreferencesKey("fav_sort_asc")
     private val keyFavItemSort = stringPreferencesKey("fav_item_sort")
@@ -69,12 +72,14 @@ class SettingsManager(private val context: Context) {
         private set
 
     /**
-     * 卡片墙每行数量（2/3/4）。用 StateFlow 暴露：
-     * 在设置页改完，已经打开的「作品」页也能立刻跟着变，不用退出重进。
+     * 卡片墙列数的「选择值」：0 = 自动（平板/横屏自动更多列），2..6 = 手选固定列数。
+     * 用 StateFlow 暴露：设置页改完，已经打开的页面立刻跟着变，不用退出重进。
+     * 真正画网格时的实际列数由 `rememberResolvedColumns()` 结合当前 Configuration 解析，
+     * 所以旋转屏幕也会自动重新计算。
      */
-    private val _gridColumns = MutableStateFlow(2)
-    val gridColumnsFlow: StateFlow<Int> = _gridColumns
-    val gridColumns: Int get() = _gridColumns.value
+    private val _gridColumnsChoice = MutableStateFlow(ScreenRules.COLUMNS_AUTO)
+    val gridColumnsChoiceFlow: StateFlow<Int> = _gridColumnsChoice
+    val gridColumnsChoice: Int get() = _gridColumnsChoice.value
 
     /**
      * 封面毛玻璃（常开）。同样是 StateFlow：设置页一开，
@@ -83,6 +88,14 @@ class SettingsManager(private val context: Context) {
     private val _coverMask = MutableStateFlow(false)
     val coverMaskFlow: StateFlow<Boolean> = _coverMask
     val coverMask: Boolean get() = _coverMask.value
+
+    /**
+     * 锁屏后自动给封面打码的总开关。默认开（保持旧行为）；
+     * 关掉后 [PrivacyMask] 的锁屏状态不再参与打码，但「封面毛玻璃」常开仍照常生效。
+     */
+    private val _autoMaskOnLock = MutableStateFlow(true)
+    val autoMaskOnLockFlow: StateFlow<Boolean> = _autoMaskOnLock
+    val autoMaskOnLock: Boolean get() = _autoMaskOnLock.value
 
     /** 上次选用的排序（枚举名 + 升降序），下次打开 App 直接沿用，不回到默认值 */
     @Volatile
@@ -152,8 +165,11 @@ class SettingsManager(private val context: Context) {
         seekSensitivity = prefs[keySeekSensitivity]
             ?.let { runCatching { SeekSensitivity.valueOf(it) }.getOrNull() }
             ?: SeekSensitivity.MEDIUM
-        _gridColumns.value = prefs[keyGridColumns]?.toIntOrNull()?.coerceIn(2, 4) ?: 2
+        _gridColumnsChoice.value = prefs[keyGridColumns]?.toIntOrNull()
+            ?.coerceIn(ScreenRules.COLUMNS_AUTO, ScreenRules.COLUMNS_MAX)
+            ?: ScreenRules.COLUMNS_AUTO
         _coverMask.value = prefs[keyCoverMask] ?: false
+        _autoMaskOnLock.value = prefs[keyAutoMaskOnLock] ?: true
         javSortName = prefs[keyJavSort]
         javSortAsc = prefs[keyJavSortAsc] ?: false
         idolSortName = prefs[keyIdolSort]
@@ -217,9 +233,10 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    /** 列数选择：0 = 自动，2..6 = 手选固定列数 */
     suspend fun saveGridColumns(count: Int) {
-        val clamped = count.coerceIn(2, 4)
-        _gridColumns.value = clamped
+        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, ScreenRules.COLUMNS_MAX)
+        _gridColumnsChoice.value = clamped
         context.settingsDataStore.edit { it[keyGridColumns] = clamped.toString() }
     }
 
@@ -227,6 +244,12 @@ class SettingsManager(private val context: Context) {
     suspend fun saveCoverMask(enabled: Boolean) {
         _coverMask.value = enabled
         context.settingsDataStore.edit { it[keyCoverMask] = enabled }
+    }
+
+    /** 锁屏自动打码：立即生效 + 持久化；关掉后锁屏不再触发打码 */
+    suspend fun saveAutoMaskOnLock(enabled: Boolean) {
+        _autoMaskOnLock.value = enabled
+        context.settingsDataStore.edit { it[keyAutoMaskOnLock] = enabled }
     }
 
     /** 启动显示界面：只在下次冷启动生效，当前会话不跳转，避免把用户从设置页弹走 */

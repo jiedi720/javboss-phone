@@ -1,5 +1,6 @@
 package com.javboss.phone.ui.components
 
+import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,6 +75,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.PrivacyMask
+import com.javboss.phone.data.ScreenRules
 import java.time.LocalDate
 import java.time.Period
 import kotlin.math.roundToInt
@@ -166,7 +169,11 @@ data class CoverMaskState(
  */
 val LocalCoverMask = staticCompositionLocalOf { CoverMaskState() }
 
-/** 当前是否要给封面打码：设置页「封面毛玻璃」常开，或者刚锁过屏（[PrivacyMask]） */
+/**
+ * 当前是否要给封面打码：设置页「封面毛玻璃」常开，或者「锁屏自动打码」开着且刚锁过屏。
+ * 关掉「锁屏自动打码」后，[PrivacyMask] 的锁屏状态不再参与，锁屏不会自动糊封面；
+ * 「封面毛玻璃」常开不受这个开关影响。
+ */
 @Composable
 fun rememberCoverMask(): CoverMaskState {
     val context = LocalContext.current
@@ -174,8 +181,32 @@ fun rememberCoverMask(): CoverMaskState {
         (context.applicationContext as JavBossApp).container.settings
     }
     val alwaysOn by settings.coverMaskFlow.collectAsState()
+    val autoMaskOnLock by settings.autoMaskOnLockFlow.collectAsState()
     val locked by PrivacyMask.locked.collectAsState()
-    return CoverMaskState(masked = alwaysOn || locked, alwaysOn = alwaysOn)
+    return CoverMaskState(
+        masked = alwaysOn || (autoMaskOnLock && locked),
+        alwaysOn = alwaysOn,
+    )
+}
+
+/**
+ * 当前页面实际使用的列数：把设置里的「选择值」（0 = 自动）按屏幕尺寸 / 方向解析。
+ * 用 LocalConfiguration 读取，旋转屏幕会自动重组并重算；平板比手机多列、横屏比竖屏多列。
+ * 视频、JAV（作品 / 过滤列表）、收藏夹内页共用这一份，保证四个网格始终遵循同一套规则。
+ */
+@Composable
+fun rememberResolvedColumns(): Int {
+    val context = LocalContext.current
+    val settings = remember(context) {
+        (context.applicationContext as JavBossApp).container.settings
+    }
+    val choice by settings.gridColumnsChoiceFlow.collectAsState()
+    val configuration = LocalConfiguration.current
+    return ScreenRules.resolveColumns(
+        choice = choice,
+        isTablet = ScreenRules.isTablet(configuration.smallestScreenWidthDp),
+        landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+    )
 }
 
 /**

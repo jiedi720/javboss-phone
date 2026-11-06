@@ -110,8 +110,6 @@ data class WorksUiState(
     val idolsSortAsc: Boolean = false,
     val studios: EntityPage<StudioDto> = EntityPage(),
     val series: EntityPage<SeriesDto> = EntityPage(),
-    /** 卡片墙每行数量（2/3/4），持久化在 SettingsManager */
-    val columns: Int = 2,
     val error: String? = null,
     val sessionExpired: Boolean = false,
 )
@@ -121,7 +119,6 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
 
     var uiState by mutableStateOf(
         WorksUiState(
-            columns = container.settings.gridColumns,
             // 排序沿用上次的选择（本地持久化），不再每次打开都重置成默认
             sort = container.settings.javSortName
                 ?.let { runCatching { JavSortBase.valueOf(it) }.getOrNull() }
@@ -140,12 +137,6 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshWorks()
-        // 每行卡片数在设置页里改，这里跟着流转，改完回作品页立即生效
-        viewModelScope.launch {
-            container.settings.gridColumnsFlow.collect { columns ->
-                if (columns != uiState.columns) uiState = uiState.copy(columns = columns)
-            }
-        }
     }
 
     // ---------- 作品 ----------

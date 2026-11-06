@@ -66,6 +66,7 @@ import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.WorkCard
 import com.javboss.phone.ui.components.idolInfoRows
+import com.javboss.phone.ui.components.rememberResolvedColumns
 
 /**
  * 作品库 tab：作品/女优/片商/系列四个卡片墙视角。
@@ -190,7 +191,7 @@ fun WorksScreen(
             // 瀑布流各列独立堆叠，卡片高度只要差半个像素（列宽除不尽时的取整误差）
             // 就会越差越多，最后出现"最后一列整体偏上、网格对不齐"。
             LazyVerticalGrid(
-                columns = GridCells.Fixed(state.columns),
+                columns = GridCells.Fixed(rememberResolvedColumns()),
                 state = gridState,
                 contentPadding = PaddingValues(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

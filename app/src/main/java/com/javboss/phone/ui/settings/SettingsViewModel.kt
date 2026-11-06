@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.AutoSwitchRules
 import com.javboss.phone.data.LaunchTab
+import com.javboss.phone.data.ScreenRules
 import com.javboss.phone.data.ServerPreset
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.ServerAddressRules
@@ -20,10 +21,12 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     /** 当前登录的服务器地址 */
     val serverUrl: String = "",
-    /** 卡片墙每行数量（2/3/4），与作品/收藏夹共用同一份设置 */
-    val gridColumns: Int = 2,
+    /** 列数选择值：0 = 自动（平板/横屏更多列），2..6 = 手选；四个网格共用同一份设置 */
+    val gridColumnsChoice: Int = 0,
     /** 封面毛玻璃：作品/女优封面一直模糊显示 */
     val coverMask: Boolean = false,
+    /** 锁屏后自动给封面打码；关掉后锁屏不再触发（常开的封面毛玻璃不受影响） */
+    val autoMaskOnLock: Boolean = true,
     /** 冷启动默认进入的 tab（默认 JAV） */
     val launchTab: LaunchTab = LaunchTab.JAV,
     /** 按所在网络自动切换登录：总开关 */
@@ -61,8 +64,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     var uiState by mutableStateOf(
         SettingsUiState(
             serverUrl = container.session.serverUrl,
-            gridColumns = container.settings.gridColumns,
+            gridColumnsChoice = container.settings.gridColumnsChoice,
             coverMask = container.settings.coverMask,
+            autoMaskOnLock = container.settings.autoMaskOnLock,
             launchTab = container.settings.launchTab,
             autoSwitchEnabled = container.settings.autoSwitchEnabled,
             lanPresetUrl = container.settings.lanPresetUrl,
@@ -77,11 +81,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         refreshDirectories()
     }
 
-    /** 每行卡片数：写入设置后，作品页/收藏夹通过 StateFlow 立刻跟着变 */
+    /** 列数选择：0 = 自动；2..6 = 手选。写入设置后四个网格立刻跟着变 */
     fun setGridColumns(count: Int) {
-        val clamped = count.coerceIn(2, 4)
-        if (clamped == uiState.gridColumns) return
-        uiState = uiState.copy(gridColumns = clamped)
+        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, ScreenRules.COLUMNS_MAX)
+        if (clamped == uiState.gridColumnsChoice) return
+        uiState = uiState.copy(gridColumnsChoice = clamped)
         viewModelScope.launch { container.settings.saveGridColumns(clamped) }
     }
 
@@ -90,6 +94,13 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         if (enabled == uiState.coverMask) return
         uiState = uiState.copy(coverMask = enabled)
         viewModelScope.launch { container.settings.saveCoverMask(enabled) }
+    }
+
+    /** 锁屏自动打码：关掉后锁屏不再自动糊封面，已打的码也会立刻解除 */
+    fun setAutoMaskOnLock(enabled: Boolean) {
+        if (enabled == uiState.autoMaskOnLock) return
+        uiState = uiState.copy(autoMaskOnLock = enabled)
+        viewModelScope.launch { container.settings.saveAutoMaskOnLock(enabled) }
     }
 
     /** 启动显示界面：只改设置，不动当前 tab，下次从桌面冷启动才生效 */

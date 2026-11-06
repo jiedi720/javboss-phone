@@ -134,8 +134,6 @@ enum class FavItemSortBase(
 data class FavGroupUiState(
     val items: List<FavoriteItemDto> = emptyList(),
     val loading: Boolean = false,
-    /** 卡片墙每行数量，跟随「作品」页的设置 */
-    val columns: Int = 2,
     /** 番号（大写）→ 该作品的 jav id 与喜爱度，来自 /jav?favorite_group_id= */
     val ratings: Map<String, FavRating> = emptyMap(),
     /** 搜索关键词，按番号 / 标题过滤 */
@@ -184,7 +182,6 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
 
     var uiState by mutableStateOf(
         FavGroupUiState(
-            columns = container.settings.gridColumns,
             sort = container.settings.favItemSortName
                 ?.let { runCatching { FavItemSortBase.valueOf(it) }.getOrNull() }
                 ?: FavItemSortBase.DEFAULT,
