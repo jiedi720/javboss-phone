@@ -94,6 +94,7 @@ fun MainScreen(
                 when (tab) {
                     0 -> VideosScreen(
                         onVideoClick = onOpenDetail,
+                        onPlay = onPlay,
                         onSessionExpired = onSessionExpired,
                     )
                     1 -> WorksScreen(

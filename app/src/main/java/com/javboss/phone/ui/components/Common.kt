@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -201,7 +202,7 @@ fun Modifier.coverFrost(masked: Boolean): Modifier =
  * 观感是毛玻璃；一旦改成 `FilterQuality.None` 就变成硬边马赛克了。
  */
 
-/** 视频卡片：16:9 缩略图 + 标题 + 时长 */
+/** 视频卡片：16:9 缩略图 + 标题 + 时长 + 标签 + 播放钮 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoCard(
@@ -212,8 +213,13 @@ fun VideoCard(
     modifier: Modifier = Modifier,
     /** 服务端统计的该视频累计观看时长；> 0 才在封面右上角显示已观看图标 */
     watchedMs: Long = 0,
+    /** 服务端给视频打的标签名（含作品 jav.tags 合并去重），非空时在封面左上角显示 */
+    tags: List<String> = emptyList(),
+    /** 非 null 时在封面右下角显示与 JAV 卡片同一颗播放钮；点击不进详情，直接起播 */
+    onPlay: (() -> Unit)? = null,
 ) {
     val masked = LocalCoverMask.current.masked
+    val tagNames = tags.filter { it.isNotBlank() }.distinct()
     Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
         Column {
             Box(
@@ -229,7 +235,30 @@ fun VideoCard(
                         .fillMaxSize()
                         .coverFrost(masked),
                 )
+                // 服务端已有观看记录才显示（右上角，与 JAV 卡同一套）
                 WatchedBadge(watchedMs)
+                // 标签：左上角小胶囊，最多列 2 个 + 溢出计数。
+                // 叠在封面上而不是信息栏，卡片高度保持不变（信息栏仍只有一行标题）；
+                // 限宽避免盖住右上角的「已观看」徽标。
+                if (tagNames.isNotEmpty()) {
+                    Text(
+                        text = buildString {
+                            append(tagNames.take(2).joinToString(" · "))
+                            if (tagNames.size > 2) append(" +${tagNames.size - 2}")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .widthIn(max = 120.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0x99000000))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
                 val duration = formatDuration(durationSec)
                 if (duration.isNotEmpty()) {
                     Text(
@@ -237,10 +266,17 @@ fun VideoCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
+                            .align(Alignment.BottomStart)
+                            .padding(6.dp)
                             .background(Color(0x99000000))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
+                }
+                // 与 JAV 卡片同一颗播放钮：右下角，点它直接起播（不进详情）
+                if (onPlay != null) {
+                    Box(Modifier.align(Alignment.BottomEnd)) {
+                        CoverPlayButton(onPlay)
+                    }
                 }
             }
             // 信息栏只保留一行：标题单行省略，卡片不再被「两行标题 + 播放次数行」撑高。

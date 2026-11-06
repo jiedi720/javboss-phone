@@ -45,6 +45,7 @@ import com.javboss.phone.ui.components.VideoCard
 @Composable
 fun VideosScreen(
     onVideoClick: (videoId: Long, code: String?) -> Unit,
+    onPlay: (videoId: Long, code: String?) -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: VideosViewModel = viewModel(),
 ) {
@@ -136,6 +137,14 @@ fun VideosScreen(
                             title = video.displayTitle,
                             durationSec = video.durationSec,
                             watchedMs = video.watchedMs,
+                            // 服务端视频自身 tags + 关联作品 jav.tags，合并去重后给卡片左上角显示
+                            tags = (video.tags + video.jav?.tags.orEmpty())
+                                .distinctBy { tag ->
+                                    if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}"
+                                }
+                                .map { it.name }
+                                .filter { it.isNotBlank() },
+                            onPlay = { onPlay(video.id, video.jav?.code) },
                             onClick = { onVideoClick(video.id, video.jav?.code) },
                         )
                     }
