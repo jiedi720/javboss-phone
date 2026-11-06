@@ -136,8 +136,17 @@
     `PUT .../playback-sessions/{session_id}` 上报「本会话累计真实播放的毫秒数」
     （累计值、单调递增，不是增量）；只有真的在播（非暂停/非缓冲）的时间才计入，
     暂停立即补报一次、退出播放页补报最后一次；服务端回 410 说明会话已回收，
-    自动重建并从新基线继续累计（不会重复记账）。所以手机上看的时长会实时进
-    服务端的统计，详情页的「观看时长」和 Web 端一致
+  自动重建并从新基线继续累计（不会重复记账）。所以手机上看的时长会实时进
+  服务端的统计，详情页的「观看时长」和 Web 端一致
+- **崩溃报告**：全局捕获未捕获异常，把时间 / 版本 / 设备 / ABI / 线程 / 完整堆栈写到应用私有目录
+  （`filesDir/crash_logs/`，最多保留 20 份，不申请权限、不接第三方 SDK、不向服务器上传）；
+  **下次冷启动弹窗**提示「检测到上次闪退」，点「发送到邮箱」一键调起手机邮件 App，
+  收件人 `jiedi720@foxmail.com`、主题与完整堆栈正文已预填，由用户在邮件 App 里确认发送
+  （Android 不允许 App 静默发信，也不内置邮箱账号密码）；发送后记录重命名为 `.txt.sent`
+  不再重复弹窗，点「稍后」则下次启动继续提示
+- **修复视频按文件名 A→Z 排序闪退**：服务端在该排序下会 JOIN 出同一 `id` 的多条记录，
+  `refresh()` 现在和 `loadMore()` 一样先 `distinctBy { it.id }` 去重，
+  避免 `LazyVerticalGrid` 的 `key = { it.id }` 撞重复 key 抛异常崩溃
 
 ## 使用
 
@@ -209,7 +218,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 38`、`versionName = 0.3.34-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 39`、`versionName = 0.3.35-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

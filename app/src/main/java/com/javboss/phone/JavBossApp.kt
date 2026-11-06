@@ -6,6 +6,7 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.javboss.phone.data.AuthRepository
+import com.javboss.phone.data.CrashReporter
 import com.javboss.phone.data.FavoriteRepository
 import com.javboss.phone.data.PresetManager
 import com.javboss.phone.data.SessionManager
@@ -40,6 +41,8 @@ class JavBossApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // 尽早接管未捕获异常：崩溃时把堆栈落到私有目录，下次启动提示发送
+        CrashReporter.install(this)
         container = AppContainer(this)
         // 恢复上次会话（服务器地址 + Cookie）和设置，字节级数据，阻塞读可接受
         runBlocking {

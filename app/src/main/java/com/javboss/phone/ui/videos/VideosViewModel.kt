@@ -73,11 +73,15 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
             uiState = uiState.copy(loading = true, error = null)
             try {
                 val res = fetch(PAGE_SIZE, 0)
+                // 服务端在「按文件名排序」等不稳定的排序键下会 JOIN 出同一 id 的多条记录，
+                // 直接塞给 LazyVerticalGrid 的 key = { it.id } 会撞重复 key 抛异常闪退。
+                // loadMore() 早就做了同样的去重，这里保持一致。
+                val items = res.items.distinctBy { it.id }
                 uiState = uiState.copy(
-                    videos = res.items,
+                    videos = items,
                     total = res.total,
                     loading = false,
-                    endReached = res.items.size >= res.total,
+                    endReached = items.size >= res.total,
                 )
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
