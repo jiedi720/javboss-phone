@@ -154,6 +154,17 @@
 - **修复视频按文件名 A→Z 排序闪退**：服务端在该排序下会 JOIN 出同一 `id` 的多条记录，
   `refresh()` 现在和 `loadMore()` 一样先 `distinctBy { it.id }` 去重，
   避免 `LazyVerticalGrid` 的 `key = { it.id }` 撞重复 key 抛异常崩溃
+- **修复「视频 tab 偶尔混进 JAV 文件、重启 App 才好」**：读取服务端 `GET /config` 的
+  `video_hide_jav` 时若发生瞬时失败，旧逻辑用 `getOrDefault(false)` 把结果当成
+  「服务端没开隐藏」并写进**进程内缓存**，之后所有 `/videos` 都不带 `hide_jav=1`，
+  已关联 JAV 的视频就被列出来；缓存只在进程内，只有杀掉 App 重启才会重读配置，
+  这就是「不知道什么时候冒出 JAV 文件、重启就好了」的根因。
+  现在配置改成三态：只有成功解析到明确值才缓存，请求失败 / 字段缺失 / 值不认识一律返回
+  「未知」且**不缓存**；`VideosViewModel` 在未知时每次刷新都重试配置，
+  读不到明确值之前一律按隐藏 JAV 请求（保守发 `hide_jav=1`），既不会把 JAV 文件放出来，
+  配置恢复后下一次刷新也会自动纠正，无需重启。同时把 `hideJav` 初值从 `false` 改成「未知」，
+  消除启动时异步读配置完成前被并发刷新（标签变更信号 / 下拉刷新）撞出不带 `hide_jav`
+  请求的窗口。解析规则由 `VideoHideJavTest` 锁死「未知绝不等于 false」
 - **标签编辑（两套体系严格分开）**：服务端视频标签（`GET/POST /tags` → `video.tags`）
   与 JAV 自定义标签（`GET/POST /jav/tags` → `jav.tags`）是**互不相通的两套数据**，
   同一个勾选弹窗按 `TagPickerMode` 分流，绝不混用接口：
@@ -238,7 +249,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 41`、`versionName = 0.3.37-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 42`、`versionName = 0.3.38-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

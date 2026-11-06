@@ -18,8 +18,29 @@ import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.data.api.dto.VideoListResponse
 import com.javboss.phone.data.api.dto.VideoTagsReplaceRequest
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import retrofit2.HttpException
+
+/**
+ * 解析服务端 `config.video_hide_jav`。
+ *
+ * 返回 null 表示「这次没读到明确配置」（字段缺失 / 类型不对 / 值不认识）。
+ * 调用方**绝不能把 null 当成 false**：false 会让 /videos 不带 `hide_jav=1`，
+ * 服务端就把已关联 JAV 的视频也返回，视频 tab 里就混进 JAV 文件了。
+ *
+ * 服务端可能把布尔存成字符串 "true"/"false"，也可能直接给 JSON bool 或数字，
+ * 统一按 JsonPrimitive.content 的文本判断；无法识别的值一律算未知，不猜。
+ */
+fun parseVideoHideJav(raw: JsonElement?): Boolean? {
+    val text = (raw as? JsonPrimitive)?.content ?: return null
+    return when {
+        text.equals("true", ignoreCase = true) || text == "1" -> true
+        text.equals("false", ignoreCase = true) || text == "0" -> false
+        else -> null
+    }
+}
 
 /** 可直接播放的源地址 + 本次命中的文件位置（观看时长要按位置归账） */
 data class PlayableSource(
@@ -32,18 +53,26 @@ class VideoRepository(private val apiClient: ApiClient) {
     /**
      * 服务端是否开启了「视频页隐藏已关联 JAV 的视频」（config.video_hide_jav）。
      * 用户的服务端默认是 true —— 也就是 Web 的视频页只列普通视频，JAV 只从「作品」进。
-     * 值只取一次并缓存，避免每次翻页都打一次 /config。
+     *
+     * 只在**成功读到明确值**时写缓存（避免每次翻页都打 /config）；
+     * `GET /config` 瞬时失败、字段缺失或值不认识时返回 null 且**不写缓存**，
+     * 下次调用会重新读配置自行纠正，不必杀掉 App 重启。
+     *
+     * 这里以前用 `runCatching{...}.getOrDefault(false)` 并缓存结果：一次网络抖动就会被
+     * 永久记成 false，之后所有 /videos 都不带 hide_jav=1，把 JAV 关联视频全列出来，
+     * 且缓存只在进程内，只有重启 App 才恢复 —— 就是「偶尔视频里冒出 JAV、重启就好」的根因。
      */
     private var hideJavCache: Boolean? = null
 
-    suspend fun videosHideJav(): Boolean {
+    /** 返回 null = 配置未知（未读到 / 失败），调用方需保守处理并允许重试 */
+    suspend fun videosHideJav(): Boolean? {
         hideJavCache?.let { return it }
-        val value = runCatching {
-            val raw = apiClient.api().getConfig()["video_hide_jav"]
-            val text = (raw as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return@runCatching false
-            text.equals("true", ignoreCase = true) || text == "1"
-        }.getOrDefault(false)
-        hideJavCache = value
+        val value = try {
+            parseVideoHideJav(apiClient.api().getConfig()["video_hide_jav"])
+        } catch (e: Exception) {
+            null
+        }
+        if (value != null) hideJavCache = value
         return value
     }
 
@@ -192,9 +221,10 @@ class VideoRepository(private val apiClient: ApiClient) {
      * 视频标签可选项（GET /tags?hide_jav=<config>），与 /jav/tags 是两套数据。
      * Web 端 Rr({hideJav: videoHideJav}) 会按服务端 video_hide_jav 配置传参，
      * 开启时把只挂在 JAV 上的标签从视频标签列表里排除，避免两套标签混在一起。
+     * 配置未知（/config 失败）时保守按 1 请求，宁可少列也不把 JAV 标签混进来。
      */
     suspend fun listVideoTags(): List<TagDto> =
-        apiClient.api().listVideoTags(hideJav = if (videosHideJav()) 1 else 0)
+        apiClient.api().listVideoTags(hideJav = if (videosHideJav() ?: true) 1 else 0)
 
     /** 新建视频标签（POST /tags，不是 /jav/tags） */
     suspend fun createVideoTag(name: String): TagDto =

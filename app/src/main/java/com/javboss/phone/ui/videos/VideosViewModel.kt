@@ -10,6 +10,7 @@ import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.VideoTagEvents
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.VideoDto
+import com.javboss.phone.data.api.dto.VideoListResponse
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,31 +53,39 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 「视频」页只列普通视频：服务端 config.video_hide_jav 为 true 时，
      * 已关联 JAV 的视频只在「作品」里出现（Web 端同一个开关、同一个请求参数）。
+     *
+     * null = 配置还没读到（启动中 / `GET /config` 瞬时失败）。初值必须是 null 而不是
+     * false：init 里异步读配置完成前，标签变更信号或下拉刷新都可能并发触发 refresh，
+     * 若初值是 false 就会发出不带 hide_jav 的请求，把 JAV 文件带进第一屏。
      */
-    private var hideJav = false
+    private var hideJav: Boolean? = null
 
     init {
-        // 先取服务端配置再拉列表，否则第一屏会把 JAV 视频也带出来
-        viewModelScope.launch {
-            hideJav = runCatching { container.videoRepository.videosHideJav() }.getOrDefault(false)
-            refresh()
-        }
+        viewModelScope.launch { refresh() }
         // 详情页保存视频标签后，列表卡片左上角的标签要跟着更新
         viewModelScope.launch {
             VideoTagEvents.changes.collect { refresh() }
         }
     }
 
-    private suspend fun fetch(limit: Int, offset: Int) =
-        container.videoRepository.listVideos(
+    /**
+     * 每次拉取都确保配置已确定：未知时重新读一次 /config（成功即写入 repository 缓存，
+     * 之后不再打）。在读到明确值之前一律按「隐藏 JAV」请求 —— 宁可暂时少列，也不能因为
+     * 一次网络抖动把 JAV 关联视频放进视频 tab；配置恢复后下一次刷新自动纠正，无需重启 App。
+     */
+    private suspend fun fetch(limit: Int, offset: Int): VideoListResponse {
+        // 配置未知时每次拉取都重试一次 /config；成功即写缓存，之后不再打。
+        if (hideJav == null) hideJav = container.videoRepository.videosHideJav()
+        return container.videoRepository.listVideos(
             limit = limit,
             offset = offset,
             search = uiState.search,
             sort = uiState.sort.value,
-            hideJav = hideJav,
+            hideJav = hideJav ?: true,
             directoryId = uiState.directoryId,
             subdirectory = uiState.subdirectory.ifBlank { null },
         )
+    }
 
     fun refresh() {
         viewModelScope.launch {
