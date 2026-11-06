@@ -32,7 +32,10 @@
     封面**左下角显示时长**、**右下角是与 JAV 卡片同一颗播放钮**（点它直接起播，不进详情）、
     **左上角显示服务端标签**（视频自身 `tags` 与作品 `jav.tags` 合并去重，最多 2 个 + 溢出计数，
     叠在封面上、信息栏仍只有一行标题）；
-    缩略图**同样受「封面毛玻璃」/ 锁屏自动打码控制**；无限加载、搜索、排序、下拉刷新。
+    缩略图**同样受「封面毛玻璃」/ 锁屏自动打码控制**；无限加载、下拉刷新；
+    **顶栏与 JAV 界面对齐**：左边保留本页标题，右边是与 JAV 同一套紧凑图标按钮
+    「排序 / 筛选」（点开底部菜单列出 8 个排序值）与「搜索」（点开才展开输入框，收起时清空），
+    不再使用常驻搜索框与下拉排序框。
     **只列普通视频**：服务端 `config.video_hide_jav` 为 true 时（默认）请求带 `hide_jav=1`，
     已关联 JAV 的视频只在「作品」里出现，与 Web 端同一个开关
   - **JAV**：JAV 作品库，四个卡片墙视角（JAV/女优/片商/系列），**等高行网格**（不是瀑布流：
@@ -206,7 +209,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 37`、`versionName = 0.3.33-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 38`、`versionName = 0.3.34-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

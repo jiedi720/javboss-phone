@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -998,6 +999,33 @@ fun SortList(
             "点一下切换排序维度，再点一次切换方向",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 顶栏紧凑图标按钮：32dp 触控区，避免 IconButton 默认 48dp 把左侧内容挤到截断。
+ * JAV 页（ui/works/WorksScreen.kt 里的同款私有实现）与视频页共用这一套外观，
+ * 保证右上角「排序 / 搜索」按钮一致；改动外观时请两处同步。
+ */
+@Composable
+fun CompactIconButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector,
+            contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
