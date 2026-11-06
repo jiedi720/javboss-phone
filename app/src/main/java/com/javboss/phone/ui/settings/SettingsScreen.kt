@@ -243,8 +243,8 @@ fun SettingsScreen(
                 Spacer(Modifier.height(10.dp))
                 Text("每行卡片数", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(8.dp))
-                // 6 个选项分两行排，窄屏也不会挤出屏幕；0 = 按窗口宽度自动
-                listOf(0, 2, 3, 4, 5, 6).chunked(3).forEach { group ->
+                // 9 个选项分三行排，窄屏也不会挤出屏幕；0 = 按窗口宽度自动
+                listOf(0, 2, 3, 4, 5, 6, 7, 8).chunked(3).forEach { group ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         group.forEach { n ->
                             FilterChip(
@@ -258,8 +258,9 @@ fun SettingsScreen(
                 }
                 Text(
                     "影响视频、作品墙、女优/片商/系列和收藏夹的列数；「自动」按当前应用窗口实际" +
-                        "可用宽度动态算列数，旋转、分屏、自由窗口缩放时实时重算，卡片不会小于最小宽度。" +
-                        "手选值只作为上限，窗口变窄时列数会自动收缩。",
+                        "可用宽度动态算列数，旋转、分屏、自由窗口缩放时实时重算。" +
+                        "手选 2..8 列就是固定列数（选 N 就排 N 列），不受自动档最小卡宽限制；" +
+                        "仅当窗口实在放不下时才自动收敛。视频页在此基础上恒少一列。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

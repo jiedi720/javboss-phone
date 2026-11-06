@@ -93,6 +93,14 @@ object WindowSizeRules {
     /** 竖版封面卡（2:3 / 100:143.1）的最小宽度 */
     const val CARD_MIN_WIDTH_DP = 150
 
+    /**
+     * 手选固定列数时允许的卡片硬下限。
+     * 自动档用 150dp 保证「看着舒服」，但用户明确选了 6/7/8 列时若还按 150dp 算，
+     * 平板横屏 959dp 只够排 5 列，设置里的 5 / 6 列就形同虚设。
+     * 手选是显式意图，放宽到 100dp：窗口真放不下才收敛，否则按用户选的列数排。
+     */
+    const val MANUAL_CARD_MIN_WIDTH_DP = 100
+
     /** 横向视频卡（16:9）的最小宽度：更宽才看得清标题与角标。
      *  视频页不再用它单独算列数，改由 [videoGridColumns] 恒比 JAV 少一列；
      *  此值保留给 [gridColumns] 的通用参数能力与对应单测。 */
@@ -153,7 +161,9 @@ object WindowSizeRules {
      * @param windowWidthDp 当前应用窗口实际可用宽度
      * @param reservedDp 被 NavigationRail / 侧栏占掉的宽度
      * @param minCardWidthDp 该网格卡片的最小宽度（竖封面用 [CARD_MIN_WIDTH_DP]，16:9 视频用 [WIDE_CARD_MIN_WIDTH_DP]）
-     * @param choice 用户在设置里手选的列数（0 = 自动）；手选值只作为上限，实际列数仍随窗口收缩
+     * @param choice 用户在设置里手选的列数（0 = 自动）；手选值是**目标列数**（选 N 就排 N 列），
+     *   不再只当上限。仅当窗口按 [MANUAL_CARD_MIN_WIDTH_DP] 也放不下 N 列时才收敛，
+     *   否则平板横屏自动只有 5 列时选 6 列仍被钳成 5，设置项没有意义。
      */
     fun gridColumns(
         windowWidthDp: Int,
@@ -173,7 +183,12 @@ object WindowSizeRules {
         val available = (effectiveWidth - padding * 2).coerceAtLeast(minCard)
         val dynamic = ((available + spacing) / (minCard + spacing))
             .coerceIn(1, GRID_MAX_COLUMNS)
-        return if (choice > 0) dynamic.coerceAtMost(choice.coerceIn(1, GRID_MAX_COLUMNS)) else dynamic
+        if (choice <= 0) return dynamic
+        // 手选：按更宽松的硬下限算出窗口最多能塞几列，取「用户选的列数」与它的较小值。
+        // 自动档仍用 minCardWidthDp（150dp）算，保持原来的动态观感。
+        val maxFitting = ((available + spacing) / (MANUAL_CARD_MIN_WIDTH_DP + spacing))
+            .coerceIn(1, GRID_MAX_COLUMNS)
+        return choice.coerceIn(1, GRID_MAX_COLUMNS).coerceAtMost(maxFitting)
     }
 
     /**

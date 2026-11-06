@@ -144,13 +144,27 @@ class WindowSizeRulesTest {
     }
 
     @Test
-    fun `manual column choice acts as an upper bound only`() {
-        val auto = WindowSizeRules.gridColumns(1067, reservedDp = 80, choice = 0)
-        val manual = WindowSizeRules.gridColumns(1067, reservedDp = 80, choice = 3)
-        assertEquals(3, manual)
-        assertTrue("手选值不能超过窗口能容纳的列数", manual <= auto)
-        // 窄窗口下手选 6 列也必须收缩，卡片不能窄于最小宽度
-        assertTrue(WindowSizeRules.gridColumns(360, choice = 6) <= 2)
+    fun `manual column choice is the target count not just an upper bound`() {
+        // 平板横屏 959dp：自动档按 150dp 最小卡宽只算出 5 列，
+        // 手选 6 / 7 列必须真的排 6 / 7 列，否则设置里的 5 / 6 列形同虚设。
+        val width = 959
+        val auto = WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 0)
+        assertEquals(5, auto)
+        assertEquals(6, WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 6))
+        assertEquals(7, WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 7))
+        // 手选超过窗口能容纳的列数时按 100dp 硬下限收敛，且不超过硬上限
+        assertTrue(
+            WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 8) <=
+                WindowSizeRules.GRID_MAX_COLUMNS,
+        )
+        // 窄窗口下手选 8 列也必须收缩，卡片不能窄于手选硬下限
+        assertTrue(WindowSizeRules.gridColumns(360, choice = 8) <= 3)
+    }
+
+    @Test
+    fun `manual eight columns are reachable on a wide window`() {
+        assertEquals(8, WindowSizeRules.gridColumns(1200, reservedDp = 80, choice = 8))
+        assertEquals(7, WindowSizeRules.videoGridColumns(8))
     }
 
     @Test
@@ -218,8 +232,8 @@ class WindowSizeRulesTest {
     }
 
     @Test
-    fun `manual column cap keeps video one behind jav`() {
-        // 手选上限把 JAV 钳到 3 列时，视频必须是 2 列，不能被钳成跟 JAV 一样
+    fun `manual column target keeps video one behind jav`() {
+        // 手选目标列数把 JAV 定到 3 列时，视频必须是 2 列，不能被钳成跟 JAV 一样
         val jav = WindowSizeRules.gridColumns(1067, reservedDp = 80, choice = 3)
         assertEquals(3, jav)
         assertEquals(2, WindowSizeRules.videoGridColumns(jav))

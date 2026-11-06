@@ -166,7 +166,7 @@ class SettingsManager(private val context: Context) {
             ?.let { runCatching { SeekSensitivity.valueOf(it) }.getOrNull() }
             ?: SeekSensitivity.MEDIUM
         _gridColumnsChoice.value = prefs[keyGridColumns]?.toIntOrNull()
-            ?.coerceIn(ScreenRules.COLUMNS_AUTO, ScreenRules.COLUMNS_MAX)
+            ?.coerceIn(ScreenRules.COLUMNS_AUTO, WindowSizeRules.GRID_MAX_COLUMNS)
             ?: ScreenRules.COLUMNS_AUTO
         _coverMask.value = prefs[keyCoverMask] ?: false
         _autoMaskOnLock.value = prefs[keyAutoMaskOnLock] ?: true
@@ -235,7 +235,7 @@ class SettingsManager(private val context: Context) {
 
     /** 列数选择：0 = 自动，2..6 = 手选固定列数 */
     suspend fun saveGridColumns(count: Int) {
-        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, ScreenRules.COLUMNS_MAX)
+        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, WindowSizeRules.GRID_MAX_COLUMNS)
         _gridColumnsChoice.value = clamped
         context.settingsDataStore.edit { it[keyGridColumns] = clamped.toString() }
     }

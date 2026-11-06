@@ -11,6 +11,7 @@ import com.javboss.phone.data.AutoSwitchRules
 import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.ScreenRules
 import com.javboss.phone.data.ServerPreset
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.ServerAddressRules
 import com.javboss.phone.data.api.dto.DirectoryCreateRequest
@@ -21,7 +22,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     /** 当前登录的服务器地址 */
     val serverUrl: String = "",
-    /** 列数选择值：0 = 自动（平板/横屏更多列），2..6 = 手选；四个网格共用同一份设置 */
+    /** 列数选择值：0 = 自动（按窗口宽度动态算），2..8 = 手选固定列数；四个网格共用同一份设置 */
     val gridColumnsChoice: Int = 0,
     /** 封面毛玻璃：作品/女优封面一直模糊显示 */
     val coverMask: Boolean = false,
@@ -83,7 +84,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 列数选择：0 = 自动；2..6 = 手选。写入设置后四个网格立刻跟着变 */
     fun setGridColumns(count: Int) {
-        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, ScreenRules.COLUMNS_MAX)
+        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, WindowSizeRules.GRID_MAX_COLUMNS)
         if (clamped == uiState.gridColumnsChoice) return
         uiState = uiState.copy(gridColumnsChoice = clamped)
         viewModelScope.launch { container.settings.saveGridColumns(clamped) }

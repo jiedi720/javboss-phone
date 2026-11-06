@@ -180,8 +180,8 @@ fun DetailScreen(
             state.loading -> CenterMessage("加载中…", Modifier.padding(padding))
             state.error != null -> CenterMessage(state.error, Modifier.padding(padding))
             else -> {
-                // 当前应用窗口足够宽时左右双栏：左边封面 + 基本信息 + 操作，
-                // 右边文件版本 / 元数据 / 标签 / 样品图 / 截图，两栏各自独立滚动。
+                // 当前应用窗口足够宽时左右双栏：左边封面 + 基本信息 + 操作 + 文件版本与路径，
+                // 右边元数据 / 标签 / 样品图 / 截图，两栏各自独立滚动。
                 // 窄窗口（手机、窄分屏、窄自由窗口）仍走原来的单栏，排版与行为完全不变。
                 val body = DetailBodyParams(
                     state = state,
@@ -789,7 +789,7 @@ private class DetailBodyParams(
     val onFileMenu: (VideoDto) -> Unit,
 )
 
-/** 左栏（双栏）/ 顶部（单栏）：封面 + 基本信息 + 播放 / 收藏 / 编辑 */
+/** 左栏（双栏）/ 顶部（单栏）：封面 + 基本信息 + 播放 / 收藏 / 编辑 + 文件版本与完整路径 */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
@@ -797,6 +797,7 @@ private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
     val viewModel = p.viewModel
     val jav = state.javMeta
     val video = state.video
+    val files = state.files
     val title = p.title
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
@@ -820,12 +821,6 @@ private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
                             )
                         }
                     },
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "点击查看完整封面",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.width(16.dp))
@@ -886,21 +881,6 @@ private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
         }
     }
 
-}
-
-/** 右栏（双栏）/ 下方（单栏）：文件版本、片商系列、演员、标签、外链、样品图、截图 */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
-@Composable
-private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
-    val state = p.state
-    val viewModel = p.viewModel
-    val jav = state.javMeta
-    val video = state.video
-    val files = state.files
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    fun showPreview(items: List<PreviewItem>, index: Int) =
-        p.onPreview(PreviewState(items = items, index = index))
     // 文件：一部作品可能对应多个文件版本，逐个列出文件名 + 完整路径（可长按复制）
     if (files.isNotEmpty()) {
         Spacer(Modifier.height(16.dp))
@@ -974,6 +954,21 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
             modifier = Modifier.padding(top = 6.dp),
         )
     }
+
+}
+
+/** 右栏（双栏）/ 下方（单栏）：片商系列、演员、标签、外链、样品图、截图 */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
+    val state = p.state
+    val viewModel = p.viewModel
+    val jav = state.javMeta
+    val video = state.video
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun showPreview(items: List<PreviewItem>, index: Int) =
+        p.onPreview(PreviewState(items = items, index = index))
 
     // 片商 / 系列（可点击）
     val studio = jav?.studio
