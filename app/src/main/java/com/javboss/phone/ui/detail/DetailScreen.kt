@@ -131,6 +131,8 @@ fun DetailScreen(
     val scope = rememberCoroutineScope()
     var showFavorite by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
+    // 编辑视频自身标签（与作品标签分开，普通视频也能用）
+    var showVideoTags by remember { mutableStateOf(false) }
     // 长按文件卡片 → 操作面板；再从中进入重命名 / 删除确认
     var fileMenuTarget by remember { mutableStateOf<VideoDto?>(null) }
     var renameTarget by remember { mutableStateOf<VideoDto?>(null) }
@@ -389,21 +391,39 @@ fun DetailScreen(
                 }
 
                 // 标签（可点击）：服务端视频自身 tags + 作品 jav.tags，合并去重后一起展示，
-                // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签
+                // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签；
+                // 只要有关联视频就提供「编辑视频标签」入口，空标签时也能新增
                 val tags = (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
                     .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" }
-                if (tags.isNotEmpty()) {
+                if (video != null) {
                     Spacer(Modifier.height(16.dp))
-                    Text("标签", style = MaterialTheme.typography.labelLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "标签",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { showVideoTags = true }) {
+                            Text("编辑视频标签")
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        tags.forEach { tag ->
-                            AssistChip(
-                                onClick = {
-                                    onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
-                                },
-                                label = { Text(tag.name) },
-                            )
+                    if (tags.isEmpty()) {
+                        Text(
+                            "暂无标签，点「编辑视频标签」添加",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            tags.forEach { tag ->
+                                AssistChip(
+                                    onClick = {
+                                        onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
+                                    },
+                                    label = { Text(tag.name) },
+                                )
+                            }
                         }
                     }
                 }
@@ -525,6 +545,14 @@ fun DetailScreen(
             jav = jav,
             viewModel = viewModel,
             onDismiss = { showEdit = false },
+        )
+    }
+    if (showVideoTags && video != null) {
+        VideoTagsDialog(
+            videoId = video.id,
+            currentTags = video.tags,
+            viewModel = viewModel,
+            onDismiss = { showVideoTags = false },
         )
     }
 

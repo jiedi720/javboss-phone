@@ -17,6 +17,7 @@ import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.data.api.dto.VideoListResponse
+import com.javboss.phone.data.api.dto.VideoTagsReplaceRequest
 import kotlinx.serialization.json.jsonArray
 import retrofit2.HttpException
 
@@ -182,6 +183,18 @@ class VideoRepository(private val apiClient: ApiClient) {
     /** 全量替换一批作品的标签（勾选保存语义） */
     suspend fun replaceJavTags(javIds: List<Long>, tagIds: List<Long>) =
         apiClient.api().replaceJavTags(JavTagsReplaceRequest(javIds, tagIds))
+
+    /** 视频标签可选项（GET /tags），与 /jav/tags 是两套数据 */
+    suspend fun listVideoTags(): List<TagDto> =
+        apiClient.api().listVideoTags()
+
+    /** 新建视频标签（POST /tags，不是 /jav/tags） */
+    suspend fun createVideoTag(name: String): TagDto =
+        apiClient.api().createVideoTag(TagNameRequest(name))
+
+    /** 全量替换单个视频的标签；tagIds 为空即清空该视频的全部标签 */
+    suspend fun replaceVideoTags(videoId: Long, tagIds: List<Long>) =
+        apiClient.api().replaceVideoTags(VideoTagsReplaceRequest(listOf(videoId), tagIds))
 
     /** 编辑作品信息，仅传入需要修改的字段；返回更新后的作品 */
     suspend fun updateJavItem(id: Long, request: JavItemUpdateRequest): JavDto =

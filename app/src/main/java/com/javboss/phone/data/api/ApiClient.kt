@@ -35,6 +35,7 @@ import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.data.api.dto.VideoLocationRenameRequest
 import com.javboss.phone.data.api.dto.VideoListResponse
+import com.javboss.phone.data.api.dto.VideoTagsReplaceRequest
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -180,6 +181,19 @@ interface JavBossApi {
 
     @GET("jav/tags")
     suspend fun listJavTags(): List<TagDto>
+
+    /**
+     * 视频标签（与 /jav/tags 是两套独立数据）：GET /tags 列出可勾选标签，
+     * POST /tags 新建，POST /videos/tags/replace 全量替换某个视频的标签。
+     */
+    @GET("tags")
+    suspend fun listVideoTags(@Query("hide_jav") hideJav: Int? = null): List<TagDto>
+
+    @POST("tags")
+    suspend fun createVideoTag(@Body body: TagNameRequest): TagDto
+
+    @POST("videos/tags/replace")
+    suspend fun replaceVideoTags(@Body body: VideoTagsReplaceRequest)
 
     // ---------- 收藏夹（作品实体） ----------
 

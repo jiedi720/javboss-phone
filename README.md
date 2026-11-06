@@ -105,7 +105,9 @@
   **重命名 / 删除文件**——后两者走 `PATCH`/`DELETE /videos/{id}/locations/{locationId}`，
   服务端会同步改/删磁盘上的真实文件（删除有二次确认且不可撤销），成功后原地刷新详情页；
   片商/系列/演员/标签均可点击跳转到对应过滤作品列表；外部链接直达 JavDB；
-  操作栏含播放、收藏（勾选收藏夹 + 新建收藏夹）、编辑（标题/发行日期/时长/片商/系列/演员/标签，支持新建标签）
+  操作栏含播放、收藏（勾选收藏夹 + 新建收藏夹）、编辑（标题/发行日期/时长/片商/系列/演员/标签，支持新建标签，
+  这里改的是**作品标签**）；标签区另有**「编辑视频标签」**入口，改的是 `video.tags`（详见下条），
+  **普通视频没有 JAV 元数据也能改**，空标签时同样能进入添加
 - **播放**：统一播放页 + 双引擎（引擎只负责解码渲染，页面和控制条只有一套，
   自绘控制条点按显隐：播放/暂停、进度拖动、时间、全屏、缓冲指示；当前引擎标识只在全屏显示，
   竖屏控制条保持紧凑，把宽度让给进度条），
@@ -147,6 +149,12 @@
 - **修复视频按文件名 A→Z 排序闪退**：服务端在该排序下会 JOIN 出同一 `id` 的多条记录，
   `refresh()` 现在和 `loadMore()` 一样先 `distinctBy { it.id }` 去重，
   避免 `LazyVerticalGrid` 的 `key = { it.id }` 撞重复 key 抛异常崩溃
+- **视频标签编辑**：服务端视频标签与作品标签是两套独立数据（`GET/POST /tags` 对应
+  `video.tags`，`GET/POST /jav/tags` 对应 `jav.tags`）。详情页标签区点「编辑视频标签」
+  打开勾选弹窗，可勾选 / 取消 / **新建标签**（`POST /tags`），保存走
+  `POST /videos/tags/replace {video_ids, tag_ids}` **全量替换**（传空数组即清空），
+  对齐 Web 端视频列表「编辑标签」的行为；保存成功后详情页原地刷新，并通过进程内信号
+  通知视频 tab 自动刷新，卡片左上角的标签同步更新
 
 ## 使用
 
@@ -218,7 +226,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 39`、`versionName = 0.3.35-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 40`、`versionName = 0.3.36-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

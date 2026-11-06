@@ -356,6 +356,17 @@ data class JavTagsReplaceRequest(
     @SerialName("tag_ids") val tagIds: List<Long>,
 )
 
+/**
+ * 视频标签全量替换：Web 端视频列表「编辑标签」用的就是
+ * POST /videos/tags/replace，tag_ids 传空数组即清空该视频的全部标签。
+ * 注意与 /jav/tags 是两套标签，不能混用。
+ */
+@Serializable
+data class VideoTagsReplaceRequest(
+    @SerialName("video_ids") val videoIds: List<Long>,
+    @SerialName("tag_ids") val tagIds: List<Long>,
+)
+
 // ---------- 作品编辑（PUT /jav/items/{id}），全部字段可选 ----------
 
 @Serializable

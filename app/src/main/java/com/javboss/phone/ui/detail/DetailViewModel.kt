@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.VideoTagEvents
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.IdolDto
@@ -264,6 +265,32 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(notice = "保存失败：${e.message ?: "未知错误"}")
+            }
+        }
+    }
+
+    // ---------- 视频标签编辑（与作品标签分开） ----------
+
+    /** 视频标签可选项（GET /tags），与 /jav/tags 是两套独立数据 */
+    suspend fun loadVideoTagOptions(): List<TagDto> =
+        runCatching { container.videoRepository.listVideoTags() }.getOrDefault(emptyList())
+
+    /** 新建视频标签（POST /tags，不是 /jav/tags） */
+    suspend fun createVideoTag(name: String): TagDto =
+        container.videoRepository.createVideoTag(name)
+
+    /** 全量替换当前视频的标签；成功后原地刷新详情页并通知列表页刷新 */
+    fun saveVideoTags(videoId: Long, tagIds: List<Long>) {
+        viewModelScope.launch {
+            try {
+                container.videoRepository.replaceVideoTags(videoId, tagIds)
+                uiState = uiState.copy(notice = "视频标签已保存")
+                VideoTagEvents.notifyChanged()
+                load(loadedVideoId, loadedJavCode)
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(notice = "视频标签保存失败：${e.message ?: "网络异常"}")
             }
         }
     }
