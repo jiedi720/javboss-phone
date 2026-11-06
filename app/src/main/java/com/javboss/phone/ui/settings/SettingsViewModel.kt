@@ -9,9 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.AutoSwitchRules
 import com.javboss.phone.data.LaunchTab
-import com.javboss.phone.data.ScreenRules
 import com.javboss.phone.data.ServerPreset
-import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.ServerAddressRules
 import com.javboss.phone.data.api.dto.DirectoryCreateRequest
@@ -22,8 +20,10 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     /** 当前登录的服务器地址 */
     val serverUrl: String = "",
-    /** 列数选择值：0 = 自动（按窗口宽度动态算），2..8 = 手选固定列数；四个网格共用同一份设置 */
-    val gridColumnsChoice: Int = 0,
+    /** 竖屏列数选择值：0 = 自动（3 列），可选 2 / 3 */
+    val portraitColumnsChoice: Int = 0,
+    /** 横屏列数选择值：0 = 自动（6 列），可选 5 / 6 */
+    val landscapeColumnsChoice: Int = 0,
     /** 封面毛玻璃：作品/女优封面一直模糊显示 */
     val coverMask: Boolean = false,
     /** 锁屏后自动给封面打码；关掉后锁屏不再触发（常开的封面毛玻璃不受影响） */
@@ -65,7 +65,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     var uiState by mutableStateOf(
         SettingsUiState(
             serverUrl = container.session.serverUrl,
-            gridColumnsChoice = container.settings.gridColumnsChoice,
+            portraitColumnsChoice = container.settings.portraitColumnsChoice,
+            landscapeColumnsChoice = container.settings.landscapeColumnsChoice,
             coverMask = container.settings.coverMask,
             autoMaskOnLock = container.settings.autoMaskOnLock,
             launchTab = container.settings.launchTab,
@@ -82,12 +83,18 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         refreshDirectories()
     }
 
-    /** 列数选择：0 = 自动；2..6 = 手选。写入设置后四个网格立刻跟着变 */
-    fun setGridColumns(count: Int) {
-        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, WindowSizeRules.GRID_MAX_COLUMNS)
-        if (clamped == uiState.gridColumnsChoice) return
-        uiState = uiState.copy(gridColumnsChoice = clamped)
-        viewModelScope.launch { container.settings.saveGridColumns(clamped) }
+    /** 竖屏列数：0 = 自动（3 列），2 / 3 手选；写入后网格立刻跟着变 */
+    fun setPortraitColumns(choice: Int) {
+        if (choice == uiState.portraitColumnsChoice) return
+        uiState = uiState.copy(portraitColumnsChoice = choice)
+        viewModelScope.launch { container.settings.savePortraitColumns(choice) }
+    }
+
+    /** 横屏列数：0 = 自动（6 列），5 / 6 手选；写入后网格立刻跟着变 */
+    fun setLandscapeColumns(choice: Int) {
+        if (choice == uiState.landscapeColumnsChoice) return
+        uiState = uiState.copy(landscapeColumnsChoice = choice)
+        viewModelScope.launch { container.settings.saveLandscapeColumns(choice) }
     }
 
     /** 封面毛玻璃：写入设置后，已经在显示的作品/女优墙立刻糊掉 */

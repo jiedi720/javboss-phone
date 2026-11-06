@@ -87,8 +87,43 @@ object WindowSizeRules {
     /** NavigationRail 占位宽度，算网格可用宽度时要扣掉；收窄到 64dp 给网格多留 16dp */
     const val RAIL_WIDTH_DP = 64
 
-    /** 网格列数硬上限：防止自由窗口被拖到超宽时卡片过密 */
+    /** 网格列数硬上限：防止自由窗口被拖到超宽时卡片过密（仅用于手选档） */
     const val GRID_MAX_COLUMNS = 8
+
+    /**
+     * 自动档 JAV 列数：竖屏 3 列、横屏 6 列（横屏翻倍），同时也是各自方向的上限。
+     * 设置页按方向分开设定后，自动档不再按可用宽度动态增减，而是固定取这两个值；
+     * 只有窗口实在放不下时才由 [gridColumns] 按卡片硬下限收敛。
+     */
+    const val AUTO_PORTRAIT_COLUMNS = 3
+    const val AUTO_LANDSCAPE_COLUMNS = 6
+
+    /** 设置页两个下拉各自的候选值；0 = 自动（取对应方向的默认值） */
+    val PORTRAIT_COLUMN_CHOICES = listOf(0, 2, 3)
+    val LANDSCAPE_COLUMN_CHOICES = listOf(0, 5, 6)
+
+    /** 自动档：竖屏 3 列、横屏 6 列 */
+    fun autoColumns(landscape: Boolean): Int =
+        if (landscape) AUTO_LANDSCAPE_COLUMNS else AUTO_PORTRAIT_COLUMNS
+
+    /** 把某个方向的选择值解析成实际目标列数（0 = 自动） */
+    fun resolveColumnChoice(choice: Int, landscape: Boolean): Int =
+        if (choice > 0) choice else autoColumns(landscape)
+
+    /**
+     * 旧版单个 `grid_columns`（0 = 自动 / 2..8 = 固定列数）迁移到「竖屏 / 横屏」两个新值。
+     * 旧值超出该方向允许范围时钳到边界，避免出现「竖屏选 6 列却只显示 3 列」的无效选项。
+     */
+    fun migrateColumnChoice(old: Int, landscape: Boolean): Int {
+        if (old <= 0) return 0
+        val choices = if (landscape) LANDSCAPE_COLUMN_CHOICES else PORTRAIT_COLUMN_CHOICES
+        val fixed = choices.filter { it > 0 }
+        return fixed.minByOrNull { kotlin.math.abs(it - old) } ?: autoColumns(landscape)
+    }
+
+    /** 校验某个方向的选择值合法（0 或该方向候选值之一） */
+    fun isValidColumnChoice(choice: Int, landscape: Boolean): Boolean =
+        choice == 0 || choice in (if (landscape) LANDSCAPE_COLUMN_CHOICES else PORTRAIT_COLUMN_CHOICES)
 
     /** 竖版封面卡（2:3 / 100:143.1）的最小宽度 */
     const val CARD_MIN_WIDTH_DP = 150

@@ -298,8 +298,13 @@ fun Modifier.adaptiveContentWidth(): Modifier =
     adaptiveMaxWidth(WindowSizeRules.contentMaxWidth(rememberWindowWidthDp()))
 
 /**
- * 网格动态列数：按「当前窗口宽度 − 导航占位 − 页面边距」除以卡片最小宽度算。
- * 设置里的手选列数（0 = 自动）只作为上限，窗口变窄时列数会自动收缩，保证卡片不小于最小宽度。
+ * 网格列数：按「当前窗口方向」取对应设置值，再交给 [WindowSizeRules.gridColumns] 收敛。
+ *
+ * - 方向只由当前窗口宽高决定（宽 > 高 = 横向），旋转 / 分屏 / 自由窗口缩放会实时重算；
+ * - 自动档：竖屏 3 列、横屏 6 列（[WindowSizeRules.autoColumns]）；
+ * - 手选档：竖屏 2/3 列、横屏 5/6 列，各自的下拉里根本没有放不下的选项，
+ *   不会再出现「竖屏选 6 列却只显示 3 列」；
+ * - 窗口实在放不下目标列数时仍按 88dp 卡片硬下限收敛。
  */
 @Composable
 fun rememberGridColumns(minCardWidthDp: Int = WindowSizeRules.CARD_MIN_WIDTH_DP): Int {
@@ -307,12 +312,17 @@ fun rememberGridColumns(minCardWidthDp: Int = WindowSizeRules.CARD_MIN_WIDTH_DP)
     val settings = remember(context) {
         (context.applicationContext as JavBossApp).container.settings
     }
-    val choice by settings.gridColumnsChoiceFlow.collectAsState()
+    val portraitChoice by settings.portraitColumnsChoiceFlow.collectAsState()
+    val landscapeChoice by settings.landscapeColumnsChoiceFlow.collectAsState()
+    val widthDp = rememberWindowWidthDp()
+    val landscape = widthDp > rememberWindowHeightDp()
+    val choice = if (landscape) landscapeChoice else portraitChoice
+    val target = WindowSizeRules.resolveColumnChoice(choice, landscape)
     return WindowSizeRules.gridColumns(
-        windowWidthDp = rememberWindowWidthDp(),
+        windowWidthDp = widthDp,
         reservedDp = rememberReservedWidthDp(),
         minCardWidthDp = minCardWidthDp,
-        choice = choice,
+        choice = target,
     )
 }
 

@@ -100,10 +100,22 @@ fun SettingsScreen(
         SectionTitle("每行卡片数")
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
-                // 下拉列表替代一排独立按钮：0 = 按窗口宽度自动，2..8 = 固定列数
-                GridColumnsDropdown(
-                    selected = state.gridColumnsChoice,
-                    onSelect = viewModel::setGridColumns,
+                // 竖屏 / 横屏分开设定：各自只有放得下的候选值，不再出现
+                // 「竖屏选 6 列却只显示 3 列」这种无效选项
+                ColumnChoiceDropdown(
+                    label = "竖屏",
+                    autoLabel = "自动（3 列）",
+                    options = WindowSizeRules.PORTRAIT_COLUMN_CHOICES,
+                    selected = state.portraitColumnsChoice,
+                    onSelect = viewModel::setPortraitColumns,
+                )
+                Spacer(Modifier.height(12.dp))
+                ColumnChoiceDropdown(
+                    label = "横屏",
+                    autoLabel = "自动（6 列）",
+                    options = WindowSizeRules.LANDSCAPE_COLUMN_CHOICES,
+                    selected = state.landscapeColumnsChoice,
+                    onSelect = viewModel::setLandscapeColumns,
                 )
             }
         }
@@ -439,22 +451,28 @@ private fun RoleOptions(
     }
 }
 
-/** 每行卡片数下拉：0 = 自动，2..8 = 固定列数，取代一排独立按钮 */
+/**
+ * 某个方向（竖屏 / 横屏）的列数下拉。候选值由 [options] 给定，0 = 自动，
+ * 其余是「N 列」；两个方向各自独立，选项里只放该方向真正显示得了的列数。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GridColumnsDropdown(
+private fun ColumnChoiceDropdown(
+    label: String,
+    autoLabel: String,
+    options: List<Int>,
     selected: Int,
     onSelect: (Int) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val options = listOf(0, 2, 3, 4, 5, 6, 7, 8)
+    fun textOf(n: Int) = if (n == 0) autoLabel else "$n 列"
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = if (selected == 0) "自动" else "$selected 列",
+            value = textOf(selected),
             onValueChange = {},
             readOnly = true,
             singleLine = true,
-            label = { Text("每行卡片数") },
+            label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -463,7 +481,7 @@ private fun GridColumnsDropdown(
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { n ->
                 DropdownMenuItem(
-                    text = { Text(if (n == 0) "自动" else "$n 列") },
+                    text = { Text(textOf(n)) },
                     onClick = {
                         expanded = false
                         onSelect(n)

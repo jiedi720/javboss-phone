@@ -49,7 +49,10 @@ class SettingsManager(private val context: Context) {
 
     private val keyEngineMode = stringPreferencesKey("engine_mode")
     private val keySeekSensitivity = stringPreferencesKey("seek_sensitivity")
-    // 列数「选择值」：0 = 自动（按屏幕尺寸/方向算），2..6 = 手选固定列数
+    // 列数按窗口方向分开设定：0 = 自动，竖屏 2/3，横屏 5/6
+    private val keyPortraitColumns = stringPreferencesKey("portrait_columns")
+    private val keyLandscapeColumns = stringPreferencesKey("landscape_columns")
+    // 旧版单个 grid_columns（0 = 自动 / 2..8 = 固定列数）：只保留读取用于一次性迁移，不再写入
     private val keyGridColumns = stringPreferencesKey("grid_columns")
     private val keyJavSort = stringPreferencesKey("jav_sort")
     private val keyJavSortAsc = booleanPreferencesKey("jav_sort_asc")
@@ -78,14 +81,17 @@ class SettingsManager(private val context: Context) {
         private set
 
     /**
-     * 卡片墙列数的「选择值」：0 = 自动（平板/横屏自动更多列），2..6 = 手选固定列数。
-     * 用 StateFlow 暴露：设置页改完，已经打开的页面立刻跟着变，不用退出重进。
-     * 真正画网格时的实际列数由 `rememberResolvedColumns()` 结合当前 Configuration 解析，
-     * 所以旋转屏幕也会自动重新计算。
+     * 卡片墙列数按「竖屏 / 横屏」分开存：0 = 自动（竖屏 3 / 横屏 6），
+     * 竖屏可选 2/3、横屏可选 5/6。用 StateFlow 暴露，设置页改完已打开的页面立刻跟着变；
+     * 真正画网格时由 `rememberGridColumns()` 结合当前窗口宽高判断方向并取对应值。
      */
-    private val _gridColumnsChoice = MutableStateFlow(ScreenRules.COLUMNS_AUTO)
-    val gridColumnsChoiceFlow: StateFlow<Int> = _gridColumnsChoice
-    val gridColumnsChoice: Int get() = _gridColumnsChoice.value
+    private val _portraitColumnsChoice = MutableStateFlow(0)
+    val portraitColumnsChoiceFlow: StateFlow<Int> = _portraitColumnsChoice
+    val portraitColumnsChoice: Int get() = _portraitColumnsChoice.value
+
+    private val _landscapeColumnsChoice = MutableStateFlow(0)
+    val landscapeColumnsChoiceFlow: StateFlow<Int> = _landscapeColumnsChoice
+    val landscapeColumnsChoice: Int get() = _landscapeColumnsChoice.value
 
     /**
      * 封面毛玻璃（常开）。同样是 StateFlow：设置页一开，
@@ -171,9 +177,17 @@ class SettingsManager(private val context: Context) {
         seekSensitivity = prefs[keySeekSensitivity]
             ?.let { runCatching { SeekSensitivity.valueOf(it) }.getOrNull() }
             ?: SeekSensitivity.MEDIUM
-        _gridColumnsChoice.value = prefs[keyGridColumns]?.toIntOrNull()
-            ?.coerceIn(ScreenRules.COLUMNS_AUTO, WindowSizeRules.GRID_MAX_COLUMNS)
-            ?: ScreenRules.COLUMNS_AUTO
+        // 新设置项不存在时，从旧版单个 grid_columns 迁移到两个方向；
+        // 旧值超出方向范围会被钳到边界，不再出现「竖屏选 6 列却只显示 3 列」
+        val oldChoice = prefs[keyGridColumns]?.toIntOrNull()
+        _portraitColumnsChoice.value = prefs[keyPortraitColumns]?.toIntOrNull()
+            ?.takeIf { WindowSizeRules.isValidColumnChoice(it, false) }
+            ?: oldChoice?.let { WindowSizeRules.migrateColumnChoice(it, false) }
+            ?: 0
+        _landscapeColumnsChoice.value = prefs[keyLandscapeColumns]?.toIntOrNull()
+            ?.takeIf { WindowSizeRules.isValidColumnChoice(it, true) }
+            ?: oldChoice?.let { WindowSizeRules.migrateColumnChoice(it, true) }
+            ?: 0
         _coverMask.value = prefs[keyCoverMask] ?: false
         _autoMaskOnLock.value = prefs[keyAutoMaskOnLock] ?: true
         javSortName = prefs[keyJavSort]
@@ -241,11 +255,18 @@ class SettingsManager(private val context: Context) {
         }
     }
 
-    /** 列数选择：0 = 自动，2..6 = 手选固定列数 */
-    suspend fun saveGridColumns(count: Int) {
-        val clamped = count.coerceIn(ScreenRules.COLUMNS_AUTO, WindowSizeRules.GRID_MAX_COLUMNS)
-        _gridColumnsChoice.value = clamped
-        context.settingsDataStore.edit { it[keyGridColumns] = clamped.toString() }
+    /** 竖屏列数：0 = 自动（3 列），可选 2 / 3；立即生效 + 持久化 */
+    suspend fun savePortraitColumns(choice: Int) {
+        val valid = if (WindowSizeRules.isValidColumnChoice(choice, false)) choice else 0
+        _portraitColumnsChoice.value = valid
+        context.settingsDataStore.edit { it[keyPortraitColumns] = valid.toString() }
+    }
+
+    /** 横屏列数：0 = 自动（6 列），可选 5 / 6；立即生效 + 持久化 */
+    suspend fun saveLandscapeColumns(choice: Int) {
+        val valid = if (WindowSizeRules.isValidColumnChoice(choice, true)) choice else 0
+        _landscapeColumnsChoice.value = valid
+        context.settingsDataStore.edit { it[keyLandscapeColumns] = valid.toString() }
     }
 
     /** 封面毛玻璃：立即生效 + 持久化 */
