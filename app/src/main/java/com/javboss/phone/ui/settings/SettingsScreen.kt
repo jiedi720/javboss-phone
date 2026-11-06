@@ -3,9 +3,11 @@ package com.javboss.phone.ui.settings
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,7 +47,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.BuildConfig
 import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.ServerPreset
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.DirectoryDto
+import com.javboss.phone.ui.components.adaptiveDialogWidth
+import com.javboss.phone.ui.components.adaptiveMaxWidth
+import com.javboss.phone.ui.components.rememberWindowWidthDp
 
 /**
  * 设置页：账号 / 读取路径 / 关于（放最下面）。
@@ -73,14 +79,19 @@ fun SettingsScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-    ) {
-        Text("设置", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(12.dp))
+    // 平板上整页限宽居中：卡片不再横跨 11 寸屏，分组结构保持不变；
+    // 手机 / 窄窗口上限是「不限宽」，与旧版完全一样。
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier = Modifier
+                .adaptiveMaxWidth(WindowSizeRules.settingsMaxWidth(rememberWindowWidthDp()))
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
+            Text("设置", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(12.dp))
 
         // ---------- 账号 ----------
         SectionTitle("账号")
@@ -232,7 +243,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(10.dp))
                 Text("每行卡片数", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(8.dp))
-                // 6 个选项分两行排，窄屏也不会挤出屏幕；值为竖屏列数，横屏自动翻倍
+                // 6 个选项分两行排，窄屏也不会挤出屏幕；0 = 按窗口宽度自动
                 listOf(0, 2, 3, 4, 5, 6).chunked(3).forEach { group ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         group.forEach { n ->
@@ -246,9 +257,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                 }
                 Text(
-                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；所选值是**竖屏列数**，" +
-                        "横屏一律翻倍（手机自动 2→4、平板自动 4→8；手选值同样翻倍），横屏最多 8 列。" +
-                        "改完四个网格立即生效、旋转屏幕也会一起重算。",
+                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；「自动」按当前应用窗口实际" +
+                        "可用宽度动态算列数，旋转、分屏、自由窗口缩放时实时重算，卡片不会小于最小宽度。" +
+                        "手选值只作为上限，窗口变窄时列数会自动收缩。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -360,6 +371,7 @@ fun SettingsScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+        }
     }
 
     if (showAddDialog) {
@@ -372,6 +384,7 @@ fun SettingsScreen(
 
     deleteTarget?.let { dir ->
         AlertDialog(
+            modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { deleteTarget = null },
             title = { Text("移除读取路径") },
             text = {
@@ -391,6 +404,7 @@ fun SettingsScreen(
 
     if (showLogoutConfirm) {
         AlertDialog(
+            modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { showLogoutConfirm = false },
             title = { Text("退出登录") },
             text = { Text("将清除本机的登录状态，需要重新输入服务器地址和密码。") },
@@ -559,6 +573,7 @@ private fun AddDirectoryDialog(
 ) {
     var path by remember { mutableStateOf("") }
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text("添加读取路径") },
         text = {

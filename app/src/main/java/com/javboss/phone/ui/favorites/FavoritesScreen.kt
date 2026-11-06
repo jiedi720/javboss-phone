@@ -15,11 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -55,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.ui.components.CenterMessage
@@ -62,7 +61,13 @@ import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.WorkCard
-import com.javboss.phone.ui.components.rememberResolvedColumns
+import com.javboss.phone.ui.components.adaptiveDialogWidth
+import com.javboss.phone.ui.components.adaptiveSearchWidth
+import com.javboss.phone.ui.components.adaptiveSheetWidth
+import com.javboss.phone.ui.components.rememberAdaptivePadding
+import com.javboss.phone.ui.components.rememberGridColumns
+import com.javboss.phone.ui.components.rememberGridSpacing
+import com.javboss.phone.ui.components.rememberWindowWidthDp
 
 /** 收藏夹 tab：作品收藏夹列表，支持新建/重命名/删除 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -106,9 +111,15 @@ fun FavoritesScreen(
                 state.groups.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.groups.isEmpty() && state.error != null -> CenterMessage(state.error)
                 state.groups.isEmpty() -> CenterMessage("还没有收藏夹\n点右下角新建一个")
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                else -> LazyVerticalGrid(
+                    // 宽窗口把「收藏夹」文件夹卡排成两列，窄窗口仍是原来的单列
+                    columns = GridCells.Fixed(
+                        WindowSizeRules.settingsColumns(rememberWindowWidthDp())
+                    ),
+                    contentPadding = PaddingValues(rememberAdaptivePadding()),
+                    horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                    verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.groups, key = { it.id }) { group ->
                         var menuOpen by remember { mutableStateOf(false) }
@@ -184,6 +195,7 @@ fun FavoritesScreen(
     }
     deleteTarget?.let { group ->
         AlertDialog(
+            modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { deleteTarget = null },
             title = { Text("删除收藏夹") },
             text = { Text("确定删除「${group.name}」吗？收藏的作品不会被删除。") },
@@ -210,6 +222,7 @@ private fun NameInputDialog(
 ) {
     var name by remember { mutableStateOf(initial) }
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
@@ -295,6 +308,7 @@ fun FavGroupScreen(
                         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier
+                            .adaptiveSearchWidth()
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp)
                             .padding(bottom = 8.dp),
@@ -315,10 +329,11 @@ fun FavGroupScreen(
                 state.noMatch -> CenterMessage("没有匹配「${state.search.trim()}」的作品")
                 state.items.isEmpty() -> CenterMessage("收藏夹是空的")
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(rememberResolvedColumns()),
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    columns = GridCells.Fixed(rememberGridColumns()),
+                    contentPadding = PaddingValues(rememberAdaptivePadding()),
+                    horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                    verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     items(shown, key = { it.id }) { item ->
                         WorkCard(
@@ -358,6 +373,7 @@ fun FavGroupScreen(
 
     removeTarget?.let { item ->
         AlertDialog(
+            modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { removeTarget = null },
             title = { Text("移出收藏夹") },
             text = { Text("将「${item.code}」从本收藏夹移除？") },
@@ -376,29 +392,32 @@ fun FavGroupScreen(
     // 排序：与 JAV 界面同一个底部功能菜单（不是 AlertDialog），样式跟服务端 Web 端一致
     if (showSort) {
         ModalBottomSheet(onDismissRequest = { showSort = false }) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp),
-            ) {
-                Text("排序", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(12.dp))
-                SortList(
-                    entries = FavItemSortBase.entries.map { base ->
-                        val selected = state.sort == base
-                        val direction = if (selected) {
-                            if (state.sortAsc) base.ascLabel else base.descLabel
-                        } else if (base.defaultAsc) {
-                            base.ascLabel
-                        } else {
-                            base.descLabel
-                        }
-                        SortEntry(base.label, selected, direction)
-                    },
-                    onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
-                )
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier
+                        .adaptiveSheetWidth()
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 32.dp),
+                ) {
+                    Text("排序", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(12.dp))
+                    SortList(
+                        entries = FavItemSortBase.entries.map { base ->
+                            val selected = state.sort == base
+                            val direction = if (selected) {
+                                if (state.sortAsc) base.ascLabel else base.descLabel
+                            } else if (base.defaultAsc) {
+                                base.ascLabel
+                            } else {
+                                base.descLabel
+                            }
+                            SortEntry(base.label, selected, direction)
+                        },
+                        onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
+                    )
+                }
             }
         }
     }

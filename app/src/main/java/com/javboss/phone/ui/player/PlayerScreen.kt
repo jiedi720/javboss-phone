@@ -5,7 +5,6 @@ package com.javboss.phone.ui.player
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
-import android.content.res.Configuration
 import android.media.AudioManager
 import android.os.Build
 import android.view.SurfaceHolder
@@ -81,7 +80,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -93,21 +91,24 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
-import com.javboss.phone.data.ScreenRules
 import com.javboss.phone.data.SeekSensitivity
+import com.javboss.phone.data.WindowSizeRules
+import com.javboss.phone.ui.components.adaptivePlayerStageWidth
 import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.coverImageModel
 import com.javboss.phone.ui.components.formatDuration
+import com.javboss.phone.ui.components.rememberWindowHeightDp
+import com.javboss.phone.ui.components.rememberWindowWidthDp
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
  * 手机 / 平板播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
- * 手机（以及平板竖屏）进入时先竖屏播放：窗口宽度恒等于屏宽（16:9 横向铺满、无左右留白），
+ * Compact 窗口进入时先竖屏播放：窗口宽度恒等于屏宽（16:9 横向铺满、无左右留白），
  * 背景是一整张毛玻璃化的封面，按住顶部把手只能上下拖动；
  * 点控件条右侧的全屏按钮才切横屏沉浸。
- * 平板横屏点封面右下角播放钮时直接全屏沉浸，不再强制进竖屏小窗。
+ * 宽横向窗口（平板横屏、宽自由窗口）首次直接全屏沉浸，且不再对平板强制 PORTRAIT。
  * 退出播放页恢复进来前的方向。
  * 左上始终可返回，左中打开设置，右中锁定；锁定时只保留返回与解锁。
  */
@@ -122,14 +123,13 @@ fun PlayerScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val state = viewModel.uiState
-    val configuration = LocalConfiguration.current
-    // 平板横屏点封面右下角播放钮：直接全屏沉浸，不再强制进竖屏小窗。
-    // 只在首次组合时算一次；之后用户点全屏 / 退出全屏由 fullscreen 状态自己管。
+    // 布局结论一律只看当前窗口实际宽高，不看设备型号 / 是否平板 / smallestScreenWidthDp。
+    // 窗口够宽且是横向窗口（平板横屏、宽自由窗口、手机横屏达到阈值）首次直接全屏沉浸；
+    // 平板竖屏、窄分屏仍走竖屏小窗。只在首次组合算一次，之后由 fullscreen 状态自己管。
+    val windowWidthDp = rememberWindowWidthDp()
+    val windowHeightDp = rememberWindowHeightDp()
     val startFullscreen = remember {
-        ScreenRules.startFullscreen(
-            isTablet = ScreenRules.isTablet(configuration.smallestScreenWidthDp),
-            landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
-        )
+        WindowSizeRules.startFullscreen(windowWidthDp, windowHeightDp)
     }
     var fullscreen by remember { mutableStateOf(startFullscreen) }
     val previousOrientation = remember(activity) { activity?.requestedOrientation }
@@ -151,16 +151,17 @@ fun PlayerScreen(
     }
 
     // 首次组合与用户切换全屏时统一设置方向 / 系统栏：
-    // 平板横屏首次 fullscreen 即为 true → 直接 SENSOR_LANDSCAPE + 沉浸；
-    // 手机 / 平板竖屏首次为 false → PORTRAIT + 显示系统栏，仍是竖屏小窗。
-    // DisposableEffect 不随 fullscreen 重启，避免误停时长上报。
-    LaunchedEffect(fullscreen) {
+    // 宽横向窗口首次 fullscreen 即为 true → 直接沉浸全屏；
+    // 手机 / 平板竖屏首次为 false → 竖屏小窗 + 显示系统栏。
+    // Compact 才锁方向；平板 / 宽窗口一律不强制 PORTRAIT，避免分屏、自由窗口被拧成竖屏。
+    LaunchedEffect(fullscreen, windowWidthDp) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        activity?.requestedOrientation = if (fullscreen) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        val compact = WindowSizeRules.isCompact(windowWidthDp)
+        activity?.requestedOrientation = when {
+            fullscreen && compact -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            !fullscreen && compact -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         if (fullscreen) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -200,8 +201,13 @@ fun PlayerScreen(
             state.error != null -> Text("无法播放：${state.error}", color = MaterialTheme.colorScheme.error)
             else -> Column(
                 Modifier
-                    // fillMaxWidth() 不写比例、不写固定 dp：宽度始终 = 手机屏宽，横向铺满
-                    .then(if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
+                    // Compact 不加任何限宽：宽度恒等于手机屏宽，16:9 横向铺满（旧行为）。
+                    // 宽窗口（平板 / 手机横屏达阈值 / 自由窗口）按窗口宽度收窄居中，
+                    // 不让 16:9 画面在 11 寸屏上拉到一米宽。
+                    .then(
+                        if (fullscreen) Modifier.fillMaxSize()
+                        else Modifier.adaptivePlayerStageWidth().fillMaxWidth()
+                    )
                     .offset {
                         // offset 只改绘制位置、不改测量宽度；X 恒为 0，拖动过程宽度不变
                         if (fullscreen) IntOffset.Zero
@@ -732,9 +738,11 @@ private fun PlaybackControls(
     modifier: Modifier = Modifier,
 ) {
     Surface(color = Color.Black.copy(alpha = 0.65f), modifier = modifier.fillMaxWidth()) {
-        // 控制条保持紧凑按钮（34dp / 20dp），把宽度尽量让给进度条；全屏用标准尺寸
-        val buttonSize = if (fullscreen) 48.dp else 34.dp
-        val iconSize = if (fullscreen) 24.dp else 20.dp
+        // 控制条保持紧凑按钮（34dp / 20dp）只在 Compact 竖屏小窗；
+        // 全屏或宽窗口一律用 48dp / 24dp 标准触控目标
+        val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
+        val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
+        val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = if (fullscreen) 8.dp else 2.dp),

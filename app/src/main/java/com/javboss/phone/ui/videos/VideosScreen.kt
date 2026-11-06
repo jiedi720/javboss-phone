@@ -3,6 +3,7 @@ package com.javboss.phone.ui.videos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -46,11 +47,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoCard
-import com.javboss.phone.ui.components.rememberResolvedColumns
+import com.javboss.phone.ui.components.adaptiveSearchWidth
+import com.javboss.phone.ui.components.adaptiveSheetWidth
+import com.javboss.phone.ui.components.rememberAdaptivePadding
+import com.javboss.phone.ui.components.rememberGridColumns
+import com.javboss.phone.ui.components.rememberGridSpacing
 
 /** 视频 tab：自适应列网格 + 顶栏（与 JAV 页同款排序 / 搜索按钮）+ 下拉刷新 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,6 +119,9 @@ fun VideosScreen(
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier
+                    // widthIn 必须在 fillMaxWidth 之前：先限宽，再在限宽范围内铺满，
+                    // 反过来 fillMaxWidth 会把约束钉死成整屏宽，widthIn 就失效了
+                    .adaptiveSearchWidth()
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 8.dp),
@@ -150,11 +159,15 @@ fun VideosScreen(
                 state.videos.isEmpty() -> CenterMessage("没有视频")
                 // 等高行网格：列数与作品 / JAV / 收藏夹共用同一套设置，平板自动更多列
                 else -> LazyVerticalGrid(
-                    columns = GridCells.Fixed(rememberResolvedColumns()),
+                    // 列数按「当前窗口实际宽度 ÷ 16:9 卡片最小宽度」动态算，
+                    // 不再按设备/方向固定，也不再横屏一律翻倍
+                    columns = GridCells.Fixed(
+                        rememberGridColumns(WindowSizeRules.WIDE_CARD_MIN_WIDTH_DP)
+                    ),
                     state = gridState,
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(rememberAdaptivePadding()),
+                    horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                    verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.videos, key = { it.id }) { video ->
@@ -196,45 +209,49 @@ fun VideosScreen(
     // 选中项高亮；点击即应用并关闭，不改变排序逻辑与服务端参数。
     if (showSort) {
         ModalBottomSheet(onDismissRequest = { showSort = false }) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp),
-            ) {
-                Text("排序 / 筛选", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(12.dp))
-                VideoSort.entries.forEach { sort ->
-                    val selected = state.sort == sort
-                    val background = if (selected) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        Color.Transparent
-                    }
-                    val foreground = if (selected) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(background)
-                            .clickable {
-                                showSort = false
-                                viewModel.onSortChange(sort)
-                            }
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            sort.label,
-                            color = foreground,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+            // 宽窗口里把内容收窄并居中，避免排序项横跨整块平板屏
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier
+                        .adaptiveSheetWidth()
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 32.dp),
+                ) {
+                    Text("排序 / 筛选", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(12.dp))
+                    VideoSort.entries.forEach { sort ->
+                        val selected = state.sort == sort
+                        val background = if (selected) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            Color.Transparent
+                        }
+                        val foreground = if (selected) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(background)
+                                .clickable {
+                                    showSort = false
+                                    viewModel.onSortChange(sort)
+                                }
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                sort.label,
+                                color = foreground,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
                 }
             }

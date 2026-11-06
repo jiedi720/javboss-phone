@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -94,7 +95,10 @@ import com.javboss.phone.ui.components.LabeledValue
 import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.formatDuration
 import com.javboss.phone.ui.components.formatFileSize
+import com.javboss.phone.ui.components.adaptiveDialogWidth
+import com.javboss.phone.ui.components.adaptiveImageViewerWidth
 import com.javboss.phone.ui.components.formatWatchedTime
+import com.javboss.phone.ui.components.rememberUseTwoPane
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -175,363 +179,67 @@ fun DetailScreen(
         when {
             state.loading -> CenterMessage("加载中…", Modifier.padding(padding))
             state.error != null -> CenterMessage(state.error, Modifier.padding(padding))
-            else -> Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-            ) {
-                // 封面 + 基本信息
-                Row(Modifier.fillMaxWidth()) {
-                    Column(Modifier.width(140.dp)) {
-                        AsyncImage(
-                            model = viewModel.coverUrl(),
-                            contentDescription = title,
-                            contentScale = ContentScale.Crop,
-                            alignment = coverCropAlignment(jav?.coverCropPosition),
-                            modifier = Modifier
-                                .width(140.dp)
-                                .aspectRatio(2f / 3f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable {
-                                    viewModel.fullCoverUrl()?.let { url ->
-                                        preview = PreviewState(
-                                            items = listOf(PreviewItem("完整封面 · $title", url)),
-                                            index = 0,
-                                        )
-                                    }
-                                },
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "点击查看完整封面",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        jav?.let {
-                            Text(it.code, style = MaterialTheme.typography.titleMedium)
-                            if (it.title.isNotBlank()) {
-                                Spacer(Modifier.height(4.dp))
-                                Text(it.title, style = MaterialTheme.typography.bodyMedium)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            formatReleaseDate(it.releaseUnix).takeIf { d -> d.isNotEmpty() }?.let { d ->
-                                LabeledValue("发行日期", d)
-                            }
-                            if (it.durationMin > 0) LabeledValue("时长", "${it.durationMin} 分钟")
-                            if (it.favoriteCount > 0) LabeledValue("被收藏", "${it.favoriteCount} 次")
-                            // 服务端统计的累计观看时长（jav.watched_ms，含所有文件版本）
-                            formatWatchedTime(it.watchedMs).takeIf { t -> t.isNotEmpty() }?.let { t ->
-                                LabeledValue("观看时长", t)
-                            }
-                        }
-                        video?.let {
-                            Spacer(Modifier.height(4.dp))
-                            if (it.durationSec > 0) LabeledValue("视频时长", formatDuration(it.durationSec))
-                            LabeledValue("播放次数", "${it.playCount}")
-                        }
-                    }
-                }
-
-                // 操作栏：播放 / 收藏 / 编辑
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = {
-                            video?.let { onPlay(it.id, jav?.code ?: it.jav?.code ?: javCode) }
-                        },
-                        enabled = video != null,
+            else -> {
+                // 当前应用窗口足够宽时左右双栏：左边封面 + 基本信息 + 操作，
+                // 右边文件版本 / 元数据 / 标签 / 样品图 / 截图，两栏各自独立滚动。
+                // 窄窗口（手机、窄分屏、窄自由窗口）仍走原来的单栏，排版与行为完全不变。
+                val body = DetailBodyParams(
+                    state = state,
+                    viewModel = viewModel,
+                    title = title,
+                    javCode = javCode,
+                    onPlay = onPlay,
+                    onOpenJavList = onOpenJavList,
+                    onPreview = { preview = it },
+                    onFavorite = { showFavorite = true },
+                    onEdit = { showEdit = true },
+                    onTagPicker = { showTagPicker = true },
+                    onFileMenu = { fileMenuTarget = it },
+                )
+                if (rememberUseTwoPane()) {
+                    Row(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(16.dp),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("播放")
-                    }
-                    OutlinedButton(
-                        onClick = { showFavorite = true },
-                        enabled = jav != null,
-                    ) {
-                        Icon(Icons.Filled.Favorite, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("收藏")
-                    }
-                    OutlinedButton(
-                        onClick = { showEdit = true },
-                        enabled = jav != null,
-                    ) {
-                        Icon(Icons.Filled.Edit, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("编辑")
-                    }
-                }
-
-                // 文件：一部作品可能对应多个文件版本，逐个列出文件名 + 完整路径（可长按复制）
-                if (files.isNotEmpty()) {
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        if (files.size > 1) "文件（${files.size} 个版本）" else "文件",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        files.forEach { file ->
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                    .combinedClickable(
-                                        onClick = {},
-                                        onLongClick = { fileMenuTarget = file },
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = file.filename.ifBlank { "（无文件名）" },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    // 展开后所有版本的 id 都是同一个 video_id，不能再按 id 判断；
-                                    // 只有 location_id 或完整路径与当前视频一致时才标「当前」
-                                    val isCurrent = video != null && (
-                                        (video.locationId > 0 && file.locationId == video.locationId) ||
-                                            (video.locationId <= 0 && file.fullPath == video.fullPath)
-                                        )
-                                    if (isCurrent) {
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            text = "当前",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                }
-                                val fullPath = file.fullPath
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    text = fullPath.ifBlank { "（服务端未返回路径）" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                val extra = listOfNotNull(
-                                    file.size.takeIf { it > 0 }?.let { formatFileSize(it) },
-                                    file.durationSec.takeIf { it > 0 }?.let { formatDuration(it) },
-                                    formatWatchedTime(file.watchedMs).takeIf { it.isNotEmpty() }
-                                        ?.let { "已看 $it" },
-                                ).joinToString(" · ")
-                                if (extra.isNotBlank()) {
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        text = extra,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
+                        Column(
+                            Modifier
+                                .width(300.dp)
+                                .fillMaxHeight()
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            DetailHeader(body)
                         }
-                    }
-                    Text(
-                        "长按文件卡片：查看大小、复制路径、重命名或删除",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-
-                // 片商 / 系列（可点击）
-                val studio = jav?.studio
-                val seriesId = jav?.seriesId ?: 0
-                if ((studio != null && studio.name.isNotBlank()) || (seriesId > 0 && state.seriesName.isNotBlank())) {
-                    Spacer(Modifier.height(16.dp))
-                    Text("片商 / 系列", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (studio != null && studio.name.isNotBlank()) {
-                            AssistChip(
-                                onClick = {
-                                    onOpenJavList("片商：${studio.name}", "", "", studio.id, 0)
-                                },
-                                label = { Text(studio.name) },
-                            )
-                        }
-                        if (seriesId > 0 && state.seriesName.isNotBlank()) {
-                            AssistChip(
-                                onClick = {
-                                    onOpenJavList("系列：${state.seriesName}", "", "", 0, seriesId)
-                                },
-                                label = { Text(state.seriesName) },
-                            )
-                        }
-                    }
-                }
-
-                // 演员（可点击）
-                if (!jav?.idols.isNullOrEmpty()) {
-                    Spacer(Modifier.height(16.dp))
-                    Text("演员", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        jav!!.idols.forEach { idol ->
-                            AssistChip(
-                                onClick = {
-                                    onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
-                                },
-                                label = { Text(idol.displayName) },
-                            )
-                        }
-                    }
-                }
-
-                // 标签（可点击）：服务端视频自身 tags + 作品 jav.tags，合并去重后一起展示，
-                // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签。
-                // 编辑入口按两套互不相通的标签体系分流：JAV 详情「编辑标签」走 /jav/tags，
-                // 普通视频详情「编辑视频标签」走 /tags；空标签时也能新增。
-                val tags = (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
-                    .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" }
-                if (video != null) {
-                    Spacer(Modifier.height(16.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "标签",
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.weight(1f),
+                        Spacer(Modifier.width(20.dp))
+                        Box(
+                            Modifier
+                                .width(1.dp)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.outlineVariant),
                         )
-                        if (jav != null) {
-                            TextButton(onClick = { showTagPicker = true }) {
-                                Text("编辑标签")
-                            }
-                        } else {
-                            TextButton(onClick = { showTagPicker = true }) {
-                                Text("编辑视频标签")
-                            }
+                        Spacer(Modifier.width(20.dp))
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            DetailExtras(body)
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    if (tags.isEmpty()) {
-                        Text(
-                            "暂无标签，点「${if (jav != null) "编辑标签" else "编辑视频标签"}」添加",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            tags.forEach { tag ->
-                                AssistChip(
-                                    onClick = {
-                                        onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
-                                    },
-                                    label = { Text(tag.name) },
-                                )
-                            }
-                        }
+                } else {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                    ) {
+                        DetailHeader(body)
+                        DetailExtras(body)
                     }
                 }
-
-                // 外部链接
-                if (!jav?.code.isNullOrBlank()) {
-                    Spacer(Modifier.height(16.dp))
-                    Text("外部链接", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = {
-                        scope.launch {
-                            val url = viewModel.resolveJavDbUrl(jav!!.code)
-                            if (url != null) {
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                                }
-                            } else {
-                                Toast.makeText(context, "未找到对应的 JavDB 页面", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("JavDB")
-                    }
-                }
-
-                // 样品图像：服务端 POST /jav/items/{id}/sample-images，按数组下标取 thumbnail / detail
-                if (state.sampleImageCount > 0 && state.sampleJavId > 0) {
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "样品图像（${state.sampleImageCount}）",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.sampleImageCount) { index ->
-                            AsyncImage(
-                                model = viewModel.sampleThumbnailUrl(index),
-                                contentDescription = "样品图像 ${index + 1}",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .height(120.dp)
-                                    .width(120.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                    .clickable {
-                                        preview = PreviewState(
-                                            items = (0 until state.sampleImageCount).map { i ->
-                                                PreviewItem(
-                                                    "样品图像 ${i + 1}",
-                                                    viewModel.sampleDetailUrl(i),
-                                                )
-                                            },
-                                            index = index,
-                                        )
-                                    },
-                            )
-                        }
-                    }
-                    Text(
-                        "点击可查看大图",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-
-                // 视频截图：服务端 /videos/{id}/screenshots，点开看完整截图
-                if (video != null && state.screenshots.isNotEmpty()) {
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "视频截图（${state.screenshots.size}）",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        itemsIndexed(state.screenshots, key = { _, shot -> shot.name }) { index, shot ->
-                            AsyncImage(
-                                model = viewModel.screenshotUrl(video.id, shot.name),
-                                contentDescription = shot.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .height(120.dp)
-                                    .aspectRatio(16f / 9f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        preview = PreviewState(
-                                            items = state.screenshots.map { s ->
-                                                PreviewItem(s.name, viewModel.screenshotUrl(video.id, s.name))
-                                            },
-                                            index = index,
-                                        )
-                                    },
-                            )
-                        }
-                    }
-                    Text(
-                        "点击可查看完整截图",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                Spacer(Modifier.height(32.dp))
             }
         }
     }
@@ -601,6 +309,7 @@ fun DetailScreen(
 
     deleteTarget?.let { file ->
         AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { deleteTarget = null },
             title = { Text("删除文件") },
             text = {
@@ -674,6 +383,7 @@ private fun ImageViewerDialog(
             val current = items[index]
             Box(
                 Modifier
+                    .adaptiveImageViewerWidth()
                     .fillMaxWidth()
                     .fillMaxHeight(0.88f)
                     .onSizeChanged { imageBoxSize = it }
@@ -842,6 +552,7 @@ private fun ImageViewerDialog(
     // 长按图片后弹出的保存确认菜单：不直接下载，点「保存到本地」才执行
     saveMenuUrl?.let { url ->
         AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { saveMenuUrl = null },
             title = { Text("保存图片") },
             text = { Text("是否将这张图片保存到本地「下载/JavBoss」？") },
@@ -879,6 +590,7 @@ private fun FileActionDialog(
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text(file.filename.ifBlank { "文件" }, maxLines = 2) },
         text = {
@@ -921,6 +633,7 @@ private fun RenameFileDialog(
     var name by remember { mutableStateOf(initial) }
     val valid = name.isNotBlank() && !name.contains('/') && !name.contains('\\')
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text("重命名文件") },
         text = {
@@ -973,6 +686,7 @@ private fun FavoriteDialog(
     }
 
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text("收藏到…") },
         text = {
@@ -1054,4 +768,400 @@ private fun FavoriteDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         },
     )
+}
+
+
+/**
+ * 详情页正文在「单栏」与「双栏」两种布局之间复用，参数集中在这里避免长参数列表。
+ * 所有取值都从 [state] 派生，切换窗口宽度时不会丢数据或状态。
+ */
+private class DetailBodyParams(
+    val state: DetailUiState,
+    val viewModel: DetailViewModel,
+    val title: String,
+    val javCode: String?,
+    val onPlay: (Long, String?) -> Unit,
+    val onOpenJavList: (String, String, String, Long, Long) -> Unit,
+    val onPreview: (PreviewState) -> Unit,
+    val onFavorite: () -> Unit,
+    val onEdit: () -> Unit,
+    val onTagPicker: () -> Unit,
+    val onFileMenu: (VideoDto) -> Unit,
+)
+
+/** 左栏（双栏）/ 顶部（单栏）：封面 + 基本信息 + 播放 / 收藏 / 编辑 */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
+    val state = p.state
+    val viewModel = p.viewModel
+    val jav = state.javMeta
+    val video = state.video
+    val title = p.title
+    fun showPreview(items: List<PreviewItem>, index: Int) =
+        p.onPreview(PreviewState(items = items, index = index))
+    // 封面 + 基本信息
+    Row(Modifier.fillMaxWidth()) {
+        Column(Modifier.width(140.dp)) {
+            AsyncImage(
+                model = viewModel.coverUrl(),
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                alignment = coverCropAlignment(jav?.coverCropPosition),
+                modifier = Modifier
+                    .width(140.dp)
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        viewModel.fullCoverUrl()?.let { url ->
+                            showPreview(
+                                items = listOf(PreviewItem("完整封面 · $title", url)),
+                                index = 0,
+                            )
+                        }
+                    },
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "点击查看完整封面",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Column {
+            jav?.let {
+                Text(it.code, style = MaterialTheme.typography.titleMedium)
+                if (it.title.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(it.title, style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(8.dp))
+                formatReleaseDate(it.releaseUnix).takeIf { d -> d.isNotEmpty() }?.let { d ->
+                    LabeledValue("发行日期", d)
+                }
+                if (it.durationMin > 0) LabeledValue("时长", "${it.durationMin} 分钟")
+                if (it.favoriteCount > 0) LabeledValue("被收藏", "${it.favoriteCount} 次")
+                // 服务端统计的累计观看时长（jav.watched_ms，含所有文件版本）
+                formatWatchedTime(it.watchedMs).takeIf { t -> t.isNotEmpty() }?.let { t ->
+                    LabeledValue("观看时长", t)
+                }
+            }
+            video?.let {
+                Spacer(Modifier.height(4.dp))
+                if (it.durationSec > 0) LabeledValue("视频时长", formatDuration(it.durationSec))
+                LabeledValue("播放次数", "${it.playCount}")
+            }
+        }
+    }
+
+    // 操作栏：播放 / 收藏 / 编辑
+    Spacer(Modifier.height(16.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(
+            onClick = {
+                video?.let { p.onPlay(it.id, jav?.code ?: it.jav?.code ?: p.javCode) }
+            },
+            enabled = video != null,
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("播放")
+        }
+        OutlinedButton(
+            onClick = p.onFavorite,
+            enabled = jav != null,
+        ) {
+            Icon(Icons.Filled.Favorite, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("收藏")
+        }
+        OutlinedButton(
+            onClick = p.onEdit,
+            enabled = jav != null,
+        ) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("编辑")
+        }
+    }
+
+}
+
+/** 右栏（双栏）/ 下方（单栏）：文件版本、片商系列、演员、标签、外链、样品图、截图 */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
+    val state = p.state
+    val viewModel = p.viewModel
+    val jav = state.javMeta
+    val video = state.video
+    val files = state.files
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun showPreview(items: List<PreviewItem>, index: Int) =
+        p.onPreview(PreviewState(items = items, index = index))
+    // 文件：一部作品可能对应多个文件版本，逐个列出文件名 + 完整路径（可长按复制）
+    if (files.isNotEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (files.size > 1) "文件（${files.size} 个版本）" else "文件",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            files.forEach { file ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { p.onFileMenu(file) },
+                        )
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = file.filename.ifBlank { "（无文件名）" },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // 展开后所有版本的 id 都是同一个 video_id，不能再按 id 判断；
+                        // 只有 location_id 或完整路径与当前视频一致时才标「当前」
+                        val isCurrent = video != null && (
+                            (video.locationId > 0 && file.locationId == video.locationId) ||
+                                (video.locationId <= 0 && file.fullPath == video.fullPath)
+                            )
+                        if (isCurrent) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "当前",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    val fullPath = file.fullPath
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = fullPath.ifBlank { "（服务端未返回路径）" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val extra = listOfNotNull(
+                        file.size.takeIf { it > 0 }?.let { formatFileSize(it) },
+                        file.durationSec.takeIf { it > 0 }?.let { formatDuration(it) },
+                        formatWatchedTime(file.watchedMs).takeIf { it.isNotEmpty() }
+                            ?.let { "已看 $it" },
+                    ).joinToString(" · ")
+                    if (extra.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = extra,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            "长按文件卡片：查看大小、复制路径、重命名或删除",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+
+    // 片商 / 系列（可点击）
+    val studio = jav?.studio
+    val seriesId = jav?.seriesId ?: 0
+    if ((studio != null && studio.name.isNotBlank()) || (seriesId > 0 && state.seriesName.isNotBlank())) {
+        Spacer(Modifier.height(16.dp))
+        Text("片商 / 系列", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (studio != null && studio.name.isNotBlank()) {
+                AssistChip(
+                    onClick = {
+                        p.onOpenJavList("片商：${studio.name}", "", "", studio.id, 0)
+                    },
+                    label = { Text(studio.name) },
+                )
+            }
+            if (seriesId > 0 && state.seriesName.isNotBlank()) {
+                AssistChip(
+                    onClick = {
+                        p.onOpenJavList("系列：${state.seriesName}", "", "", 0, seriesId)
+                    },
+                    label = { Text(state.seriesName) },
+                )
+            }
+        }
+    }
+
+    // 演员（可点击）
+    if (!jav?.idols.isNullOrEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        Text("演员", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            jav!!.idols.forEach { idol ->
+                AssistChip(
+                    onClick = {
+                        p.onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
+                    },
+                    label = { Text(idol.displayName) },
+                )
+            }
+        }
+    }
+
+    // 标签（可点击）：服务端视频自身 tags + 作品 jav.tags，合并去重后一起展示，
+    // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签。
+    // 编辑入口按两套互不相通的标签体系分流：JAV 详情「编辑标签」走 /jav/tags，
+    // 普通视频详情「编辑视频标签」走 /tags；空标签时也能新增。
+    val tags = (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
+        .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" }
+    if (video != null) {
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "标签",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f),
+            )
+            if (jav != null) {
+                TextButton(onClick = p.onTagPicker) {
+                    Text("编辑标签")
+                }
+            } else {
+                TextButton(onClick = p.onTagPicker) {
+                    Text("编辑视频标签")
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        if (tags.isEmpty()) {
+            Text(
+                "暂无标签，点「${if (jav != null) "编辑标签" else "编辑视频标签"}」添加",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                tags.forEach { tag ->
+                    AssistChip(
+                        onClick = {
+                            p.onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
+                        },
+                        label = { Text(tag.name) },
+                    )
+                }
+            }
+        }
+    }
+
+    // 外部链接
+    if (!jav?.code.isNullOrBlank()) {
+        Spacer(Modifier.height(16.dp))
+        Text("外部链接", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = {
+            scope.launch {
+                val url = viewModel.resolveJavDbUrl(jav!!.code)
+                if (url != null) {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                    }
+                } else {
+                    Toast.makeText(context, "未找到对应的 JavDB 页面", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }) {
+            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("JavDB")
+        }
+    }
+
+    // 样品图像：服务端 POST /jav/items/{id}/sample-images，按数组下标取 thumbnail / detail
+    if (state.sampleImageCount > 0 && state.sampleJavId > 0) {
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "样品图像（${state.sampleImageCount}）",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(state.sampleImageCount) { index ->
+                AsyncImage(
+                    model = viewModel.sampleThumbnailUrl(index),
+                    contentDescription = "样品图像 ${index + 1}",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .height(120.dp)
+                        .width(120.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                        .clickable {
+                            showPreview(
+                                items = (0 until state.sampleImageCount).map { i ->
+                                    PreviewItem(
+                                        "样品图像 ${i + 1}",
+                                        viewModel.sampleDetailUrl(i),
+                                    )
+                                },
+                                index = index,
+                            )
+                        },
+                )
+            }
+        }
+        Text(
+            "点击可查看大图",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+
+    // 视频截图：服务端 /videos/{id}/screenshots，点开看完整截图
+    if (video != null && state.screenshots.isNotEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "视频截图（${state.screenshots.size}）",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(state.screenshots, key = { _, shot -> shot.name }) { index, shot ->
+                AsyncImage(
+                    model = viewModel.screenshotUrl(video.id, shot.name),
+                    contentDescription = shot.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .height(120.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            showPreview(
+                                items = state.screenshots.map { s ->
+                                    PreviewItem(s.name, viewModel.screenshotUrl(video.id, s.name))
+                                },
+                                index = index,
+                            )
+                        },
+                )
+            }
+        }
+        Text(
+            "点击可查看完整截图",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
 }

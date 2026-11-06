@@ -1,6 +1,5 @@
 package com.javboss.phone.ui.components
 
-import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -19,10 +18,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -58,7 +61,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,6 +68,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -74,8 +77,10 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.NavigationForm
 import com.javboss.phone.data.PrivacyMask
-import com.javboss.phone.data.ScreenRules
+import com.javboss.phone.data.WindowClass
+import com.javboss.phone.data.WindowSizeRules
 import java.time.LocalDate
 import java.time.Period
 import kotlin.math.roundToInt
@@ -189,25 +194,132 @@ fun rememberCoverMask(): CoverMaskState {
     )
 }
 
+// ---------- 窗口自适应（v0.3.42 起统一入口） ----------
+
 /**
- * 当前页面实际使用的列数：把设置里的「选择值」（0 = 自动）按屏幕尺寸 / 方向解析。
- * 用 LocalConfiguration 读取，旋转屏幕会自动重组并重算；平板比手机多列、横屏比竖屏多列。
- * 视频、JAV（作品 / 过滤列表）、收藏夹内页共用这一份，保证四个网格始终遵循同一套规则。
+ * 当前应用窗口的**实际可用宽度**（dp）。
+ *
+ * 由 [AdaptiveRoot] 用 `BoxWithConstraints` 测出并下发，旋转、分屏、自由窗口改变窗口尺寸时
+ * 会重新测量并触发整棵子树重组。默认值是手机竖屏宽度，保证未被 AdaptiveRoot 包裹时也不崩。
+ * 布局结论一律只看这个值，不看设备型号 / 是否平板 / smallestScreenWidthDp / 物理分辨率。
+ */
+val LocalWindowWidth = staticCompositionLocalOf { 360.dp }
+
+/** 当前应用窗口实际可用高度（dp），与 [LocalWindowWidth] 同一处测量、同一份口径 */
+val LocalWindowHeight = staticCompositionLocalOf { 640.dp }
+
+/**
+ * 应用根布局：测出真实窗口宽高并下发，同时统一处理键盘遮挡。
+ * 放在 `MainActivity.setContent` 最外层，所有页面（含 Dialog）都能读到同一份窗口尺寸。
  */
 @Composable
-fun rememberResolvedColumns(): Int {
+fun AdaptiveRoot(content: @Composable () -> Unit) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .imePadding(),
+    ) {
+        CompositionLocalProvider(
+            LocalWindowWidth provides maxWidth,
+            LocalWindowHeight provides maxHeight,
+        ) {
+            Box(Modifier.fillMaxSize()) { content() }
+        }
+    }
+}
+
+/** 当前窗口实际可用宽度（dp，取整） */
+@Composable
+fun rememberWindowWidthDp(): Int = LocalWindowWidth.current.value.roundToInt()
+
+/** 当前窗口实际可用高度（dp，取整） */
+@Composable
+fun rememberWindowHeightDp(): Int = LocalWindowHeight.current.value.roundToInt()
+
+@Composable
+fun rememberWindowClass(): WindowClass = WindowSizeRules.classify(rememberWindowWidthDp())
+
+@Composable
+fun rememberNavigationForm(): NavigationForm = WindowSizeRules.navigationForm(rememberWindowWidthDp())
+
+@Composable
+fun rememberUseTwoPane(): Boolean = WindowSizeRules.useTwoPane(rememberWindowWidthDp())
+
+/** 页面左右边距 */
+@Composable
+fun rememberAdaptivePadding(): Dp = WindowSizeRules.horizontalPadding(rememberWindowWidthDp()).dp
+
+/** 网格间距 */
+@Composable
+fun rememberGridSpacing(): Dp = WindowSizeRules.gridSpacing(rememberWindowWidthDp()).dp
+
+/** NavigationRail 占掉的宽度：算网格可用宽度时要扣掉 */
+@Composable
+fun rememberReservedWidthDp(): Int =
+    if (rememberNavigationForm() == NavigationForm.RAIL) WindowSizeRules.RAIL_WIDTH_DP else 0
+
+/**
+ * 限宽 Modifier：传入 [WindowSizeRules.NO_LIMIT] 时完全不加约束（交给平台默认），
+ * 避免把巨大的 Int 转成 Dp 参与像素换算。
+ */
+fun Modifier.adaptiveMaxWidth(maxDp: Int): Modifier =
+    if (maxDp == WindowSizeRules.NO_LIMIT) this else this.widthIn(max = maxDp.dp)
+
+/** 对话框统一限宽：Compact 用平台默认，Medium/Expanded 按窗口宽度收窄 */
+@Composable
+fun Modifier.adaptiveDialogWidth(): Modifier =
+    adaptiveMaxWidth(WindowSizeRules.dialogMaxWidth(rememberWindowWidthDp()))
+
+/** BottomSheet 内容统一限宽 */
+@Composable
+fun Modifier.adaptiveSheetWidth(): Modifier =
+    adaptiveMaxWidth(WindowSizeRules.sheetMaxWidth(rememberWindowWidthDp()))
+
+/** 搜索框统一限宽 */
+@Composable
+fun Modifier.adaptiveSearchWidth(): Modifier =
+    adaptiveMaxWidth(WindowSizeRules.searchFieldMaxWidth(rememberWindowWidthDp()))
+
+/**
+ * 大图查看器图容器限宽：宽屏下翻页阈值（横向拖动 18%）必须按「图片容器宽」算，
+ * 而不是整屏宽，否则平板上要拖半米才翻一张。
+ */
+@Composable
+fun Modifier.adaptiveImageViewerWidth(): Modifier =
+    adaptiveMaxWidth(WindowSizeRules.imageViewerMaxWidth(rememberWindowWidthDp()))
+
+/** 竖屏播放小窗限宽：手机上不限宽（横向铺满），宽窗口不让 16:9 画面铺满整块平板屏 */
+@Composable
+fun Modifier.adaptivePlayerStageWidth(): Modifier =
+    adaptiveMaxWidth(WindowSizeRules.playerStageMaxWidth(rememberWindowWidthDp()))
+
+/** 页面正文统一限宽（超宽自由窗口下不让文字行拉到一米长） */
+@Composable
+fun Modifier.adaptiveContentWidth(): Modifier =
+    adaptiveMaxWidth(WindowSizeRules.contentMaxWidth(rememberWindowWidthDp()))
+
+/**
+ * 网格动态列数：按「当前窗口宽度 − 导航占位 − 页面边距」除以卡片最小宽度算。
+ * 设置里的手选列数（0 = 自动）只作为上限，窗口变窄时列数会自动收缩，保证卡片不小于最小宽度。
+ */
+@Composable
+fun rememberGridColumns(minCardWidthDp: Int = WindowSizeRules.CARD_MIN_WIDTH_DP): Int {
     val context = LocalContext.current
     val settings = remember(context) {
         (context.applicationContext as JavBossApp).container.settings
     }
     val choice by settings.gridColumnsChoiceFlow.collectAsState()
-    val configuration = LocalConfiguration.current
-    return ScreenRules.resolveColumns(
+    return WindowSizeRules.gridColumns(
+        windowWidthDp = rememberWindowWidthDp(),
+        reservedDp = rememberReservedWidthDp(),
+        minCardWidthDp = minCardWidthDp,
         choice = choice,
-        isTablet = ScreenRules.isTablet(configuration.smallestScreenWidthDp),
-        landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
     )
 }
+
+/** 兼容旧调用点：竖版封面网格 */
+@Composable
+fun rememberResolvedColumns(): Int = rememberGridColumns()
 
 /**
  * 封面加载模型。只有「打码 + 系统不支持 RenderEffect 模糊」时才换成小尺寸请求，
@@ -558,21 +670,33 @@ private fun RatingBadge(rating: Double, onClick: () -> Unit) {
 /** 作品封面右下角的播放小圆钮：直接起播，不用先进详情页 */
 @Composable
 private fun CoverPlayButton(onClick: () -> Unit) {
+    // 视觉永远是 30dp 小圆钮；平板上把可点击区域撑到 48dp，满足触控目标
+    val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
     Box(
         modifier = Modifier
             .padding(6.dp)
-            .size(30.dp)
+            .then(
+                if (compact) Modifier.size(30.dp)
+                else Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            )
             .clip(CircleShape)
-            .background(Color(0xB3000000))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = Icons.Filled.PlayArrow,
-            contentDescription = "播放",
-            tint = Color.White,
-            modifier = Modifier.size(20.dp),
-        )
+        Box(
+            Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(Color(0xB3000000)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = "播放",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
@@ -832,6 +956,7 @@ fun VideoPickDialog(
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
@@ -869,6 +994,7 @@ fun RatingDialog(
         return (fraction * 10).roundToInt() / 2.0
     }
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text("喜爱度 · $code") },
         text = {
@@ -876,12 +1002,14 @@ fun RatingDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                // 一排 5 颗爱心：按下或左右拖动都按 0.5 分一档改星级（对齐 Web 端 MUI Rating）
+                // 一排 5 颗爱心：按下或左右拖动都按 0.5 分一档改星级（对齐 Web 端 MUI Rating）。
+                // 必须用 wrapContentWidth 让 Row 宽度 = 5 颗心的实际宽度；早先用 fillMaxWidth
+                // 时，宽屏 Dialog 里手指 x 被按整屏宽换算，拖动热区与爱心视觉完全错位。
                 Row(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .wrapContentWidth()
                         .onSizeChanged { rowWidthPx = it.width.toFloat().coerceAtLeast(1f) }
                         .pointerInput(rowWidthPx) {
                             awaitEachGesture {
@@ -1009,6 +1137,8 @@ fun SortList(
     onPick: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 平板/宽窗口把每行撑到 48dp 触控目标；手机保持 38dp 紧凑排版
+    val rowHeight = if (WindowSizeRules.isCompact(rememberWindowWidthDp())) 38.dp else 48.dp
     Column(modifier) {
         entries.forEachIndexed { index, entry ->
             val background = if (entry.selected) {
@@ -1024,7 +1154,7 @@ fun SortList(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
+                    .height(rowHeight)
                     .clip(RoundedCornerShape(8.dp))
                     .background(background)
                     .clickable { onPick(index) }
@@ -1058,9 +1188,8 @@ fun SortList(
 }
 
 /**
- * 顶栏紧凑图标按钮：32dp 触控区，避免 IconButton 默认 48dp 把左侧内容挤到截断。
- * JAV 页（ui/works/WorksScreen.kt 里的同款私有实现）与视频页共用这一套外观，
- * 保证右上角「排序 / 搜索」按钮一致；改动外观时请两处同步。
+ * 顶栏紧凑图标按钮：手机窄顶栏 32dp，平板/宽窗口放大到 48dp 触控目标。
+ * 视频页与作品库页共用这一份实现，右上角「排序 / 搜索」外观完全一致。
  */
 @Composable
 fun CompactIconButton(
@@ -1068,9 +1197,11 @@ fun CompactIconButton(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
+    // 平板上把触控区放大到 48dp；手机窄顶栏保持 32dp，避免把标题挤到截断
+    val touch = if (WindowSizeRules.isCompact(rememberWindowWidthDp())) 32.dp else 48.dp
     Box(
         Modifier
-            .size(32.dp)
+            .size(touch)
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,

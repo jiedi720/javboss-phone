@@ -20,11 +20,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.javboss.phone.data.CrashReporter
 import com.javboss.phone.data.PrivacyMask
 import com.javboss.phone.navigation.JavBossNavGraph
+import com.javboss.phone.ui.components.AdaptiveRoot
 import com.javboss.phone.ui.components.LocalCoverMask
+import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.ui.components.rememberCoverMask
 import com.javboss.phone.ui.theme.JavBossTheme
 
@@ -74,34 +77,39 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             JavBossTheme {
-                // 打码状态只在根部读一次，用静态 CompositionLocal 下发：
-                // 状态一变整棵子树强制重组，不会出现「解锁后要滑一下才打码」
-                val mask = rememberCoverMask()
-                var showCrashDialog by remember { mutableStateOf(crashReports.isNotEmpty()) }
-                CompositionLocalProvider(LocalCoverMask provides mask) {
-                    JavBossNavGraph(startWithSession = startWithSession)
-                    if (showCrashDialog && crashReports.isNotEmpty()) {
-                        AlertDialog(
-                            onDismissRequest = { showCrashDialog = false },
-                            title = { Text("检测到上次闪退") },
-                            text = {
-                                Text(
-                                    "已记录 ${crashReports.size} 份崩溃日志，是否发送到 " +
-                                        "${CrashReporter.reportEmail()}？\n" +
-                                        "会调起手机上的邮件 App，收件人、主题与完整堆栈正文已填好。",
-                                )
-                            },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    showCrashDialog = false
-                                    CrashReporter.send(this@MainActivity, crashReports)
-                                    CrashReporter.markSent(crashReports)
-                                }) { Text("发送到邮箱") }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showCrashDialog = false }) { Text("稍后") }
-                            },
-                        )
+                // 窗口实际宽度在这里测一次并下发；旋转 / 分屏 / 自由窗口变化会重新测量。
+                // 所有页面的布局分级、列数、边距、限宽都读同一份 LocalWindowWidth。
+                AdaptiveRoot {
+                    // 打码状态只在根部读一次，用静态 CompositionLocal 下发：
+                    // 状态一变整棵子树强制重组，不会出现「解锁后要滑一下才打码」
+                    val mask = rememberCoverMask()
+                    var showCrashDialog by remember { mutableStateOf(crashReports.isNotEmpty()) }
+                    CompositionLocalProvider(LocalCoverMask provides mask) {
+                        JavBossNavGraph(startWithSession = startWithSession)
+                        if (showCrashDialog && crashReports.isNotEmpty()) {
+                            AlertDialog(
+                                modifier = Modifier.adaptiveDialogWidth(),
+                                onDismissRequest = { showCrashDialog = false },
+                                title = { Text("检测到上次闪退") },
+                                text = {
+                                    Text(
+                                        "已记录 ${crashReports.size} 份崩溃日志，是否发送到 " +
+                                            "${CrashReporter.reportEmail()}？\n" +
+                                            "会调起手机上的邮件 App，收件人、主题与完整堆栈正文已填好。",
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        showCrashDialog = false
+                                        CrashReporter.send(this@MainActivity, crashReports)
+                                        CrashReporter.markSent(crashReports)
+                                    }) { Text("发送到邮箱") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showCrashDialog = false }) { Text("稍后") }
+                                },
+                            )
+                        }
                     }
                 }
             }

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -52,11 +51,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.EntityCard
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.IdolCard
@@ -65,8 +65,13 @@ import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.WorkCard
+import com.javboss.phone.ui.components.adaptiveSearchWidth
+import com.javboss.phone.ui.components.adaptiveSheetWidth
 import com.javboss.phone.ui.components.idolInfoRows
-import com.javboss.phone.ui.components.rememberResolvedColumns
+import com.javboss.phone.ui.components.rememberAdaptivePadding
+import com.javboss.phone.ui.components.rememberGridColumns
+import com.javboss.phone.ui.components.rememberGridSpacing
+import com.javboss.phone.ui.components.rememberWindowWidthDp
 
 /**
  * 作品库 tab：作品/女优/片商/系列四个卡片墙视角。
@@ -171,6 +176,7 @@ fun WorksScreen(
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier
+                    .adaptiveSearchWidth()
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 8.dp),
@@ -191,11 +197,11 @@ fun WorksScreen(
             // 瀑布流各列独立堆叠，卡片高度只要差半个像素（列宽除不尽时的取整误差）
             // 就会越差越多，最后出现"最后一列整体偏上、网格对不齐"。
             LazyVerticalGrid(
-                columns = GridCells.Fixed(rememberResolvedColumns()),
+                columns = GridCells.Fixed(rememberGridColumns()),
                 state = gridState,
-                contentPadding = PaddingValues(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(rememberAdaptivePadding()),
+                horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when (state.tab) {
@@ -329,13 +335,16 @@ fun WorksScreen(
     // 作品视角下半接原来的筛选区（番号前缀 / 标签 / 仅单体 / 随机）
     if (showSortFilter) {
         ModalBottomSheet(onDismissRequest = { showSortFilter = false }) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp),
-            ) {
+            // 宽窗口里收窄居中，排序项不横跨整块平板屏
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier
+                        .adaptiveSheetWidth()
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 32.dp),
+                ) {
                 Text(
                     if (state.tab == LibraryTab.WORKS) "排序 / 筛选" else "排序 · 女优",
                     style = MaterialTheme.typography.titleMedium,
@@ -392,12 +401,13 @@ fun WorksScreen(
                         onClear = viewModel::clearFilters,
                     )
                 }
+                }
             }
         }
     }
 }
 
-/** 顶栏紧凑视角按钮：高 30dp、左右各 9dp，四个视角 + 三个图标能在窄屏一行排完 */
+/** 顶栏紧凑视角按钮：手机 30dp，平板/宽窗口放大到 40dp 触控目标 */
 @Composable
 private fun CompactTabChip(
     label: String,
@@ -414,39 +424,17 @@ private fun CompactTabChip(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
     Box(
         Modifier
-            .height(30.dp)
+            .height(if (compact) 30.dp else 40.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(container)
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp),
+            .padding(horizontal = if (compact) 9.dp else 14.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = content, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-    }
-}
-
-/** 顶栏紧凑图标按钮：32dp 触控区，避免 IconButton 默认 48dp 把左侧 chip 挤到截断 */
-@Composable
-private fun CompactIconButton(
-    imageVector: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier
-            .size(32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector,
-            contentDescription,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }
 

@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.data.api.dto.IdolDto
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.data.api.dto.JavItemUpdateRequest
@@ -102,6 +103,7 @@ fun EditDialog(
     val dateValid = releaseDate.isBlank() || DATE_REGEX.matches(releaseDate)
 
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text("编辑作品信息") },
         text = {

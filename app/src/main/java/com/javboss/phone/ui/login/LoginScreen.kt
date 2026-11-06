@@ -2,9 +2,11 @@ package com.javboss.phone.ui.login
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +42,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.ServerPreset
+import com.javboss.phone.data.WindowSizeRules
+import com.javboss.phone.ui.components.adaptiveDialogWidth
+import com.javboss.phone.ui.components.adaptiveMaxWidth
+import com.javboss.phone.ui.components.rememberWindowWidthDp
 
 @Composable
 fun LoginScreen(
@@ -48,13 +54,17 @@ fun LoginScreen(
 ) {
     val state = viewModel.uiState
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 28.dp, vertical = 40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    // 平板上把整张表单限宽居中，不让输入框横跨 11 寸屏；手机仍铺满（宽度小于上限）
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier
+                .adaptiveMaxWidth(WindowSizeRules.loginFormMaxWidth(rememberWindowWidthDp()))
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp, vertical = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
         Text("JavBoss", style = MaterialTheme.typography.headlineLarge)
         Spacer(Modifier.height(8.dp))
         Text(
@@ -182,6 +192,7 @@ fun LoginScreen(
         ) {
             Text(if (state.loading) "登录中…" else "登录")
         }
+        }
     }
 
     state.dialog?.let { dialog ->
@@ -213,6 +224,8 @@ private fun PresetRow(
         selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
+    // 平板/宽窗口把重命名、删除按钮放大到 48dp 触控目标
+    val actionSize = if (WindowSizeRules.isCompact(rememberWindowWidthDp())) 40.dp else 48.dp
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -267,7 +280,7 @@ private fun PresetRow(
             )
         }
         if (manageMode) {
-            IconButton(onClick = onRename, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onRename, modifier = Modifier.size(actionSize)) {
                 Icon(
                     Icons.Filled.Edit,
                     contentDescription = "重命名",
@@ -275,7 +288,7 @@ private fun PresetRow(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(actionSize)) {
                 Icon(
                     Icons.Filled.Delete,
                     contentDescription = "删除预设",
@@ -306,6 +319,7 @@ private fun PresetNameDialog(
 ) {
     val isSave = dialog is PresetDialog.Save
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text(if (isSave) "保存为预设" else "重命名预设") },
         text = {

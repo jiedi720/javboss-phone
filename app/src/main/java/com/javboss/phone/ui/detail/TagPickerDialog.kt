@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.data.api.dto.TagDto
 import kotlinx.coroutines.launch
 
@@ -64,6 +65,7 @@ fun TagPickerDialog(
     }
 
     AlertDialog(
+        modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
         title = { Text(if (isJav) "编辑标签" else "编辑视频标签") },
         text = {

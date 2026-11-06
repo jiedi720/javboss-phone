@@ -33,7 +33,9 @@ import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.WorkCard
-import com.javboss.phone.ui.components.rememberResolvedColumns
+import com.javboss.phone.ui.components.rememberAdaptivePadding
+import com.javboss.phone.ui.components.rememberGridColumns
+import com.javboss.phone.ui.components.rememberGridSpacing
 
 /** 演员/标签/片商/系列点击落地页：对应过滤条件的作品瀑布流 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,11 +109,11 @@ fun JavListScreen(
                     // 普通网格是「行优先」：1 2 3 / 4 5 6 从左往右排。
                     // 之前用的 staggered grid 是「列优先」，序号会竖着一列列往下走，
                     // 看上去就不是从左到右的顺序了。
-                    columns = GridCells.Fixed(rememberResolvedColumns()),
+                    columns = GridCells.Fixed(rememberGridColumns()),
                     state = gridState,
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(rememberAdaptivePadding()),
+                    horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                    verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.items, key = { it.id }) { jav ->
