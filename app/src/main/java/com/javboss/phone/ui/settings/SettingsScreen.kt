@@ -2,6 +2,7 @@ package com.javboss.phone.ui.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,7 +55,7 @@ import com.javboss.phone.ui.components.adaptiveMaxWidth
 import com.javboss.phone.ui.components.rememberWindowWidthDp
 
 /**
- * 设置页：账号 / 读取路径 / 关于（放最下面）。
+ * 设置页：每行卡片数（置顶）/ 账号 / 读取路径 / 关于（放最下面）。
  * 读取路径照服务端「目录管理」设计，与服务端是同一份数据（/directories）：
  * 增删、启用 / 停用都会直接影响服务端扫描范围与内容展示。
  */
@@ -92,6 +93,40 @@ fun SettingsScreen(
         ) {
             Text("设置", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(12.dp))
+
+        // ---------- 每行卡片数（置顶，最常用的设置项） ----------
+        SectionTitle("每行卡片数")
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                // 9 个选项排成一行：宽窗口（平板 / 横屏）一次看全，窄窗口可横向滑动，
+                // 不再写死三行浪费空间。0 = 按窗口宽度自动
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(0, 2, 3, 4, 5, 6, 7, 8).forEach { n ->
+                        FilterChip(
+                            selected = state.gridColumnsChoice == n,
+                            onClick = { viewModel.setGridColumns(n) },
+                            label = { Text(if (n == 0) "自动" else "$n 列") },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；「自动」按当前应用窗口实际" +
+                        "可用宽度动态算列数，旋转、分屏、自由窗口缩放时实时重算。" +
+                        "手选 2..8 列就是固定列数（选 N 就排 N 列），不受自动档最小卡宽限制；" +
+                        "仅当窗口实在放不下时才自动收敛。视频页在此基础上恒少一列。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         // ---------- 账号 ----------
         SectionTitle("账号")
@@ -235,32 +270,6 @@ fun SettingsScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "从桌面冷启动 App 时默认进入的页面（默认 JAV）；修改只在下次启动生效，当前不会跳转",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(10.dp))
-                Text("每行卡片数", style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.height(8.dp))
-                // 9 个选项分三行排，窄屏也不会挤出屏幕；0 = 按窗口宽度自动
-                listOf(0, 2, 3, 4, 5, 6, 7, 8).chunked(3).forEach { group ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        group.forEach { n ->
-                            FilterChip(
-                                selected = state.gridColumnsChoice == n,
-                                onClick = { viewModel.setGridColumns(n) },
-                                label = { Text(if (n == 0) "自动" else "$n 列") },
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                Text(
-                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；「自动」按当前应用窗口实际" +
-                        "可用宽度动态算列数，旋转、分屏、自由窗口缩放时实时重算。" +
-                        "手选 2..8 列就是固定列数（选 N 就排 N 列），不受自动档最小卡宽限制；" +
-                        "仅当窗口实在放不下时才自动收敛。视频页在此基础上恒少一列。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
