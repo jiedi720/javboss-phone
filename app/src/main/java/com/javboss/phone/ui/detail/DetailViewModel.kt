@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.VideoTagEvents
+import com.javboss.phone.data.expandFileVersions
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.IdolDto
@@ -30,6 +31,8 @@ data class DetailUiState(
     val video: VideoDto? = null,
     /** 通过 /jav?search=<code> 精确匹配拿到的完整元数据（含片商/标签/演员） */
     val javMeta: JavDto? = null,
+    /** 按 /videos/{id} 的 locations 展开的文件版本列表（每个版本各带自己的路径与 location_id） */
+    val files: List<VideoDto> = emptyList(),
     val seriesName: String = "",
     val screenshots: List<ScreenshotDto> = emptyList(),
     /** 服务端样品图像数量（POST /jav/items/{id}/sample-images）；0 = 没有样品图，不显示这一区 */
@@ -61,16 +64,19 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
         loadedVideoId = videoId
         loadedJavCode = javCode
         viewModelScope.launch {
-            // 换作品 / 刷新时先清掉上一部的样品图与截图，避免串图
+            // 换作品 / 刷新时先清掉上一部的样品图、截图与文件版本，避免串台
             uiState = uiState.copy(
                 loading = true,
                 error = null,
                 screenshots = emptyList(),
                 sampleImageCount = 0,
                 sampleJavId = 0,
+                files = emptyList(),
             )
             try {
                 var code = javCode
+                // /jav 内嵌的 videos：每个文件一条，用来补充各文件版本的统计信息
+                var metaVideos: List<VideoDto> = emptyList()
                 if (videoId > 0) {
                     // 删掉当前文件后 /videos/{id} 可能 404，这时仍要按番号展示作品元数据
                     val video = runCatching { container.videoRepository.getVideo(videoId) }.getOrNull()
@@ -83,6 +89,7 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
                         container.videoRepository.searchJavs(limit = 5, offset = 0, search = code)
                             .items.firstOrNull { it.code.equals(code, ignoreCase = true) }
                     }.getOrNull()
+                    metaVideos = meta?.videos.orEmpty()
                     uiState = uiState.copy(javMeta = meta)
 
                     // 样品图像：服务端按数组下标取图，这里只需要个数；接口异常返回 0，就不显示这一区
@@ -116,7 +123,12 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
                     val shots = container.videoRepository.listVideoScreenshots(videoId)
                     uiState = uiState.copy(screenshots = shots)
                 }
-                uiState = uiState.copy(loading = false)
+                // 文件版本按 /videos/{id} 的 locations 逐条展开：每个版本各带自己的路径与 location_id，
+                // 不再按 video.id 把全部版本替换成单条主路径（同一 video_id 的多条记录 id 相同）
+                uiState = uiState.copy(
+                    loading = false,
+                    files = expandFileVersions(uiState.video, metaVideos),
+                )
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
             } catch (e: Exception) {

@@ -232,7 +232,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(10.dp))
                 Text("每行卡片数", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(8.dp))
-                // 6 个选项分两行排，窄屏也不会挤出屏幕；「自动」按屏幕尺寸/方向算，平板更多列
+                // 6 个选项分两行排，窄屏也不会挤出屏幕；值为竖屏列数，横屏自动翻倍
                 listOf(0, 2, 3, 4, 5, 6).chunked(3).forEach { group ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         group.forEach { n ->
@@ -246,8 +246,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                 }
                 Text(
-                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；选「自动」时按屏幕尺寸与方向计算，" +
-                        "平板和横屏会显示更多列（手机竖屏 2 / 手机横屏 3 / 平板竖屏 4 / 平板横屏 5）。",
+                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；所选值是**竖屏列数**，" +
+                        "横屏一律翻倍（手机自动 2→4、平板自动 4→8；手选值同样翻倍），横屏最多 8 列。" +
+                        "改完四个网格立即生效、旋转屏幕也会一起重算。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

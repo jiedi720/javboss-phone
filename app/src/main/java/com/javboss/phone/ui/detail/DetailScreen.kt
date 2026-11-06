@@ -154,19 +154,9 @@ fun DetailScreen(
 
     val jav = state.javMeta
     val video = state.video
-    // 一部作品可能挂多个文件版本（不同分辨率/不同目录），详情页要全部列出来。
-    // 以 /jav 元数据里内嵌的 videos 为准，当前播放的那条用 /videos/{id} 的新鲜数据替换（它可能带更新的路径）。
-    val files: List<VideoDto> = remember(state.javMeta, state.video) {
-        val current = state.video
-        val fromMeta = state.javMeta?.videos.orEmpty().map { v ->
-            if (current != null && v.id == current.id && current.fullPath.isNotBlank()) current else v
-        }
-        when {
-            current == null -> fromMeta
-            fromMeta.any { it.id == current.id } -> fromMeta
-            else -> listOf(current) + fromMeta
-        }
-    }
+    // 文件版本由 ViewModel 按 /videos/{id} 的 locations 逐条展开，
+    // 每个版本各带自己的完整路径与 location_id（不再按 video.id 合并成同一条主路径）
+    val files = state.files
     val title = jav?.let { "${it.code} ${it.title}" }?.trim()?.takeIf { it.isNotBlank() }
         ?: video?.filename ?: javCode ?: "详情"
 
@@ -305,7 +295,13 @@ fun DetailScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    if (file.id == video?.id) {
+                                    // 展开后所有版本的 id 都是同一个 video_id，不能再按 id 判断；
+                                    // 只有 location_id 或完整路径与当前视频一致时才标「当前」
+                                    val isCurrent = video != null && (
+                                        (video.locationId > 0 && file.locationId == video.locationId) ||
+                                            (video.locationId <= 0 && file.fullPath == video.fullPath)
+                                        )
+                                    if (isCurrent) {
                                         Spacer(Modifier.width(8.dp))
                                         Text(
                                             text = "当前",

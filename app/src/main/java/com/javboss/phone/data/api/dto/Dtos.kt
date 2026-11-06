@@ -59,7 +59,7 @@ data class VideoDto(
     @SerialName("location_id") val locationId: Long = 0,
     val jav: JavDto? = null,
     val tags: List<TagDto> = emptyList(),
-    /** /videos/{id} 会给出该视频的全部文件位置，用于 locationId 缺失时按路径反查 */
+    /** /videos/{id} 会给出该视频的全部文件位置；详情页按它逐条展开每个文件版本 */
     val locations: List<VideoLocationDto> = emptyList(),
 ) {
     /** 目录筛选用的 id：优先 directory_id，退回内嵌 directory.id（对齐 Web 端卡片） */
@@ -301,14 +301,32 @@ data class ScreenshotListResponse(
 
 // ---------- 收藏夹（/jav/jav-favorite-groups） ----------
 
-/** 文件位置：/videos/{id} 的 locations 数组元素 */
+/**
+ * 文件位置：/videos/{id} 的 locations 数组元素。
+ * 一个 video_id 可以挂多个 location（同一部作品的不同文件版本散落在不同读取目录），
+ * 每条各带自己的 relative_path + 目录绝对路径，这才是详情页展开文件列表的权威数据源。
+ */
 @Serializable
 data class VideoLocationDto(
     val id: Long = 0,
     val filename: String = "",
     @SerialName("relative_path") val relativePath: String = "",
     @SerialName("directory_path") val directoryPath: String = "",
-)
+    /** 部分接口把目录作为内嵌对象返回（Web 端读 directory.path / directory_ref.path） */
+    val directory: DirectoryRefDto? = null,
+    @SerialName("directory_ref") val directoryRef: DirectoryRefDto? = null,
+) {
+    /** 目录绝对路径：内嵌目录对象优先，最后退回扁平字段 */
+    val resolvedDirectoryPath: String
+        get() = directory?.path?.takeIf { it.isNotBlank() }
+            ?: directoryRef?.path?.takeIf { it.isNotBlank() }
+            ?: directoryPath
+
+    /** 文件名：服务端给了就用，否则从相对路径取最后一段 */
+    val resolvedFilename: String
+        get() = filename.takeIf { it.isNotBlank() }
+            ?: relativePath.trim().split('/', '\\').lastOrNull().orEmpty()
+}
 
 @Serializable
 data class FavoriteGroupDto(
