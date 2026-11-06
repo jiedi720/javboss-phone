@@ -341,6 +341,21 @@
     同签名也无法跨包读数据（Android 按 UID 隔离），没有无痛迁移方案。
   - 设置页「关于 → 包名」用 `BuildConfig.APPLICATION_ID` 动态读取，自动显示新包名。
   - 全量单测 **101/101**。
+- **设置页精简与播放按钮归位（v0.3.48）**：
+  - 「退出登录」文字由旧浅红语义色改为**新主题橙**（`colorScheme.primary`），
+    退出确认弹窗的「退出」同步换色；按钮从整行高的 `TextButton` 换成紧凑文本按钮，
+    账号卡片留白明显收窄。
+  - 「启动显示界面」只保留 **视频 / JAV** 两个选项，不再把「收藏夹」「设置」
+    作为冷启动页；`LaunchTab.startupOptions` 为唯一数据源，
+    `SettingsManager.restore()` 会把旧版本存过的收藏夹 / 设置值回落到 JAV，
+    避免单选框出现「一个都没选中」。
+  - 删除「锁屏自动打码」下方那段长说明文字（关掉后…彻底退出 App 再打开不继承）。
+  - 「每行卡片数」由 9 个独立 `FilterChip` 改为 **下拉列表**
+    （`ExposedDropdownMenuBox`），选项仍是「自动 / 2..8 列」，语义不变。
+  - 修复封面右下角播放按钮在宽窗口往中间偏：旧实现把 30dp 视觉圆钮居中放进
+    48dp 触控区，离右边 / 下边变成 15dp；现 48dp 触控区整体贴右下角、
+    视觉圆钮按 `BottomEnd` 对齐，边距回到 **6dp**，与右上角「已观看」图标一致。
+  - 新增 `LaunchTabTest` 3 例；全量单测 **104/104**。
 
 ## 使用
 
@@ -412,7 +427,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 51`、`versionName = 0.3.47-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 52`、`versionName = 0.3.48-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

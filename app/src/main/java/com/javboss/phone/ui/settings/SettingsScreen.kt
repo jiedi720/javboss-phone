@@ -2,7 +2,6 @@ package com.javboss.phone.ui.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,10 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,22 +100,11 @@ fun SettingsScreen(
         SectionTitle("每行卡片数")
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
-                // 9 个选项排成一行：宽窗口（平板 / 横屏）一次看全，窄窗口可横向滑动，
-                // 不再写死三行浪费空间。0 = 按窗口宽度自动
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf(0, 2, 3, 4, 5, 6, 7, 8).forEach { n ->
-                        FilterChip(
-                            selected = state.gridColumnsChoice == n,
-                            onClick = { viewModel.setGridColumns(n) },
-                            label = { Text(if (n == 0) "自动" else "$n 列") },
-                        )
-                    }
-                }
+                // 下拉列表替代一排独立按钮：0 = 按窗口宽度自动，2..8 = 固定列数
+                GridColumnsDropdown(
+                    selected = state.gridColumnsChoice,
+                    onSelect = viewModel::setGridColumns,
+                )
             }
         }
 
@@ -131,13 +122,18 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider()
-                Spacer(Modifier.height(4.dp))
-                TextButton(
-                    onClick = { showLogoutConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("退出登录", color = MaterialTheme.colorScheme.error)
-                }
+                Spacer(Modifier.height(2.dp))
+                // 用紧凑的文本按钮：文字跟随新主题橙，不再用旧的浅红语义色；
+                // 也不用整行高的 TextButton，卡片留白明显收窄
+                Text(
+                    text = "退出登录",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .clickable { showLogoutConfirm = true }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
             }
         }
 
@@ -244,31 +240,12 @@ fun SettingsScreen(
             Column(Modifier.padding(14.dp)) {
                 Text("启动显示界面", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
-                // 宽窗口（平板 / 横屏）把 4 个选项排成一行；窄窗口仍一行一个，手机布局不变
-                val wideLaunchOptions =
-                    rememberWindowWidthDp() >= WindowSizeRules.COMPACT_MAX_DP
-                if (wideLaunchOptions) {
-                    Row(Modifier.fillMaxWidth()) {
-                        LaunchTab.entries.forEach { option ->
-                            Row(
-                                Modifier
-                                    .weight(1f)
-                                    .clickable { viewModel.setLaunchTab(option) },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RadioButton(
-                                    selected = state.launchTab == option,
-                                    onClick = { viewModel.setLaunchTab(option) },
-                                )
-                                Text(option.label, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                } else {
-                    LaunchTab.entries.forEach { option ->
+                // 冷启动只给「视频 / JAV」两个入口；收藏夹与设置不作为启动页
+                Row(Modifier.fillMaxWidth()) {
+                    LaunchTab.startupOptions.forEach { option ->
                         Row(
                             Modifier
-                                .fillMaxWidth()
+                                .weight(1f)
                                 .clickable { viewModel.setLaunchTab(option) },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -311,13 +288,6 @@ fun SettingsScreen(
                         onCheckedChange = viewModel::setAutoMaskOnLock,
                     )
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "关掉后锁屏不再自动打码，已打的码也会立刻解除；「封面毛玻璃」常开仍照常生效。" +
-                        "开启时解锁后点列表顶部的「显示封面」即可恢复（彻底退出 App 再打开不继承）。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 
@@ -421,7 +391,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     showLogoutConfirm = false
                     onLogout()
-                }) { Text("退出", color = MaterialTheme.colorScheme.error) }
+                }) { Text("退出", color = MaterialTheme.colorScheme.primary) }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutConfirm = false }) { Text("取消") }
@@ -463,6 +433,41 @@ private fun RoleOptions(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** 每行卡片数下拉：0 = 自动，2..8 = 固定列数，取代一排独立按钮 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GridColumnsDropdown(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf(0, 2, 3, 4, 5, 6, 7, 8)
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = if (selected == 0) "自动" else "$selected 列",
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            label = { Text("每行卡片数") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { n ->
+                DropdownMenuItem(
+                    text = { Text(if (n == 0) "自动" else "$n 列") },
+                    onClick = {
+                        expanded = false
+                        onSelect(n)
+                    },
                 )
             }
         }

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -679,18 +678,17 @@ private fun RatingBadge(rating: Double, onClick: () -> Unit) {
 /** 作品封面右下角的播放小圆钮：直接起播，不用先进详情页 */
 @Composable
 private fun CoverPlayButton(onClick: () -> Unit) {
-    // 视觉永远是 30dp 小圆钮；平板上把可点击区域撑到 48dp，满足触控目标
+    // 视觉永远是 30dp 小圆钮；宽窗口（平板 / 横屏）把可点击区域撑到 48dp 满足触控目标。
+    // 48dp 触控区整体贴右下角，视觉圆钮用 BottomEnd 对齐到触控区右下 —— 这样圆钮离
+    // 封面右边 / 下边仍是 6dp，和右上角「已观看」图标的边距完全一致；
+    // 旧实现把 30dp 圆钮居中放进 48dp 触控区，宽窗口下会明显往封面中间偏。
     val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
     Box(
         modifier = Modifier
             .padding(6.dp)
-            .then(
-                if (compact) Modifier.size(30.dp)
-                else Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            )
-            .clip(CircleShape)
+            .size(if (compact) 30.dp else 48.dp)
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+        contentAlignment = if (compact) Alignment.Center else Alignment.BottomEnd,
     ) {
         Box(
             Modifier

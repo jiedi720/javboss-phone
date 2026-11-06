@@ -25,7 +25,10 @@ enum class SeekSensitivity(val label: String, val factor: Float) {
     HIGH("高", 2f),
 }
 
-/** 冷启动时底部导航默认落在哪个 tab；默认 JAV（与服务端 Web 端主入口一致） */
+/**
+ * 底部导航的 4 个 tab，index 与 [com.javboss.phone.ui.main.MainScreen] 的 mainTabs 顺序一致。
+ * 冷启动入口只允许视频 / JAV（收藏夹、设置不作为启动页），见 [startupOptions]。
+ */
 enum class LaunchTab(val index: Int, val label: String) {
     VIDEOS(0, "视频"),
     JAV(1, "JAV"),
@@ -35,6 +38,9 @@ enum class LaunchTab(val index: Int, val label: String) {
 
     companion object {
         fun fromIndex(index: Int): LaunchTab = entries.firstOrNull { it.index == index } ?: JAV
+
+        /** 设置页「启动显示界面」只给这两个选项 */
+        val startupOptions = listOf(VIDEOS, JAV)
     }
 }
 
@@ -180,6 +186,8 @@ class SettingsManager(private val context: Context) {
         favItemSortAsc = prefs[keyFavItemSortAsc] ?: true
         launchTab = prefs[keyLaunchTab]
             ?.let { runCatching { LaunchTab.valueOf(it) }.getOrNull() }
+            // 旧版可能存过「收藏夹 / 设置」作为启动页，现统一回落到 JAV
+            ?.takeIf { it in LaunchTab.startupOptions }
             ?: LaunchTab.JAV
         autoSwitchEnabled = prefs[keyAutoSwitch] ?: false
         lanPresetUrl = prefs[keyLanPreset].orEmpty()
