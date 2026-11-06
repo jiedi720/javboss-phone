@@ -105,9 +105,9 @@
   宽窗口一次看全、窄窗口可横向滑动，不再写死三行）；「自动」按
   **当前应用窗口实际可用宽度 ÷ 卡片最小宽度**动态算，旋转 / 分屏 / 自由窗口缩放实时重算；
   手选值就是**固定列数**（选 N 就排 N 列，不受自动档最小卡宽限制），仅当窗口
-  按 100dp 硬下限也放不下时才自动收敛，上限 8 列；
+  按 88dp 硬下限也放不下时才自动收敛，上限 8 列；
   改完四个网格立即生效；**视频页在此基础上恒少一列**，因为 16:9 横版封面比竖版宽，
-  详见 v0.3.43 / v0.3.44 / v0.3.45 段）；
+  详见 v0.3.43 / v0.3.44 / v0.3.45 / v0.3.46 段）；
   其后依次是：当前服务器地址、退出登录（二次确认）；**自动切换登录**（总开关 + 「家里 / 外面」两条预设单选 +
   可改的探测地址 + 「立即检测」，详见上条）；**启动显示界面**（视频 / JAV / 收藏夹 / 设置，默认 JAV，
   写入 DataStore、下次冷启动生效）；
@@ -116,7 +116,7 @@
   列表顶部出现「显示封面」入口；彻底退出 App 再打开则不自动打码。
   关掉后锁屏不再自动打码、已打的码立刻解除；「封面毛玻璃」常开不受影响，仍一直打码）；
   **关于**（版本 + versionCode + 打包时间 + 包名）放在页面最下面；**读取路径**照服务端「目录管理」设计：
-  每行显示路径 + 已扫描/已刮削视频数 + 扫描状态，右上角「启用」开关可**启用 / 停用**
+  每行显示路径 + 已扫描/已刮削视频数 + 扫描状态，右上角开关可**启用 / 停用**
   （`PATCH /directories/{id}` body `{enabled}`，停用后不再扫描也不展示该目录内容），右下角扫描 / 删除；
   增删与扫描走 `/directories` 系列接口
 - **详情页**：封面、番号、发行日期、时长、片商、系列、演员、标签（**服务端视频自身 tags 与作品
@@ -250,7 +250,7 @@
   - `Common.kt` 新增 `AdaptiveRoot`（`BoxWithConstraints` 测出当前窗口宽高，经
     `LocalWindowWidth` / `LocalWindowHeight` 下发）+ 一组 `Modifier` 限宽扩展；
     `MainActivity` 在 `JavBossTheme` 内包一层，整 App 都能读到当前窗口尺寸
-  - **导航**：`MainScreen` Compact 用底部 `NavigationBar`，Medium / Expanded 用 80dp
+  - **导航**：`MainScreen` Compact 用底部 `NavigationBar`，Medium / Expanded 用 64dp
     左侧 `NavigationRail`（Expanded 才常驻文字标签）；tab 用 `rememberSaveable` 保留，
     正文用 `adaptiveContentWidth()` 限宽居中
   - **四个网格**（视频 / 作品墙 / JAV 过滤页 / 收藏夹内页）：列数由
@@ -305,6 +305,27 @@
   9 个选项（自动 / 2..8 列）由原先硬编码 `chunked(3)` 的**三行**改为单个 `Row` **一行显示**，
   宽窗口（平板 / 横屏）一次看全，窄窗口通过横向滚动查看，不再换行。
   其余设置项顺序、手机布局与业务逻辑均不变；全量单测 **101/101**。
+- **手选 8 列真正排 8 列 + 左侧栏收窄 + 主题色换橙 + 文案精简（v0.3.46）**：
+  - 修复「选 8 列却只显示 7 列」：此前手选档按 `MANUAL_CARD_MIN_WIDTH_DP = 100`
+    加 16dp 间距算 `maxFitting`，959dp 平板横屏（扣掉侧栏与边距后约 831dp 可用）
+    只算出 7 列，手选 8 被收敛成 7。现把硬下限降到 **88dp**，
+    同窗口 `maxFitting = 8`，选 8 就排 8 列（每卡约 92dp）；
+    侧栏同时收窄又多留出 16dp 可用宽度，窄窗口仍会按硬下限收敛。
+  - `RAIL_WIDTH_DP` 从 **80dp 收窄到 64dp**，左侧 `NavigationRail` 更紧凑，
+    网格可用宽度相应增加（该常量同时用于 `rememberReservedWidthDp()`，两处自动一致）。
+  - 视频页仍按 v0.3.43 规则恒比 JAV 少一列（JAV 8 列时视频 7 列），未改动。
+  - **主题色 `#E57373` → `#FF9000`**：`Theme.kt` 的 `primary` 改为橙色，
+    并把 Material3 默认紫粉系的 `secondary` / `tertiary` 及各自容器 / 前景
+    一并换成接近橙色的暖色系，界面里不再残留粉紫色文字；
+    `background` / `surface` / `surfaceVariant` / `error` 等语义色保持原样；
+    启动器图标里的粉色三角 `#E94560` 同步改为 `#FF9000`。
+  - **文案与顺排精简**：详情页删「长按文件卡片：查看大小、复制路径、重命名或删除」
+    提示文字，并把「演员」移到「片商 / 系列」上方；设置页删「每行卡片数」长说明、
+    「启动显示界面」说明、「读取路径」目录管理说明三行文字，
+    「读取路径」开关上方不再显示「启用 / 停用」文字（开关本身已足够表意）；
+    宽窗口（平板 / 横屏）下「启动显示界面」4 个选项排成一行，窄窗口仍一行一个。
+  - `WindowSizeRulesTest` 更新 959dp 手选 8 列断言，并在同一用例里补
+    「按 64dp 侧栏占位仍可达 8 列」的断言；全量单测 **101/101**。
 
 ## 使用
 
@@ -376,7 +397,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 49`、`versionName = 0.3.45-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 50`、`versionName = 0.3.46-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

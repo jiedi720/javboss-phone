@@ -146,16 +146,22 @@ class WindowSizeRulesTest {
     @Test
     fun `manual column choice is the target count not just an upper bound`() {
         // 平板横屏 959dp：自动档按 150dp 最小卡宽只算出 5 列，
-        // 手选 6 / 7 列必须真的排 6 / 7 列，否则设置里的 5 / 6 列形同虚设。
+        // 手选 6 / 7 / 8 列必须真的排 6 / 7 / 8 列，否则设置里的高列数形同虚设。
         val width = 959
         val auto = WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 0)
         assertEquals(5, auto)
         assertEquals(6, WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 6))
         assertEquals(7, WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 7))
-        // 手选超过窗口能容纳的列数时按 100dp 硬下限收敛，且不超过硬上限
-        assertTrue(
-            WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 8) <=
-                WindowSizeRules.GRID_MAX_COLUMNS,
+        // 88dp 硬下限让 959dp 横屏手选 8 列可达，不再被收敛成 7 列；
+        // 换成收窄后的 64dp 侧栏同样可达。
+        assertEquals(8, WindowSizeRules.gridColumns(width, reservedDp = 80, choice = 8))
+        assertEquals(
+            8,
+            WindowSizeRules.gridColumns(
+                width,
+                reservedDp = WindowSizeRules.RAIL_WIDTH_DP,
+                choice = 8,
+            ),
         )
         // 窄窗口下手选 8 列也必须收缩，卡片不能窄于手选硬下限
         assertTrue(WindowSizeRules.gridColumns(360, choice = 8) <= 3)
@@ -164,6 +170,7 @@ class WindowSizeRulesTest {
     @Test
     fun `manual eight columns are reachable on a wide window`() {
         assertEquals(8, WindowSizeRules.gridColumns(1200, reservedDp = 80, choice = 8))
+        assertEquals(8, WindowSizeRules.gridColumns(959, reservedDp = 80, choice = 8))
         assertEquals(7, WindowSizeRules.videoGridColumns(8))
     }
 

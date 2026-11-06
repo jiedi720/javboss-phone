@@ -84,8 +84,8 @@ object WindowSizeRules {
     /** 详情左右双栏所需的最小窗口宽度 */
     const val TWO_PANE_MIN_DP = 900
 
-    /** NavigationRail 占位宽度，算网格可用宽度时要扣掉 */
-    const val RAIL_WIDTH_DP = 80
+    /** NavigationRail 占位宽度，算网格可用宽度时要扣掉；收窄到 64dp 给网格多留 16dp */
+    const val RAIL_WIDTH_DP = 64
 
     /** 网格列数硬上限：防止自由窗口被拖到超宽时卡片过密 */
     const val GRID_MAX_COLUMNS = 8
@@ -97,9 +97,11 @@ object WindowSizeRules {
      * 手选固定列数时允许的卡片硬下限。
      * 自动档用 150dp 保证「看着舒服」，但用户明确选了 6/7/8 列时若还按 150dp 算，
      * 平板横屏 959dp 只够排 5 列，设置里的 5 / 6 列就形同虚设。
-     * 手选是显式意图，放宽到 100dp：窗口真放不下才收敛，否则按用户选的列数排。
+     * 手选是显式意图，放宽到 88dp：959dp 平板横屏扣掉 64dp 侧栏、24dp×2 边距、
+     * 16dp 间距后约 847dp 可用，刚好排得下 8 列（每卡约 92dp），
+     * 手选 8 列不再被收敛成 7 列；窗口真放不下才收敛，否则按用户选的列数排。
      */
-    const val MANUAL_CARD_MIN_WIDTH_DP = 100
+    const val MANUAL_CARD_MIN_WIDTH_DP = 88
 
     /** 横向视频卡（16:9）的最小宽度：更宽才看得清标题与角标。
      *  视频页不再用它单独算列数，改由 [videoGridColumns] 恒比 JAV 少一列；

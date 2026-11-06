@@ -114,15 +114,6 @@ fun SettingsScreen(
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "影响视频、作品墙、女优/片商/系列和收藏夹的列数；「自动」按当前应用窗口实际" +
-                        "可用宽度动态算列数，旋转、分屏、自由窗口缩放时实时重算。" +
-                        "手选 2..8 列就是固定列数（选 N 就排 N 列），不受自动档最小卡宽限制；" +
-                        "仅当窗口实在放不下时才自动收敛。视频页在此基础上恒少一列。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 
@@ -253,26 +244,42 @@ fun SettingsScreen(
             Column(Modifier.padding(14.dp)) {
                 Text("启动显示界面", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
-                LaunchTab.entries.forEach { option ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.setLaunchTab(option) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = state.launchTab == option,
-                            onClick = { viewModel.setLaunchTab(option) },
-                        )
-                        Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                // 宽窗口（平板 / 横屏）把 4 个选项排成一行；窄窗口仍一行一个，手机布局不变
+                val wideLaunchOptions =
+                    rememberWindowWidthDp() >= WindowSizeRules.COMPACT_MAX_DP
+                if (wideLaunchOptions) {
+                    Row(Modifier.fillMaxWidth()) {
+                        LaunchTab.entries.forEach { option ->
+                            Row(
+                                Modifier
+                                    .weight(1f)
+                                    .clickable { viewModel.setLaunchTab(option) },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = state.launchTab == option,
+                                    onClick = { viewModel.setLaunchTab(option) },
+                                )
+                                Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                } else {
+                    LaunchTab.entries.forEach { option ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setLaunchTab(option) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = state.launchTab == option,
+                                onClick = { viewModel.setLaunchTab(option) },
+                            )
+                            Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "从桌面冷启动 App 时默认进入的页面（默认 JAV）；修改只在下次启动生效，当前不会跳转",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.height(10.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(10.dp))
@@ -360,14 +367,6 @@ fun SettingsScreen(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "与服务端「目录管理」是同一份数据：增删、启用 / 停用都会直接改变服务端扫描范围；" +
-                "停用的目录不再扫描、内容也不再展示。路径是服务端容器内的绝对路径（如 /media/JAV）。",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
         // ---------- 关于（放最下面）----------
         Spacer(Modifier.height(16.dp))
         SectionTitle("关于")
@@ -525,15 +524,6 @@ private fun DirectoryRow(
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    if (dir.enabled) "启用" else "停用",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (dir.enabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
                 Switch(
                     checked = dir.enabled,
                     onCheckedChange = onToggleEnabled,

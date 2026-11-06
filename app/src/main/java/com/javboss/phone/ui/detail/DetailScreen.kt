@@ -947,17 +947,11 @@ private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
                 }
             }
         }
-        Text(
-            "长按文件卡片：查看大小、复制路径、重命名或删除",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
-        )
     }
 
 }
 
-/** 右栏（双栏）/ 下方（单栏）：片商系列、演员、标签、外链、样品图、截图 */
+/** 右栏（双栏）/ 下方（单栏）：演员、片商系列、标签、外链、样品图、截图 */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
@@ -969,6 +963,23 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
     val scope = rememberCoroutineScope()
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
+
+    // 演员（可点击）：放在片商 / 系列上面
+    if (!jav?.idols.isNullOrEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        Text("演员", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            jav!!.idols.forEach { idol ->
+                AssistChip(
+                    onClick = {
+                        p.onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
+                    },
+                    label = { Text(idol.displayName) },
+                )
+            }
+        }
+    }
 
     // 片商 / 系列（可点击）
     val studio = jav?.studio
@@ -992,23 +1003,6 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
                         p.onOpenJavList("系列：${state.seriesName}", "", "", 0, seriesId)
                     },
                     label = { Text(state.seriesName) },
-                )
-            }
-        }
-    }
-
-    // 演员（可点击）
-    if (!jav?.idols.isNullOrEmpty()) {
-        Spacer(Modifier.height(16.dp))
-        Text("演员", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            jav!!.idols.forEach { idol ->
-                AssistChip(
-                    onClick = {
-                        p.onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
-                    },
-                    label = { Text(idol.displayName) },
                 )
             }
         }
