@@ -294,18 +294,18 @@ fun cupLabel(cup: Int): String {
 fun bwhLabel(bust: Int, waist: Int, hips: Int): String =
     if (bust > 0 && waist > 0 && hips > 0) "$bust-$waist-$hips" else ""
 
-/** 生日 → "1996-03-01（29）"；解析失败时原样返回，未来日期不带年龄（移动端省略「岁」字） */
+/** 生日 → "1996-03-01 (29)"；解析失败时原样返回，未来日期不带年龄（移动端省略「岁」字、括号用半角） */
 fun birthWithAgeLabel(birthDate: String, today: LocalDate = LocalDate.now()): String {
     val raw = birthDate.trim().take(10)
     if (raw.isEmpty()) return ""
     val date = runCatching { LocalDate.parse(raw) }.getOrNull() ?: return birthDate.trim()
     if (date.isAfter(today)) return raw
-    return "$raw（${Period.between(date, today).years}）"
+    return "$raw (${Period.between(date, today).years})"
 }
 
 /**
  * 女优卡片封面下方的数据行，**永远是固定两行**：
- *  1. `1996-03-01（30）`（没录入 → `生日未录入`）
+ *  1. `1996-03-01 (30)`（没录入 → `生日未录入`）
  *  2. `158 · 88-58-86 · E`（都没录入 → `身体数据未录入`）
  *
  * 固定行数是硬要求：行数随数据多少变化会让卡片高矮不一，

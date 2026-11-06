@@ -8,7 +8,8 @@ import org.junit.Test
  * 女优卡片封面下方数据行的拼装规则。
  * 关键约束：**永远返回固定两行**（生日行 + 身体数据行），
  * 缺失时用占位文案补位，否则卡片高矮不一，网格里对不齐。
- * 移动端窄卡片只留数字/字母：身高无 cm、三围无中文前缀、罩杯无「罩杯」、年龄无「岁」。
+ * 移动端窄卡片只留数字/字母：身高无 cm、三围无中文前缀、罩杯无「罩杯」、年龄无「岁」；
+ * 年龄括号用半角且前面留一个空格（`1996-03-01 (30)`）。
  */
 class IdolInfoRowsTest {
 
@@ -25,7 +26,7 @@ class IdolInfoRowsTest {
             cup = 5,
             today = today,
         )
-        assertEquals(listOf("1996-03-01（30）", "158 · 88-58-86 · E"), rows)
+        assertEquals(listOf("1996-03-01 (30)", "158 · 88-58-86 · E"), rows)
     }
 
     @Test
@@ -52,7 +53,7 @@ class IdolInfoRowsTest {
         val onlyBirth = idolInfoRows(
             birthDate = "2000-01-02", heightCm = 0, bust = 0, waist = 0, hips = 0, cup = 0, today = today,
         )
-        assertEquals(listOf("2000-01-02（26）", "身体数据未录入"), onlyBirth)
+        assertEquals(listOf("2000-01-02 (26)", "身体数据未录入"), onlyBirth)
     }
 
     @Test
@@ -80,8 +81,8 @@ class IdolInfoRowsTest {
 
     @Test
     fun `age is one less before this year's birthday`() {
-        assertEquals("1996-03-01（30）", birthWithAgeLabel("1996-03-01", today))
-        assertEquals("1996-12-31（29）", birthWithAgeLabel("1996-12-31", today))
+        assertEquals("1996-03-01 (30)", birthWithAgeLabel("1996-03-01", today))
+        assertEquals("1996-12-31 (29)", birthWithAgeLabel("1996-12-31", today))
     }
 
     @Test
