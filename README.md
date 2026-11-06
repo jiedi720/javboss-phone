@@ -75,7 +75,7 @@
     - 收藏夹**列表页**不设排序/搜索（文件夹就那几个，按服务端顺序列出即可）
 - **设置页**：当前服务器地址、退出登录（二次确认）；**启动显示界面**（视频 / JAV / 收藏夹 / 设置，默认 JAV，
   写入 DataStore、下次冷启动生效）；**每行卡片数 2/3/4**（改完作品墙/收藏夹立即生效）；
-  **封面毛玻璃**开关（作品/女优封面以及**视频 tab 缩略图**统一改用毛玻璃模糊显示）；
+  **封面毛玻璃**开关（作品 / 女优 / 片商 / 系列封面以及**视频 tab 缩略图**统一改用毛玻璃模糊显示）；
   **锁屏自动打码**（App 使用中手机锁屏会给封面自动打码，
   解锁后保持，列表顶部出现「显示封面」入口；彻底退出 App 再打开则不自动打码，设置常开时一直打码）；
   **关于**（版本 + versionCode + 打包时间 + 包名）放在页面最下面；**读取路径**照服务端「目录管理」设计：
@@ -202,7 +202,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 33`、`versionName = 0.3.29-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 34`、`versionName = 0.3.30-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

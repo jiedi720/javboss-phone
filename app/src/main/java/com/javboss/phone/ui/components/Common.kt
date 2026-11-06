@@ -677,6 +677,8 @@ fun EntityCard(
 ) {
     // 图片原始尺寸：Web 端要先读 naturalWidth/Height 才能算左移像素，这里同理
     var imageSize by remember(coverUrl) { mutableStateOf<Pair<Int, Int>?>(null) }
+    // 与作品卡/女优卡/视频卡共用同一套封面毛玻璃：设置常开 + 锁屏自动打码都生效
+    val masked = LocalCoverMask.current.masked
     Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
         Column {
             BoxWithConstraints(
@@ -689,7 +691,7 @@ fun EntityCard(
                 val frameH = with(density) { maxHeight.toPx() }
                 if (coverUrl != null) {
                     AsyncImage(
-                        model = coverUrl,
+                        model = coverImageModel(coverUrl, masked && !coverBlurSupported),
                         contentDescription = name,
                         contentScale = ContentScale.Crop,
                         alignment = entityCropAlignment(cropLeft, imageSize, frameW, frameH),
@@ -697,7 +699,9 @@ fun EntityCard(
                             val image = success.result.image
                             imageSize = image.width to image.height
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .coverFrost(masked),
                     )
                 } else {
                     ImagePlaceholder(Modifier.fillMaxSize())
@@ -819,11 +823,6 @@ fun RatingDialog(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 TextButton(onClick = { value = 0.0 }) { Text("清除评分") }
-                Text(
-                    "左右拖动或点击爱心调整星级（每 0.5 分一档）；改动会直接写回服务端",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         },
         confirmButton = { TextButton(onClick = { onSave(value) }) { Text("保存") } },
