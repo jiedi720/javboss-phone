@@ -5,7 +5,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -48,10 +48,13 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +73,7 @@ import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.PrivacyMask
 import java.time.LocalDate
 import java.time.Period
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /** 秒 → "mm:ss" 或 "h:mm:ss" */
@@ -209,6 +213,7 @@ fun VideoCard(
     /** 服务端统计的该视频累计观看时长；> 0 才在封面右上角显示已观看图标 */
     watchedMs: Long = 0,
 ) {
+    val masked = LocalCoverMask.current.masked
     Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
         Column {
             Box(
@@ -217,10 +222,12 @@ fun VideoCard(
                     .aspectRatio(16f / 9f),
             ) {
                 AsyncImage(
-                    model = thumbnailUrl,
+                    model = coverImageModel(thumbnailUrl, masked && !coverBlurSupported),
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .coverFrost(masked),
                 )
                 WatchedBadge(watchedMs)
                 val duration = formatDuration(durationSec)
@@ -750,6 +757,7 @@ fun VideoPickDialog(
 }
 
 /** 喜爱度编辑：0..5、步长 0.5，与 Web 端封面左上角的爱心同一份数据（作品墙与收藏夹共用） */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RatingDialog(
     code: String,
@@ -758,6 +766,12 @@ fun RatingDialog(
     onSave: (Double) -> Unit,
 ) {
     var value by remember(current) { mutableStateOf(current.coerceIn(0.0, 5.0)) }
+    // 整排爱心的实际宽度（px）：手指 x 坐标按宽度换算成 0..5 分
+    var rowWidthPx by remember { mutableStateOf(1f) }
+    fun valueAt(x: Float): Double {
+        val fraction = (x / rowWidthPx).coerceIn(0f, 1f)
+        return (fraction * 10).roundToInt() / 2.0
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("喜爱度 · $code") },
@@ -766,11 +780,27 @@ fun RatingDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                // 一排 5 颗爱心：点左半给 0.5 分、右半给 1 分（对齐 Web 端 MUI Rating 的半星）
+                // 一排 5 颗爱心：按下或左右拖动都按 0.5 分一档改星级（对齐 Web 端 MUI Rating）
                 Row(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { rowWidthPx = it.width.toFloat().coerceAtLeast(1f) }
+                        .pointerInput(rowWidthPx) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                value = valueAt(down.position.x)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) break
+                                    value = valueAt(change.position.x)
+                                    change.consume()
+                                }
+                            }
+                        },
                 ) {
                     for (index in 0 until 5) {
                         RatingHeart(
@@ -779,8 +809,6 @@ fun RatingDialog(
                                 value >= index + 0.5 -> 0.5f
                                 else -> 0f
                             },
-                            onHalf = { value = index + 0.5 },
-                            onFull = { value = index + 1.0 },
                         )
                     }
                 }
@@ -792,7 +820,7 @@ fun RatingDialog(
                 )
                 TextButton(onClick = { value = 0.0 }) { Text("清除评分") }
                 Text(
-                    "点爱心左半给 0.5 分、右半给 1 分；改动会直接写回服务端",
+                    "左右拖动或点击爱心调整星级（每 0.5 分一档）；改动会直接写回服务端",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -804,60 +832,33 @@ fun RatingDialog(
 }
 
 /**
- * 评分用的一颗爱心：底层描边空心，上层实心按 fill 裁出左侧一部分（0.5 分显示半颗）。
- * 左右两个透明点击区分别对应 0.5 / 1 分；去掉点击波纹，避免盖住爱心。
+ * 评分用的一颗爱心：底层描边空心，上层**同一颗心形**按 fill 精确裁出左半（0.5 分）。
+ * 两层 Icon 尺寸与对齐完全一致，clipRect 直接作用于图标自身的绘制内容，
+ * 左半实心与右半空心严丝合缝，不会出现半心错位或方块感。
  */
 @Composable
-private fun RatingHeart(
-    fill: Float,
-    onHalf: () -> Unit,
-    onFull: () -> Unit,
-) {
+private fun RatingHeart(fill: Float) {
     val gold = Color(0xFFFBBF24)
     val iconSize = 40.dp
     Box(Modifier.size(iconSize)) {
         Icon(
             imageVector = Icons.Filled.FavoriteBorder,
             contentDescription = null,
-            tint = gold.copy(alpha = 0.35f),
+            tint = gold.copy(alpha = 0.38f),
             modifier = Modifier.size(iconSize),
         )
         if (fill > 0f) {
-            Box(
-                Modifier
-                    .width(iconSize * fill)
-                    .height(iconSize)
-                    .clipToBounds(),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Favorite,
-                    contentDescription = null,
-                    tint = gold,
-                    // requiredSize 忽略父级 width 约束，整颗心画出来再由父 Box 裁掉右半
-                    modifier = Modifier.requiredSize(iconSize),
-                )
-            }
-        }
-        Row(Modifier.size(iconSize)) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(iconSize)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onHalf,
-                    ),
-            )
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(iconSize)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onFull,
-                    ),
+            Icon(
+                imageVector = Icons.Filled.Favorite,
+                contentDescription = null,
+                tint = gold,
+                modifier = Modifier
+                    .size(iconSize)
+                    .drawWithContent {
+                        clipRect(right = size.width * fill) {
+                            this@drawWithContent.drawContent()
+                        }
+                    },
             )
         }
     }
