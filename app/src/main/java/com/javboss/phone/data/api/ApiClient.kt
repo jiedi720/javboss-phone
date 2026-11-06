@@ -73,6 +73,9 @@ interface JavBossApi {
         @Query("sort") sort: String = "",
         /** 1 = 只返回没关联 JAV 的普通视频（服务端配置 video_hide_jav 为 true 时 Web 端就这么请求） */
         @Query("hide_jav") hideJav: Int = 0,
+        /** 点卡片上的文件夹路径时按目录筛选（Web 端 /videos 同款参数） */
+        @Query("directory_id") directoryId: Long? = null,
+        @Query("subdirectory") subdirectory: String? = null,
     ): VideoListResponse
 
     /**

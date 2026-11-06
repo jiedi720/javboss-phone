@@ -279,6 +279,31 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun createVideoTag(name: String): TagDto =
         container.videoRepository.createVideoTag(name)
 
+    /** JAV 自定义标签可选项（GET /jav/tags），与视频标签 /tags 是两套独立数据 */
+    suspend fun loadJavTagOptions(): List<TagDto> =
+        runCatching { container.videoRepository.listJavTags() }.getOrDefault(emptyList())
+
+    /**
+     * 保存 JAV 自定义标签：只传 tag_ids，走 PUT /jav/items/{id}
+     * （Web 端 JAV 详情「编辑自定义标签」同款），不会碰到视频标签。
+     */
+    fun saveJavTags(javId: Long, tagIds: List<Long>) {
+        viewModelScope.launch {
+            try {
+                val updated = container.videoRepository.updateJavItem(
+                    javId,
+                    JavItemUpdateRequest(tagIds = tagIds),
+                )
+                uiState = uiState.copy(javMeta = updated, notice = "标签已保存")
+                VideoTagEvents.notifyChanged()
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(notice = "标签保存失败：${e.message ?: "网络异常"}")
+            }
+        }
+    }
+
     /** 全量替换当前视频的标签；成功后原地刷新详情页并通知列表页刷新 */
     fun saveVideoTags(videoId: Long, tagIds: List<Long>) {
         viewModelScope.launch {

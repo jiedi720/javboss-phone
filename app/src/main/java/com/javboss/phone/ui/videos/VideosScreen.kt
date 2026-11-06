@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.ui.components.CenterMessage
@@ -116,6 +118,26 @@ fun VideosScreen(
             )
         }
 
+        // 目录筛选提示：点卡片第二行文件夹路径后显示，可一键清除回到全部视频
+        if (state.directoryId != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "目录：${state.subdirectory}",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::clearDirectoryFilter) { Text("清除") }
+            }
+        }
+
         PullToRefreshBox(
             isRefreshing = state.loading && state.videos.isNotEmpty(),
             onRefresh = viewModel::refresh,
@@ -149,6 +171,16 @@ fun VideosScreen(
                                 .filter { it.isNotBlank() },
                             onPlay = { onPlay(video.id, video.jav?.code) },
                             onClick = { onVideoClick(video.id, video.jav?.code) },
+                            // 第二行文件夹路径：点它按 directory_id + subdirectory 筛该目录全部视频
+                            subdirectory = video.subdirectory,
+                            onSubdirectoryClick = if (video.effectiveDirectoryId > 0) {
+                                {
+                                    viewModel.filterByDirectory(
+                                        video.effectiveDirectoryId,
+                                        video.subdirectory,
+                                    )
+                                }
+                            } else null,
                         )
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {

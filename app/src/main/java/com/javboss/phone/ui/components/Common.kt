@@ -218,6 +218,10 @@ fun VideoCard(
     tags: List<String> = emptyList(),
     /** 非 null 时在封面右下角显示与 JAV 卡片同一颗播放钮；点击不进详情，直接起播 */
     onPlay: (() -> Unit)? = null,
+    /** 视频所在子目录（path 去掉文件名），非空时在标题下方第二行显示，对齐 Web 端卡片 */
+    subdirectory: String = "",
+    /** 非 null 时第二行可点击：按目录筛出该文件夹下的全部视频 */
+    onSubdirectoryClick: (() -> Unit)? = null,
 ) {
     val masked = LocalCoverMask.current.masked
     val tagNames = tags.filter { it.isNotBlank() }.distinct()
@@ -280,15 +284,34 @@ fun VideoCard(
                     }
                 }
             }
-            // 信息栏只保留一行：标题单行省略，卡片不再被「两行标题 + 播放次数行」撑高。
-            // 观看 / 播放时间统一由封面右上角的「已观看」图标 + 浮层显示，与 JAV 卡片同一套。
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+            // 信息栏：第一行标题单行省略；第二行是文件夹路径（Web 端视频卡片同款），
+            // 点它就筛出该目录下的全部视频。两行都在 6dp 内边距里，卡片只多出一行小字高度。
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (subdirectory.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = subdirectory,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (onSubdirectoryClick != null) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.then(
+                            onSubdirectoryClick?.let { cb -> Modifier.clickable(onClick = cb) }
+                                ?: Modifier,
+                        ),
+                    )
+                }
+            }
         }
     }
 }

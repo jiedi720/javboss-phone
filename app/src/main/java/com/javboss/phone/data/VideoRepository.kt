@@ -53,12 +53,16 @@ class VideoRepository(private val apiClient: ApiClient) {
         search: String = "",
         sort: String = "",
         hideJav: Boolean = false,
+        directoryId: Long? = null,
+        subdirectory: String? = null,
     ): VideoListResponse = apiClient.api().listVideos(
         limit = limit,
         offset = offset,
         search = search,
         sort = sort,
         hideJav = if (hideJav) 1 else 0,
+        directoryId = directoryId,
+        subdirectory = subdirectory,
     )
 
     suspend fun getVideo(id: Long): VideoDto =
@@ -184,9 +188,13 @@ class VideoRepository(private val apiClient: ApiClient) {
     suspend fun replaceJavTags(javIds: List<Long>, tagIds: List<Long>) =
         apiClient.api().replaceJavTags(JavTagsReplaceRequest(javIds, tagIds))
 
-    /** 视频标签可选项（GET /tags），与 /jav/tags 是两套数据 */
+    /**
+     * 视频标签可选项（GET /tags?hide_jav=<config>），与 /jav/tags 是两套数据。
+     * Web 端 Rr({hideJav: videoHideJav}) 会按服务端 video_hide_jav 配置传参，
+     * 开启时把只挂在 JAV 上的标签从视频标签列表里排除，避免两套标签混在一起。
+     */
     suspend fun listVideoTags(): List<TagDto> =
-        apiClient.api().listVideoTags()
+        apiClient.api().listVideoTags(hideJav = if (videosHideJav()) 1 else 0)
 
     /** 新建视频标签（POST /tags，不是 /jav/tags） */
     suspend fun createVideoTag(name: String): TagDto =

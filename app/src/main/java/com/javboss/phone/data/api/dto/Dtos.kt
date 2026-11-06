@@ -49,6 +49,8 @@ data class VideoDto(
     @SerialName("directory_path") val directoryPath: String = "",
     /** 所属读取目录 */
     val directory: DirectoryRefDto? = null,
+    /** /jav 内嵌的 videos 会给 directory_id，扁平接口只给 directory.id */
+    @SerialName("directory_id") val directoryId: Long = 0,
     @SerialName("duration_sec") val durationSec: Long = 0,
     @SerialName("play_count") val playCount: Long = 0,
     /** 服务端统计的该文件累计观看时长（毫秒） */
@@ -60,6 +62,21 @@ data class VideoDto(
     /** /videos/{id} 会给出该视频的全部文件位置，用于 locationId 缺失时按路径反查 */
     val locations: List<VideoLocationDto> = emptyList(),
 ) {
+    /** 目录筛选用的 id：优先 directory_id，退回内嵌 directory.id（对齐 Web 端卡片） */
+    val effectiveDirectoryId: Long
+        get() = if (directoryId > 0) directoryId else directory?.id ?: 0L
+
+    /**
+     * 所在子目录（Web 端视频卡片第二行）：path 去掉文件名，
+     * 同时兼容 / 与 \ 分隔符；根目录没有子目录时用 "."。
+     */
+    val subdirectory: String
+        get() {
+            val rel = path.trim()
+            if (rel.isBlank()) return ""
+            return rel.split('/', '\\').dropLast(1).joinToString("/").ifEmpty { "." }
+        }
+
     /** 展示用标题：优先 JAV 番号 + 标题，否则文件名（去掉扩展名） */
     val displayTitle: String
         get() = jav?.let { "${it.code} ${it.title}" }?.trim()

@@ -34,6 +34,9 @@ data class VideosUiState(
     val endReached: Boolean = false,
     val search: String = "",
     val sort: VideoSort = VideoSort.RECENT,
+    /** 目录筛选：点卡片第二行文件夹路径时设置，null = 不过滤 */
+    val directoryId: Long? = null,
+    val subdirectory: String = "",
     val error: String? = null,
     val sessionExpired: Boolean = false,
 )
@@ -71,6 +74,8 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
             search = uiState.search,
             sort = uiState.sort.value,
             hideJav = hideJav,
+            directoryId = uiState.directoryId,
+            subdirectory = uiState.subdirectory.ifBlank { null },
         )
 
     fun refresh() {
@@ -132,6 +137,27 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
     fun onSortChange(sort: VideoSort) {
         if (sort == uiState.sort) return
         uiState = uiState.copy(sort = sort)
+        refresh()
+    }
+
+    /**
+     * 点卡片第二行的文件夹路径：按 directory_id + subdirectory 筛出该目录下的全部视频。
+     * 对齐 Web 端 setVideoDirectoryFilter —— 进入目录时清空搜索词。
+     */
+    fun filterByDirectory(directoryId: Long, subdirectory: String) {
+        if (directoryId <= 0) return
+        uiState = uiState.copy(
+            directoryId = directoryId,
+            subdirectory = subdirectory,
+            search = "",
+        )
+        refresh()
+    }
+
+    /** 清除目录筛选，回到全部视频 */
+    fun clearDirectoryFilter() {
+        if (uiState.directoryId == null) return
+        uiState = uiState.copy(directoryId = null, subdirectory = "")
         refresh()
     }
 

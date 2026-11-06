@@ -32,18 +32,23 @@ import com.javboss.phone.data.api.dto.TagDto
 import kotlinx.coroutines.launch
 
 /**
- * 编辑「视频自身标签」：与作品标签（EditDialog → PUT /jav/items/{id}）是两套独立数据。
- * 保存走 POST /videos/tags/replace 全量替换；新建标签走 POST /tags（不是 /jav/tags）。
- * 普通视频（没有 JAV 元数据）也能使用，只要有 videoId。
+ * 服务端「视频标签」与「JAV 自定义标签」是两套互不相通的数据，
+ * 这里按 mode 分别走各自的读取 / 新建 / 保存接口：
+ *  - VIDEO：GET /tags、POST /tags、POST /videos/tags/replace
+ *  - JAV  ：GET /jav/tags、POST /jav/tags、PUT /jav/items/{id}（只传 tag_ids）
  */
+enum class TagPickerMode { VIDEO, JAV }
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun VideoTagsDialog(
-    videoId: Long,
+fun TagPickerDialog(
+    mode: TagPickerMode,
+    entityId: Long,
     currentTags: List<TagDto>,
     viewModel: DetailViewModel,
     onDismiss: () -> Unit,
 ) {
+    val isJav = mode == TagPickerMode.JAV
     var allTags by remember { mutableStateOf<List<TagDto>>(emptyList()) }
     var selected by remember { mutableStateOf(currentTags.map { it.id }.toSet()) }
     var newName by remember { mutableStateOf("") }
@@ -51,8 +56,8 @@ fun VideoTagsDialog(
     var saving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(videoId) {
-        val loaded = viewModel.loadVideoTagOptions()
+    LaunchedEffect(mode, entityId) {
+        val loaded = if (isJav) viewModel.loadJavTagOptions() else viewModel.loadVideoTagOptions()
         // 当前已打上的标签若不在可选列表里（例如被服务端按 hide_jav 过滤掉），
         // 也补进来，避免一打开就因为列表缺项而把已有标签误删
         allTags = (loaded + currentTags).distinctBy { it.id }
@@ -60,7 +65,7 @@ fun VideoTagsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑视频标签") },
+        title = { Text(if (isJav) "编辑标签" else "编辑视频标签") },
         text = {
             Column(
                 Modifier
@@ -69,7 +74,8 @@ fun VideoTagsDialog(
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    "只修改这个视频文件的标签；作品标签请在操作栏「编辑」里修改。",
+                    if (isJav) "编辑该作品的 JAV 自定义标签，与视频标签是两套互不相通的数据。"
+                    else "只修改这个视频文件的标签；作品标签请在操作栏「编辑」里修改。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -105,7 +111,8 @@ fun VideoTagsDialog(
                             if (name.isEmpty()) return@TextButton
                             scope.launch {
                                 try {
-                                    val tag = viewModel.createVideoTag(name)
+                                    val tag = if (isJav) viewModel.createTag(name)
+                                    else viewModel.createVideoTag(name)
                                     allTags = allTags + tag
                                     selected = selected + tag.id
                                     newName = ""
@@ -133,7 +140,8 @@ fun VideoTagsDialog(
                 onClick = {
                     if (saving) return@TextButton
                     saving = true
-                    viewModel.saveVideoTags(videoId, selected.toList())
+                    if (isJav) viewModel.saveJavTags(entityId, selected.toList())
+                    else viewModel.saveVideoTags(entityId, selected.toList())
                     onDismiss()
                 },
                 enabled = !saving,
