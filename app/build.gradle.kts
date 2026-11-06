@@ -22,13 +22,15 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        // 与原版（com.javboss.phone）刻意区分：换 applicationId 才能与原版共存、不覆盖安装。
-        // 仅改 versionCode 做不到这一点（同包名 + 更高 versionCode 是「覆盖升级」）。
-        applicationId = "com.javboss.phone.preset"
+        // v0.3.47 起换成 com.javboss.modified：去掉已名不副实的 phone / preset，
+        // 与原版 com.javboss.phone 仍是不同包名，可共存、不会把原版顶掉。
+        // 注意：这也是与 v0.3.46 之前 com.javboss.phone.preset 不同的包名 ——
+        // Android 会当成全新应用，旧包的登录预设 / 会话 / 设置不会迁移，需重新登录。
+        applicationId = "com.javboss.modified"
         minSdk = 26
         targetSdk = 35
-        versionCode = 50
-        versionName = "0.3.46-modified"
+        versionCode = 51
+        versionName = "0.3.47-modified"
 
         // 设置页展示的打包时间（本地时区，精确到分钟）
         // 注意：Kotlin DSL 里 `java` 会被解析成 JavaPluginExtension，必须走顶部的具名 import

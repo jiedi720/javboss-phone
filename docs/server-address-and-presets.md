@@ -74,7 +74,9 @@ data class ServerPreset(
 - 每次增删改都整表覆盖写入（原子写，不会半截损坏），启动时 `AppContainer.presets.restore()` 读回；
 - JSON 损坏或版本不兼容时回退为空列表，不影响登录；
 - 密码与预设同存于该 JSON（`android:allowBackup="false"`，不进系统/云备份）；Cookie 仍由 `SessionManager` 单独保存。
-- 与原版共用同一套代码路径但 applicationId 不同，因此预设数据与原版应用互不干扰。
+- 与原版共用同一套代码路径但 applicationId 不同，因此预设数据与原版应用互不干扰；
+  v0.3.47 起包名改为 `com.javboss.modified`，与旧 `com.javboss.phone.preset` 同样是不同包，
+  DataStore 不迁移，换包后需重新录入两条登录预设。
 
 ### 密码与自动登录
 

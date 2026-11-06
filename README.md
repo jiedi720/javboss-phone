@@ -326,6 +326,21 @@
     宽窗口（平板 / 横屏）下「启动显示界面」4 个选项排成一行，窄窗口仍一行一个。
   - `WindowSizeRulesTest` 更新 959dp 手选 8 列断言，并在同一用例里补
     「按 64dp 侧栏占位仍可达 8 列」的断言；全量单测 **101/101**。
+- **包名改为 `com.javboss.modified`（v0.3.47）**：
+  - `applicationId` 由 `com.javboss.phone.preset` 改为 `com.javboss.modified`，
+    去掉已名不副实的 `phone` / `preset`，与桌面名「JavBoss Modified」一致；
+    源码 `namespace` 仍保持 `com.javboss.phone` **不动**（与 applicationId 互相独立，
+    `proguard-rules.pro` 里 `com.javboss.phone.**` 的 keep 规则无需改，40+ 源文件零改动）。
+  - 只改 `build.gradle.kts` 的 applicationId / 版本标识 + 文档；业务逻辑、服务端接口、
+    签名证书（`CN=JavBoss Preset Build`）全部不变。
+  - **⚠️ 安装影响**：Android 按「包名 + 签名」判断覆盖，新包名 = 全新应用，
+    与 v0.3.46 及更早的 `preset` 包**共存、不能覆盖升级**。
+    `/data/data/<包名>/` 下 3 个 DataStore（登录预设含两条地址 + 密码、会话 Cookie、
+    设置项：列数 / 锁屏打码 / 自动切换 / 启动页）与 `filesDir/crash_logs/`
+    **不会迁移**，需卸载旧包、重新登录并重新配置一次。
+    同签名也无法跨包读数据（Android 按 UID 隔离），没有无痛迁移方案。
+  - 设置页「关于 → 包名」用 `BuildConfig.APPLICATION_ID` 动态读取，自动显示新包名。
+  - 全量单测 **101/101**。
 
 ## 使用
 
@@ -396,8 +411,8 @@ gradlew.bat assembleRelease
 armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 signedRelease 也只含 arm64-v8a）；
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
-当前构建标识：`applicationId = com.javboss.phone.preset`、
-`versionCode = 50`、`versionName = 0.3.46-modified`，桌面显示名「JavBoss Modified」。
+当前构建标识：`applicationId = com.javboss.modified`、
+`versionCode = 51`、`versionName = 0.3.47-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），
@@ -407,8 +422,12 @@ APK 从 64.6MB 降到 52.8MB：dex 由 13.7MB 压到 2.2MB（`material-icons-ext
 
 - 换 `applicationId` 是为了**与原版 `com.javboss.phone` 共存**：Android 判断「是否覆盖」
   只看包名 + 签名，同包名装更高 versionCode 只会覆盖升级；只有包名不同才会并存成两个应用。
-- 因此本包与原版的数据（会话 Cookie、预设地址）完全隔离，也不会把原版顶掉；
-  代价是需要重新登录一次。
+- **v0.3.47 起**包名由 `com.javboss.phone.preset` 改为 `com.javboss.modified`
+  （去掉已名不副实的 phone / preset，与桌面名一致），源码 `namespace` 仍保持
+  `com.javboss.phone` 不变（两者互相独立，proguard keep 规则无需改动）。
+- 因此本包与原版、以及与 v0.3.46 及更早的 `preset` 包的数据
+  （会话 Cookie、预设地址、设置项）完全隔离，也不会把任何一个顶掉；
+  **代价是不能覆盖升级、数据不迁移**：换包名后需重新登录、重新配置一次。
 
 ## License
 
