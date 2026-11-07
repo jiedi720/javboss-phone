@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.AutoSwitchRules
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.ServerPreset
 import com.javboss.phone.data.api.AuthExpiredException
@@ -20,10 +21,14 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     /** 当前登录的服务器地址 */
     val serverUrl: String = "",
-    /** 竖屏列数选择值：0 = 自动（3 列），可选 2 / 3 */
-    val portraitColumnsChoice: Int = 0,
-    /** 横屏列数选择值：0 = 自动（6 列），可选 5 / 6 */
-    val landscapeColumnsChoice: Int = 0,
+    /** JAV 竖屏列数：2 / 3，默认 3 */
+    val portraitColumnsChoice: Int = WindowSizeRules.DEFAULT_PORTRAIT_COLUMNS,
+    /** JAV 横屏列数：5 / 6 / 7，默认 5 */
+    val landscapeColumnsChoice: Int = WindowSizeRules.DEFAULT_LANDSCAPE_COLUMNS,
+    /** 视频竖屏列数（与 JAV 独立设定）：2 / 3，默认 3 */
+    val videoPortraitColumnsChoice: Int = WindowSizeRules.DEFAULT_PORTRAIT_COLUMNS,
+    /** 视频横屏列数（与 JAV 独立设定）：5 / 6 / 7，默认 5 */
+    val videoLandscapeColumnsChoice: Int = WindowSizeRules.DEFAULT_LANDSCAPE_COLUMNS,
     /** 封面毛玻璃：作品/女优封面一直模糊显示 */
     val coverMask: Boolean = false,
     /** 锁屏后自动给封面打码；关掉后锁屏不再触发（常开的封面毛玻璃不受影响） */
@@ -69,6 +74,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             serverUrl = container.session.serverUrl,
             portraitColumnsChoice = container.settings.portraitColumnsChoice,
             landscapeColumnsChoice = container.settings.landscapeColumnsChoice,
+            videoPortraitColumnsChoice = container.settings.videoPortraitColumnsChoice,
+            videoLandscapeColumnsChoice = container.settings.videoLandscapeColumnsChoice,
             coverMask = container.settings.coverMask,
             autoMaskOnLock = container.settings.autoMaskOnLock,
             railCompactMode = container.settings.railCompactMode,
@@ -86,18 +93,32 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         refreshDirectories()
     }
 
-    /** 竖屏列数：0 = 自动（3 列），2 / 3 手选；写入后网格立刻跟着变 */
+    /** JAV 竖屏列数（2/3）：写入后 JAV 网格立刻跟着变，不影响视频 */
     fun setPortraitColumns(choice: Int) {
         if (choice == uiState.portraitColumnsChoice) return
         uiState = uiState.copy(portraitColumnsChoice = choice)
         viewModelScope.launch { container.settings.savePortraitColumns(choice) }
     }
 
-    /** 横屏列数：0 = 自动（6 列），5 / 6 手选；写入后网格立刻跟着变 */
+    /** JAV 横屏列数（5/6/7）：写入后 JAV 网格立刻跟着变，不影响视频 */
     fun setLandscapeColumns(choice: Int) {
         if (choice == uiState.landscapeColumnsChoice) return
         uiState = uiState.copy(landscapeColumnsChoice = choice)
         viewModelScope.launch { container.settings.saveLandscapeColumns(choice) }
+    }
+
+    /** 视频竖屏列数（2/3）：写入后视频网格立刻跟着变，不影响 JAV */
+    fun setVideoPortraitColumns(choice: Int) {
+        if (choice == uiState.videoPortraitColumnsChoice) return
+        uiState = uiState.copy(videoPortraitColumnsChoice = choice)
+        viewModelScope.launch { container.settings.saveVideoPortraitColumns(choice) }
+    }
+
+    /** 视频横屏列数（5/6/7）：写入后视频网格立刻跟着变，不影响 JAV */
+    fun setVideoLandscapeColumns(choice: Int) {
+        if (choice == uiState.videoLandscapeColumnsChoice) return
+        uiState = uiState.copy(videoLandscapeColumnsChoice = choice)
+        viewModelScope.launch { container.settings.saveVideoLandscapeColumns(choice) }
     }
 
     /** 封面毛玻璃：写入设置后，已经在显示的作品/女优墙立刻糊掉 */

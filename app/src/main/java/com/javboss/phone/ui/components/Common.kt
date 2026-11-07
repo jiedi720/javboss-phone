@@ -312,12 +312,11 @@ fun Modifier.adaptiveContentWidth(): Modifier =
     adaptiveMaxWidth(WindowSizeRules.contentMaxWidth(rememberWindowWidthDp()))
 
 /**
- * 网格列数：按「当前窗口方向」取对应设置值，再交给 [WindowSizeRules.gridColumns] 收敛。
+ * JAV 网格列数：按「当前窗口方向」取对应的 JAV 设置值，再交给 [WindowSizeRules.gridColumns] 收敛。
  *
  * - 方向只由当前窗口宽高决定（宽 > 高 = 横向），旋转 / 分屏 / 自由窗口缩放会实时重算；
- * - 自动档：竖屏 3 列、横屏 6 列（[WindowSizeRules.autoColumns]）；
- * - 手选档：竖屏 2/3 列、横屏 5/6 列，各自的下拉里根本没有放不下的选项，
- *   不会再出现「竖屏选 6 列却只显示 3 列」；
+ * - v0.3.56 起没有「自动」档，选择值（竖屏 2/3、横屏 5/6/7）本身就是目标列数；
+ * - 视频页走 [rememberVideoGridColumns]，读的是**视频自己的**两套设置，互不联动；
  * - 窗口实在放不下目标列数时仍按 88dp 卡片硬下限收敛。
  */
 @Composable
@@ -331,23 +330,36 @@ fun rememberGridColumns(minCardWidthDp: Int = WindowSizeRules.CARD_MIN_WIDTH_DP)
     val widthDp = rememberWindowWidthDp()
     val landscape = widthDp > rememberWindowHeightDp()
     val choice = if (landscape) landscapeChoice else portraitChoice
-    val target = WindowSizeRules.resolveColumnChoice(choice, landscape)
     return WindowSizeRules.gridColumns(
         windowWidthDp = widthDp,
         reservedDp = rememberReservedWidthDp(),
         minCardWidthDp = minCardWidthDp,
-        choice = target,
+        choice = choice,
     )
 }
 
 /**
- * 视频网格列数：恒等于同窗口下 JAV 网格列数减一（至少 1 列）。
- * 16:9 横版封面比 2:3 竖版封面宽，同一窗口里少放一个才舒服；
- * 与 JAV 共用同一个窗口宽度和同一份手选列数上限，差值稳定。
+ * 视频网格列数：v0.3.56 起与 JAV **完全独立**，读视频自己的竖屏 / 横屏两套设置，
+ * 用同一个 [WindowSizeRules.gridColumns] 但传各自的选择值，不再「恒比 JAV 少一列」。
+ * 视频是 16:9 横版封面，用户想让它跟 JAV 同列数或更少都可以自行设定。
  */
 @Composable
-fun rememberVideoGridColumns(): Int =
-    WindowSizeRules.videoGridColumns(rememberGridColumns())
+fun rememberVideoGridColumns(): Int {
+    val context = LocalContext.current
+    val settings = remember(context) {
+        (context.applicationContext as JavBossApp).container.settings
+    }
+    val portraitChoice by settings.videoPortraitColumnsChoiceFlow.collectAsState()
+    val landscapeChoice by settings.videoLandscapeColumnsChoiceFlow.collectAsState()
+    val widthDp = rememberWindowWidthDp()
+    val landscape = widthDp > rememberWindowHeightDp()
+    val choice = if (landscape) landscapeChoice else portraitChoice
+    return WindowSizeRules.gridColumns(
+        windowWidthDp = widthDp,
+        reservedDp = rememberReservedWidthDp(),
+        choice = choice,
+    )
+}
 
 /** 兼容旧调用点：竖版封面网格 */
 @Composable

@@ -97,32 +97,50 @@ fun SettingsScreen(
             Spacer(Modifier.height(12.dp))
 
         // ---------- 每行卡片数（置顶，最常用的设置项） ----------
+        // v0.3.56：JAV / 视频各自独立设定，各一行「竖屏 + 横屏」两个并排下拉；
+        // 去掉「自动」档，竖屏只有 2/3、横屏只有 5/6/7，默认竖 3 / 横 5。
         SectionTitle("每行卡片数")
         Card(Modifier.fillMaxWidth()) {
-            // v0.3.53：两个下拉一左一右并排，各占一半宽度。选项文字很短，
-            // 不必再上下占两行；框内显示短值，完整的「自动（N 列）」留在下拉选项里。
-            Row(
-                Modifier.padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                // 竖屏 / 横屏分开设定：各自只有放得下的候选值，不再出现
-                // 「竖屏选 6 列却只显示 3 列」这种无效选项
-                ColumnChoiceDropdown(
-                    label = "竖屏",
-                    autoLabel = "自动（3 列）",
-                    options = WindowSizeRules.PORTRAIT_COLUMN_CHOICES,
-                    selected = state.portraitColumnsChoice,
-                    onSelect = viewModel::setPortraitColumns,
-                    modifier = Modifier.weight(1f),
-                )
-                ColumnChoiceDropdown(
-                    label = "横屏",
-                    autoLabel = "自动（6 列）",
-                    options = WindowSizeRules.LANDSCAPE_COLUMN_CHOICES,
-                    selected = state.landscapeColumnsChoice,
-                    onSelect = viewModel::setLandscapeColumns,
-                    modifier = Modifier.weight(1f),
-                )
+            Column(Modifier.padding(14.dp)) {
+                Text("JAV", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ColumnChoiceDropdown(
+                        label = "竖屏",
+                        options = WindowSizeRules.PORTRAIT_COLUMN_CHOICES,
+                        selected = state.portraitColumnsChoice,
+                        onSelect = viewModel::setPortraitColumns,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ColumnChoiceDropdown(
+                        label = "横屏",
+                        options = WindowSizeRules.LANDSCAPE_COLUMN_CHOICES,
+                        selected = state.landscapeColumnsChoice,
+                        onSelect = viewModel::setLandscapeColumns,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(10.dp))
+                Text("视频", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ColumnChoiceDropdown(
+                        label = "竖屏",
+                        options = WindowSizeRules.PORTRAIT_COLUMN_CHOICES,
+                        selected = state.videoPortraitColumnsChoice,
+                        onSelect = viewModel::setVideoPortraitColumns,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ColumnChoiceDropdown(
+                        label = "横屏",
+                        options = WindowSizeRules.LANDSCAPE_COLUMN_CHOICES,
+                        selected = state.videoLandscapeColumnsChoice,
+                        onSelect = viewModel::setVideoLandscapeColumns,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
 
@@ -477,31 +495,28 @@ private fun RoleOptions(
 }
 
 /**
- * 某个方向（竖屏 / 横屏）的列数下拉。候选值由 [options] 给定，0 = 自动，
- * 其余是「N 列」；两个方向各自独立，选项里只放该方向真正显示得了的列数。
+ * v0.3.56：某个网格（JAV / 视频）某个方向（竖屏 / 横屏）的列数下拉。
+ * 候选值由 [options] 给定，没有「自动」档，框里与选项里都直接是「N 列」；
+ * 四个下拉各读各的值、各写各的 key，互不联动。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ColumnChoiceDropdown(
     label: String,
-    autoLabel: String,
     options: List<Int>,
     selected: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // v0.3.53：并排后每个下拉只有半屏宽，框里显示短值（自动 / N 列）才放得下；
-    // 「自动（3 列）」这类完整说明仍留在下拉选项里，信息不丢。
-    fun displayTextOf(n: Int) = if (n == 0) "自动" else "$n 列"
-    fun optionTextOf(n: Int) = if (n == 0) autoLabel else "$n 列"
+    // 并排后每个下拉只有半屏宽，「N 列」短值正好放得下。
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = it },
         modifier = modifier,
     ) {
         OutlinedTextField(
-            value = displayTextOf(selected),
+            value = "$selected 列",
             onValueChange = {},
             readOnly = true,
             singleLine = true,
@@ -514,7 +529,7 @@ private fun ColumnChoiceDropdown(
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { n ->
                 DropdownMenuItem(
-                    text = { Text(optionTextOf(n)) },
+                    text = { Text("$n 列") },
                     onClick = {
                         expanded = false
                         onSelect(n)

@@ -49,9 +49,12 @@ class SettingsManager(private val context: Context) {
 
     private val keyEngineMode = stringPreferencesKey("engine_mode")
     private val keySeekSensitivity = stringPreferencesKey("seek_sensitivity")
-    // 列数按窗口方向分开设定：0 = 自动，竖屏 2/3，横屏 5/6
+    // v0.3.56：JAV 列数按窗口方向分开设定（竖屏 2/3，横屏 5/6/7）
     private val keyPortraitColumns = stringPreferencesKey("portrait_columns")
     private val keyLandscapeColumns = stringPreferencesKey("landscape_columns")
+    // 视频列数独立设定，与 JAV 完全不联动（同样的候选值，各有各的 key）
+    private val keyVideoPortraitColumns = stringPreferencesKey("video_portrait_columns")
+    private val keyVideoLandscapeColumns = stringPreferencesKey("video_landscape_columns")
     // 旧版单个 grid_columns（0 = 自动 / 2..8 = 固定列数）：只保留读取用于一次性迁移，不再写入
     private val keyGridColumns = stringPreferencesKey("grid_columns")
     private val keyJavSort = stringPreferencesKey("jav_sort")
@@ -83,17 +86,31 @@ class SettingsManager(private val context: Context) {
         private set
 
     /**
-     * 卡片墙列数按「竖屏 / 横屏」分开存：0 = 自动（竖屏 3 / 横屏 6），
-     * 竖屏可选 2/3、横屏可选 5/6。用 StateFlow 暴露，设置页改完已打开的页面立刻跟着变；
-     * 真正画网格时由 `rememberGridColumns()` 结合当前窗口宽高判断方向并取对应值。
+     * v0.3.56：卡片墙列数按「JAV / 视频」×「竖屏 / 横屏」四份独立存，
+     * 竖屏 2/3（默认 3）、横屏 5/6/7（默认 5），没有「自动」档。
+     * 用 StateFlow 暴露，设置页改完已打开的页面立刻跟着变；
+     * 真正画网格时 JAV 由 `rememberGridColumns()`、视频由 `rememberVideoGridColumns()`
+     * 各自结合当前窗口宽高判断方向并取对应值，互不联动。
      */
-    private val _portraitColumnsChoice = MutableStateFlow(0)
+    private val _portraitColumnsChoice =
+        MutableStateFlow(WindowSizeRules.DEFAULT_PORTRAIT_COLUMNS)
     val portraitColumnsChoiceFlow: StateFlow<Int> = _portraitColumnsChoice
     val portraitColumnsChoice: Int get() = _portraitColumnsChoice.value
 
-    private val _landscapeColumnsChoice = MutableStateFlow(0)
+    private val _landscapeColumnsChoice =
+        MutableStateFlow(WindowSizeRules.DEFAULT_LANDSCAPE_COLUMNS)
     val landscapeColumnsChoiceFlow: StateFlow<Int> = _landscapeColumnsChoice
     val landscapeColumnsChoice: Int get() = _landscapeColumnsChoice.value
+
+    private val _videoPortraitColumnsChoice =
+        MutableStateFlow(WindowSizeRules.DEFAULT_PORTRAIT_COLUMNS)
+    val videoPortraitColumnsChoiceFlow: StateFlow<Int> = _videoPortraitColumnsChoice
+    val videoPortraitColumnsChoice: Int get() = _videoPortraitColumnsChoice.value
+
+    private val _videoLandscapeColumnsChoice =
+        MutableStateFlow(WindowSizeRules.DEFAULT_LANDSCAPE_COLUMNS)
+    val videoLandscapeColumnsChoiceFlow: StateFlow<Int> = _videoLandscapeColumnsChoice
+    val videoLandscapeColumnsChoice: Int get() = _videoLandscapeColumnsChoice.value
 
     /**
      * 封面毛玻璃（常开）。同样是 StateFlow：设置页一开，
@@ -187,17 +204,24 @@ class SettingsManager(private val context: Context) {
         seekSensitivity = prefs[keySeekSensitivity]
             ?.let { runCatching { SeekSensitivity.valueOf(it) }.getOrNull() }
             ?: SeekSensitivity.MEDIUM
-        // 新设置项不存在时，从旧版单个 grid_columns 迁移到两个方向；
-        // 旧值超出方向范围会被钳到边界，不再出现「竖屏选 6 列却只显示 3 列」
+        // v0.3.56：四份列数各自读各自的 key。旧版「自动(0)」/ 越界值一律归一化到默认；
+        // 更老的单个 grid_columns 仍保留一次性迁移（就近取当前方向合法值）。
+        // 视频两个 key 是全新的，缺失就用默认，绝不从 JAV 取值（彻底不联动）。
         val oldChoice = prefs[keyGridColumns]?.toIntOrNull()
         _portraitColumnsChoice.value = prefs[keyPortraitColumns]?.toIntOrNull()
-            ?.takeIf { WindowSizeRules.isValidColumnChoice(it, false) }
+            ?.let { WindowSizeRules.normalizeColumnChoice(it, false) }
             ?: oldChoice?.let { WindowSizeRules.migrateColumnChoice(it, false) }
-            ?: 0
+            ?: WindowSizeRules.defaultColumns(landscape = false)
         _landscapeColumnsChoice.value = prefs[keyLandscapeColumns]?.toIntOrNull()
-            ?.takeIf { WindowSizeRules.isValidColumnChoice(it, true) }
+            ?.let { WindowSizeRules.normalizeColumnChoice(it, true) }
             ?: oldChoice?.let { WindowSizeRules.migrateColumnChoice(it, true) }
-            ?: 0
+            ?: WindowSizeRules.defaultColumns(landscape = true)
+        _videoPortraitColumnsChoice.value = prefs[keyVideoPortraitColumns]?.toIntOrNull()
+            ?.let { WindowSizeRules.normalizeColumnChoice(it, false) }
+            ?: WindowSizeRules.defaultColumns(landscape = false)
+        _videoLandscapeColumnsChoice.value = prefs[keyVideoLandscapeColumns]?.toIntOrNull()
+            ?.let { WindowSizeRules.normalizeColumnChoice(it, true) }
+            ?: WindowSizeRules.defaultColumns(landscape = true)
         _coverMask.value = prefs[keyCoverMask] ?: false
         _autoMaskOnLock.value = prefs[keyAutoMaskOnLock] ?: true
         _railCompactMode.value = prefs[keyRailCompactMode] ?: false
@@ -266,18 +290,32 @@ class SettingsManager(private val context: Context) {
         }
     }
 
-    /** 竖屏列数：0 = 自动（3 列），可选 2 / 3；立即生效 + 持久化 */
+    /** JAV 竖屏列数（2/3）：立即生效 + 持久化，非法值回落默认 */
     suspend fun savePortraitColumns(choice: Int) {
-        val valid = if (WindowSizeRules.isValidColumnChoice(choice, false)) choice else 0
+        val valid = WindowSizeRules.normalizeColumnChoice(choice, false)
         _portraitColumnsChoice.value = valid
         context.settingsDataStore.edit { it[keyPortraitColumns] = valid.toString() }
     }
 
-    /** 横屏列数：0 = 自动（6 列），可选 5 / 6；立即生效 + 持久化 */
+    /** JAV 横屏列数（5/6/7）：立即生效 + 持久化，非法值回落默认 */
     suspend fun saveLandscapeColumns(choice: Int) {
-        val valid = if (WindowSizeRules.isValidColumnChoice(choice, true)) choice else 0
+        val valid = WindowSizeRules.normalizeColumnChoice(choice, true)
         _landscapeColumnsChoice.value = valid
         context.settingsDataStore.edit { it[keyLandscapeColumns] = valid.toString() }
+    }
+
+    /** 视频竖屏列数（2/3）：独立 key，与 JAV 互不联动 */
+    suspend fun saveVideoPortraitColumns(choice: Int) {
+        val valid = WindowSizeRules.normalizeColumnChoice(choice, false)
+        _videoPortraitColumnsChoice.value = valid
+        context.settingsDataStore.edit { it[keyVideoPortraitColumns] = valid.toString() }
+    }
+
+    /** 视频横屏列数（5/6/7）：独立 key，与 JAV 互不联动 */
+    suspend fun saveVideoLandscapeColumns(choice: Int) {
+        val valid = WindowSizeRules.normalizeColumnChoice(choice, true)
+        _videoLandscapeColumnsChoice.value = valid
+        context.settingsDataStore.edit { it[keyVideoLandscapeColumns] = valid.toString() }
     }
 
     /** 封面毛玻璃：立即生效 + 持久化 */

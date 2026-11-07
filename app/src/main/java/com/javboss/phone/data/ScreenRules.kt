@@ -121,39 +121,42 @@ object WindowSizeRules {
     const val GRID_MAX_COLUMNS = 8
 
     /**
-     * 自动档 JAV 列数：竖屏 3 列、横屏 6 列（横屏翻倍），同时也是各自方向的上限。
-     * 设置页按方向分开设定后，自动档不再按可用宽度动态增减，而是固定取这两个值；
-     * 只有窗口实在放不下时才由 [gridColumns] 按卡片硬下限收敛。
+     * v0.3.56：视频 / JAV 各自独立设定列数，下拉去掉「自动」档。
+     * 竖屏候选 2 / 3（默认 3），横屏候选 5 / 6 / 7（默认 5）。
+     * 选择值本身就是要排的目标列数，不再有 0 = 自动这一层解析。
      */
-    const val AUTO_PORTRAIT_COLUMNS = 3
-    const val AUTO_LANDSCAPE_COLUMNS = 6
+    const val DEFAULT_PORTRAIT_COLUMNS = 3
+    const val DEFAULT_LANDSCAPE_COLUMNS = 5
 
-    /** 设置页两个下拉各自的候选值；0 = 自动（取对应方向的默认值） */
-    val PORTRAIT_COLUMN_CHOICES = listOf(0, 2, 3)
-    val LANDSCAPE_COLUMN_CHOICES = listOf(0, 5, 6)
+    /** 设置页 4 个下拉共用的候选值（JAV 与视频各一组，选项相同、取值互不联动） */
+    val PORTRAIT_COLUMN_CHOICES = listOf(2, 3)
+    val LANDSCAPE_COLUMN_CHOICES = listOf(5, 6, 7)
 
-    /** 自动档：竖屏 3 列、横屏 6 列 */
-    fun autoColumns(landscape: Boolean): Int =
-        if (landscape) AUTO_LANDSCAPE_COLUMNS else AUTO_PORTRAIT_COLUMNS
+    /** 某个方向的初始值 / 非法值回落值：竖屏 3 列、横屏 5 列 */
+    fun defaultColumns(landscape: Boolean): Int =
+        if (landscape) DEFAULT_LANDSCAPE_COLUMNS else DEFAULT_PORTRAIT_COLUMNS
 
-    /** 把某个方向的选择值解析成实际目标列数（0 = 自动） */
-    fun resolveColumnChoice(choice: Int, landscape: Boolean): Int =
-        if (choice > 0) choice else autoColumns(landscape)
+    /** 校验某个方向的选择值合法（必须是该方向候选值之一，不再有 0 = 自动） */
+    fun isValidColumnChoice(choice: Int, landscape: Boolean): Boolean =
+        choice in (if (landscape) LANDSCAPE_COLUMN_CHOICES else PORTRAIT_COLUMN_CHOICES)
 
     /**
-     * 旧版单个 `grid_columns`（0 = 自动 / 2..8 = 固定列数）迁移到「竖屏 / 横屏」两个新值。
-     * 旧值超出该方向允许范围时钳到边界，避免出现「竖屏选 6 列却只显示 3 列」的无效选项。
+     * 把任意历史值归一化成当前候选值之一：合法值原样保留，
+     * 旧版 0 = 自动、越界值（如旧横屏 8 列）统一回落到该方向默认值。
+     * DataStore restore 与 setter 都走这里，保证 4 个列数 Flow 永远落在合法集合里。
+     */
+    fun normalizeColumnChoice(value: Int, landscape: Boolean): Int =
+        if (isValidColumnChoice(value, landscape)) value else defaultColumns(landscape)
+
+    /**
+     * 旧版单个 `grid_columns`（0 = 自动 / 2..8 = 固定列数）迁移到当前方向候选值：
+     * 就近取该方向合法值；0 / 负数直接回落到默认值。
      */
     fun migrateColumnChoice(old: Int, landscape: Boolean): Int {
-        if (old <= 0) return 0
+        if (old <= 0) return defaultColumns(landscape)
         val choices = if (landscape) LANDSCAPE_COLUMN_CHOICES else PORTRAIT_COLUMN_CHOICES
-        val fixed = choices.filter { it > 0 }
-        return fixed.minByOrNull { kotlin.math.abs(it - old) } ?: autoColumns(landscape)
+        return choices.minByOrNull { kotlin.math.abs(it - old) } ?: defaultColumns(landscape)
     }
-
-    /** 校验某个方向的选择值合法（0 或该方向候选值之一） */
-    fun isValidColumnChoice(choice: Int, landscape: Boolean): Boolean =
-        choice == 0 || choice in (if (landscape) LANDSCAPE_COLUMN_CHOICES else PORTRAIT_COLUMN_CHOICES)
 
     /** 竖版封面卡（2:3 / 100:143.1）的最小宽度 */
     const val CARD_MIN_WIDTH_DP = 150
@@ -169,7 +172,7 @@ object WindowSizeRules {
     const val MANUAL_CARD_MIN_WIDTH_DP = 88
 
     /** 横向视频卡（16:9）的最小宽度：更宽才看得清标题与角标。
-     *  视频页不再用它单独算列数，改由 [videoGridColumns] 恒比 JAV 少一列；
+     *  v0.3.56 起视频列数由用户独立设定，不再单独按卡宽算、也不再联动 JAV；
      *  此值保留给 [gridColumns] 的通用参数能力与对应单测。 */
     const val WIDE_CARD_MIN_WIDTH_DP = 200
 
@@ -248,9 +251,10 @@ object WindowSizeRules {
      * @param windowWidthDp 当前应用窗口实际可用宽度
      * @param reservedDp 被 NavigationRail / 侧栏占掉的宽度
      * @param minCardWidthDp 该网格卡片的最小宽度（竖封面用 [CARD_MIN_WIDTH_DP]，16:9 视频用 [WIDE_CARD_MIN_WIDTH_DP]）
-     * @param choice 用户在设置里手选的列数（0 = 自动）；手选值是**目标列数**（选 N 就排 N 列），
-     *   不再只当上限。仅当窗口按 [MANUAL_CARD_MIN_WIDTH_DP] 也放不下 N 列时才收敛，
-     *   否则平板横屏自动只有 5 列时选 6 列仍被钳成 5，设置项没有意义。
+     * @param choice 目标列数（v0.3.56 起直接来自 JAV / 视频各自竖屏或横屏的选择值）；
+     *   choice<=0 仍保留「按 [minCardWidthDp] 动态算」的通用能力（纯函数测试用），
+     *   但设置层不再产生 0。手选值是**目标列数**（选 N 就排 N 列），不再只当上限：
+     *   仅当窗口按 [MANUAL_CARD_MIN_WIDTH_DP] 也放不下 N 列时才收敛。
      */
     fun gridColumns(
         windowWidthDp: Int,
@@ -278,16 +282,9 @@ object WindowSizeRules {
         return choice.coerceIn(1, GRID_MAX_COLUMNS).coerceAtMost(maxFitting)
     }
 
-    /**
-     * 视频网格列数：恒等于同一窗口下 JAV 网格列数减一（至少 1 列）。
-     *
-     * 视频是 16:9 横版封面、JAV 是 2:3 竖版封面，同样宽度下横版卡更宽，
-     * 每行少放一个才舒服。以 JAV 列数为基准（同一个窗口宽度、同一份手选上限），
-     * 而不是另取一套「横版卡最小宽度」独立计算——那样取整或手选钳制会出现
-     * 「跟 JAV 一样多」或「一下少了两列」，差值不稳定。
-     * 极窄窗口 JAV 只剩 1 列时，视频保底 1 列（不能为 0）。
-     */
-    fun videoGridColumns(javColumns: Int): Int = (javColumns - 1).coerceAtLeast(1)
+    // v0.3.56：视频列数改为用户独立设定（video_portrait_columns / video_landscape_columns），
+    // 不再有「恒比 JAV 少一列」的联动函数。JAV 与视频都直接把各自的选择值传给
+    // [gridColumns]，同一窗口下选几列就排几列，互不牵连。
 
     /** 对话框最大宽度；Compact 交给平台默认，不加限制 */
     fun dialogMaxWidth(widthDp: Int): Int = when (classify(widthDp)) {
