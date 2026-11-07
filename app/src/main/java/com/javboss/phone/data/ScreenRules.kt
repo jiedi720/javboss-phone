@@ -87,6 +87,16 @@ object WindowSizeRules {
     /** NavigationRail 占位宽度，算网格可用宽度时要扣掉；收窄到 64dp 给网格多留 16dp */
     const val RAIL_WIDTH_DP = 64
 
+    /**
+     * v0.3.52 左侧栏紧凑模式：单个按钮的高度。
+     * 普通模式主 tab 约 60dp、工具项 44dp；紧凑后统一压到 32dp，
+     * 隐藏文字腾出的垂直空间被真正回收，图标整体上移，一屏放得下全部按钮不用滚动。
+     */
+    const val RAIL_COMPACT_ITEM_DP = 32
+
+    /** 紧凑模式下分隔线的垂直 padding（普通模式主分隔线 6dp / 工具区内部分隔线 4dp） */
+    const val RAIL_COMPACT_DIVIDER_PADDING_DP = 2
+
     /** 网格列数硬上限：防止自由窗口被拖到超宽时卡片过密（仅用于手选档） */
     const val GRID_MAX_COLUMNS = 8
 
@@ -172,6 +182,18 @@ object WindowSizeRules {
      */
     fun railShowLabel(widthDp: Int, compactMode: Boolean): Boolean =
         !compactMode && railShowsLabel(widthDp)
+
+    /**
+     * v0.3.52：左侧栏单个按钮的高度（dp）。
+     * - 紧凑模式：主 tab 与工具项一律压到 [RAIL_COMPACT_ITEM_DP]，文字腾出的空间被回收；
+     * - 非紧凑且有文字：44dp（旧值）；
+     * - 非紧凑但宽度规则本就隐藏文字（Medium）：40dp（旧值，不受紧凑模式影响）。
+     */
+    fun railItemHeightDp(showLabel: Boolean, compactMode: Boolean): Int = when {
+        compactMode -> RAIL_COMPACT_ITEM_DP
+        showLabel -> 44
+        else -> 40
+    }
 
     /** 详情 / 设置是否采用左右双栏 */
     fun useTwoPane(widthDp: Int): Boolean = widthDp >= TWO_PANE_MIN_DP

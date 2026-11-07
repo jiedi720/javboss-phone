@@ -156,22 +156,44 @@ fun MainScreen(
                     windowInsets = WindowInsets(0, 0, 0, 0),
                 ) {
                     mainTabs.forEachIndexed { index, item ->
-                        val itemLabel: @Composable (() -> Unit)? =
-                            if (railShowsLabel) { { Text(item.label) } } else null
-                        NavigationRailItem(
-                            selected = tab == index,
-                            onClick = { tools.closeSheets(); tab = index },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = itemLabel,
-                            alwaysShowLabel = railShowsLabel,
-                        )
+                        if (railCompact) {
+                            // v0.3.52：M3 NavigationRailItem 隐藏 label 后仍占约 60dp，
+                            // 图标停在原位、下面照旧要滚动。紧凑模式改用和工具项同款的
+                            // 极简图标按钮，压到 32dp，文字腾出的空间被回收、图标整体上移。
+                            RailToolButton(
+                                icon = item.icon,
+                                label = item.label,
+                                showLabel = false,
+                                compact = true,
+                                selected = tab == index,
+                                onClick = { tools.closeSheets(); tab = index },
+                            )
+                        } else {
+                            val itemLabel: @Composable (() -> Unit)? =
+                                if (railShowsLabel) { { Text(item.label) } } else null
+                            NavigationRailItem(
+                                selected = tab == index,
+                                onClick = { tools.closeSheets(); tab = index },
+                                icon = { Icon(item.icon, contentDescription = item.label) },
+                                label = itemLabel,
+                                alwaysShowLabel = railShowsLabel,
+                            )
+                        }
                     }
 
                     // 分隔线以下才放「当前页面功能」；收藏夹 / 设置页没有顶栏功能，不占位。
-                    // 功能区单独可滚：手机横屏这类矮窗口里 6 个工具项也够得到，
-                    // 不会把主 tab 挤出去，也不需要给 rail 加宽或另起第二条工具条。
+                    // 功能区单独可滚做兜底：普通模式在矮窗口里也够得到全部工具项；
+                    // v0.3.52 紧凑模式把每项压到 32dp 后，横屏基本一屏放得下，不必滚动。
+                    // 不把主 tab 挤出去，也不需要给 rail 加宽或另起第二条工具条。
                     if (tab == 0 || tab == 1) {
-                        HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        HorizontalDivider(
+                            Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = if (railCompact) {
+                                    WindowSizeRules.RAIL_COMPACT_DIVIDER_PADDING_DP.dp
+                                } else 6.dp,
+                            )
+                        )
                         Column(
                             Modifier
                                 .weight(1f)
@@ -184,12 +206,14 @@ fun MainScreen(
                                         icon = Icons.AutoMirrored.Filled.Sort,
                                         label = "排序",
                                         showLabel = railShowsLabel,
+                                        compact = railCompact,
                                         onClick = { tools.videosSortOpen = true },
                                     )
                                     RailToolButton(
                                         icon = if (tools.videosSearchOpen) Icons.Filled.Close else Icons.Filled.Search,
                                         label = if (tools.videosSearchOpen) "收起" else "搜索",
                                         showLabel = railShowsLabel,
+                                        compact = railCompact,
                                         onClick = {
                                             val next = !tools.videosSearchOpen
                                             tools.videosSearchOpen = next
@@ -205,11 +229,19 @@ fun MainScreen(
                                             icon = libraryTabIcon(libTab),
                                             label = libTab.label,
                                             showLabel = railShowsLabel,
+                                            compact = railCompact,
                                             selected = worksViewModel.uiState.tab == libTab,
                                             onClick = { worksViewModel.onTabChange(libTab) },
                                         )
                                     }
-                                    HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                                    HorizontalDivider(
+                                        Modifier.padding(
+                                            horizontal = 12.dp,
+                                            vertical = if (railCompact) {
+                                                WindowSizeRules.RAIL_COMPACT_DIVIDER_PADDING_DP.dp
+                                            } else 4.dp,
+                                        )
+                                    )
                                     // 与原顶栏一致：片商 / 系列视角没有排序入口
                                     if (worksViewModel.uiState.tab == LibraryTab.WORKS ||
                                         worksViewModel.uiState.tab == LibraryTab.IDOLS
@@ -218,6 +250,7 @@ fun MainScreen(
                                             icon = Icons.AutoMirrored.Filled.Sort,
                                             label = "排序",
                                             showLabel = railShowsLabel,
+                                            compact = railCompact,
                                             onClick = {
                                                 if (worksViewModel.uiState.tab == LibraryTab.WORKS) {
                                                     worksViewModel.loadFilterOptions()
@@ -230,6 +263,7 @@ fun MainScreen(
                                         icon = if (tools.worksSearchOpen) Icons.Filled.Close else Icons.Filled.Search,
                                         label = if (tools.worksSearchOpen) "收起" else "搜索",
                                         showLabel = railShowsLabel,
+                                        compact = railCompact,
                                         onClick = {
                                             val next = !tools.worksSearchOpen
                                             tools.worksSearchOpen = next
@@ -289,9 +323,11 @@ fun MainScreen(
 }
 
 /**
- * 原左侧栏里的紧凑工具项：不额外占 rail 宽度。
- * 普通模式是「图标 + 一行短标签」44dp 高；紧凑模式只画图标，收到 40dp。
- * 选中态用于标出 JAV 当前视角；排序 / 搜索这类动作按钮不高亮。
+ * 原左侧栏里的图标按钮：不额外占 rail 宽度。
+ * 普通模式是「图标 + 一行短标签」44dp 高（宽度规则隐藏文字时 40dp）；
+ * v0.3.52 紧凑模式把主 tab 与工具项统一压到 32dp、去掉垂直 padding，
+ * 文字腾出的空间被真正回收，图标整体上移，一屏放得下全部按钮。
+ * 选中态用于标出当前主 tab / JAV 视角；排序 / 搜索这类动作按钮不高亮。
  * 紧凑模式下文字不画，但 [label] 仍作为 contentDescription 保留，语义树仍可读。
  */
 @Composable
@@ -300,6 +336,7 @@ private fun RailToolButton(
     label: String,
     showLabel: Boolean,
     onClick: () -> Unit,
+    compact: Boolean = false,
     selected: Boolean = false,
 ) {
     val container = if (selected) {
@@ -315,8 +352,8 @@ private fun RailToolButton(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-            .height(if (showLabel) 44.dp else 40.dp)
+            .padding(horizontal = 4.dp, vertical = if (compact) 0.dp else 2.dp)
+            .height(WindowSizeRules.railItemHeightDp(showLabel, compact).dp)
             .clip(RoundedCornerShape(10.dp))
             .background(container)
             .clickable(onClick = onClick),

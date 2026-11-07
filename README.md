@@ -39,7 +39,8 @@
   窗口缩放实时切换且当前 tab 与页面状态保留（详见 v0.3.42 段）；
   **横屏 / Rail 模式下，视频与 JAV 页原顶栏的视角 / 排序 / 搜索功能并入这条原左侧栏**
   （紧凑工具项，不新增第二条工具条、不加宽 rail；详见 v0.3.50 段），
-  设置页「左侧栏紧凑模式」可让主 tab 与工具项只留图标（详见 v0.3.51 段），
+  设置页「左侧栏紧凑模式」可让主 tab 与工具项只留图标并压到 32dp 一屏放下
+  （详见 v0.3.51 / v0.3.52 段），
   Compact 手机竖屏仍用页面顶栏；
   **冷启动默认进 JAV**，可在设置页「启动显示界面」改成 视频 / JAV（只在下次启动生效，当前会话不跳转）
   页面转场重写过：Navigation Compose 默认是 700ms 淡入淡出（手感明显慢半拍），
@@ -419,6 +420,19 @@
   - 不新增第二条工具条、不加宽 64dp rail；新增 `RailCompactModeTest` 4 例
     （各宽度下紧凑模式都隐藏文字、普通模式保留宽度规则、840dp 边界、极大宽度不回退）；
     全量单测 **121/121**。
+- **紧凑模式真正压缩按钮高度（v0.3.52）**：
+  - 用户反馈：v0.3.51 只是把文字隐藏，按钮仍占原高度、图标停在原位，
+    **文字腾出的垂直空间没被回收**，下面的工具项依旧要滚动 / 翻页，算不上紧凑。
+  - 修正：紧凑模式下**主 tab 也改用同款极简图标按钮**（M3 `NavigationRailItem`
+    隐藏 label 后仍占约 60dp，正是「图标位置不变」的根因），与工具项统一压到 **32dp**、
+    去掉 2dp 垂直 padding、两条分隔线 padding 收到 2dp；
+    纯规则 `WindowSizeRules.railItemHeightDp(showLabel, compactMode)`。
+  - 效果：主 tab 约 60dp → 32dp、工具项 44dp → 32dp，图标整体上移填补文字空间；
+    横屏 640dp 窗口里 4 个主 tab + 6 个工具项约 330dp，一屏放得下，不必滚动。
+  - **非紧凑模式完全不变**：Expanded 44dp、Medium（宽度规则隐藏文字）40dp；
+    紧凑模式只影响 Rail，Compact 手机竖屏仍是底部导航 + 顶部工具条。
+  - 新增 `RailCompactModeTest` 3 例（紧凑主 tab / 工具项同为 32dp、普通模式保持 44/40dp、
+    紧凑一定更矮且 10 项 < 640dp）；全量单测 **124/124**。
 
 ## 使用
 
@@ -490,7 +504,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 55`、`versionName = 0.3.51-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 56`、`versionName = 0.3.52-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），
