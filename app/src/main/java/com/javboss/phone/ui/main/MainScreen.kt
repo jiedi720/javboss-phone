@@ -135,8 +135,9 @@ fun MainScreen(
         bottomBar = {
             if (!rail) {
                 NavigationBar(
-                    // v0.3.54：72dp 仍比 M3 默认 80dp 紧凑，但图标上方要有冗余。
-                    // 新增的 8dp 全部作为 item 顶部 padding，图标 / 文字 / 下方留白不动。
+                    // v0.3.55：82dp 让栏顶正好到「一页显示不下的封面上边缘」（用户红线）。
+                    // 相对 v0.3.54 多出的 10dp 仍全部作为 item 顶部 padding，
+                    // 图标 / 文字 / 下方留白不动，只补上方冗余。
                     modifier = Modifier.height(WindowSizeRules.NAV_BAR_COMPACT_HEIGHT_DP.dp),
                 ) {
                     mainTabs.forEachIndexed { index, item ->
