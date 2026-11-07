@@ -99,7 +99,12 @@ fun SettingsScreen(
         // ---------- 每行卡片数（置顶，最常用的设置项） ----------
         SectionTitle("每行卡片数")
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp)) {
+            // v0.3.53：两个下拉一左一右并排，各占一半宽度。选项文字很短，
+            // 不必再上下占两行；框内显示短值，完整的「自动（N 列）」留在下拉选项里。
+            Row(
+                Modifier.padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 // 竖屏 / 横屏分开设定：各自只有放得下的候选值，不再出现
                 // 「竖屏选 6 列却只显示 3 列」这种无效选项
                 ColumnChoiceDropdown(
@@ -108,14 +113,15 @@ fun SettingsScreen(
                     options = WindowSizeRules.PORTRAIT_COLUMN_CHOICES,
                     selected = state.portraitColumnsChoice,
                     onSelect = viewModel::setPortraitColumns,
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.height(12.dp))
                 ColumnChoiceDropdown(
                     label = "横屏",
                     autoLabel = "自动（6 列）",
                     options = WindowSizeRules.LANDSCAPE_COLUMN_CHOICES,
                     selected = state.landscapeColumnsChoice,
                     onSelect = viewModel::setLandscapeColumns,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -482,12 +488,20 @@ private fun ColumnChoiceDropdown(
     options: List<Int>,
     selected: Int,
     onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    fun textOf(n: Int) = if (n == 0) autoLabel else "$n 列"
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+    // v0.3.53：并排后每个下拉只有半屏宽，框里显示短值（自动 / N 列）才放得下；
+    // 「自动（3 列）」这类完整说明仍留在下拉选项里，信息不丢。
+    fun displayTextOf(n: Int) = if (n == 0) "自动" else "$n 列"
+    fun optionTextOf(n: Int) = if (n == 0) autoLabel else "$n 列"
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier,
+    ) {
         OutlinedTextField(
-            value = textOf(selected),
+            value = displayTextOf(selected),
             onValueChange = {},
             readOnly = true,
             singleLine = true,
@@ -500,7 +514,7 @@ private fun ColumnChoiceDropdown(
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { n ->
                 DropdownMenuItem(
-                    text = { Text(textOf(n)) },
+                    text = { Text(optionTextOf(n)) },
                     onClick = {
                         expanded = false
                         onSelect(n)

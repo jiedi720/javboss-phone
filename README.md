@@ -41,7 +41,7 @@
   （紧凑工具项，不新增第二条工具条、不加宽 rail；详见 v0.3.50 段），
   设置页「左侧栏紧凑模式」可让主 tab 与工具项只留图标并压到 32dp 一屏放下
   （详见 v0.3.51 / v0.3.52 段），
-  Compact 手机竖屏仍用页面顶栏；
+  Compact 手机竖屏仍用页面顶栏，底部导航栏收紧到 **64dp**（详见 v0.3.53 段）；
   **冷启动默认进 JAV**，可在设置页「启动显示界面」改成 视频 / JAV（只在下次启动生效，当前会话不跳转）
   页面转场重写过：Navigation Compose 默认是 700ms 淡入淡出（手感明显慢半拍），
   这里统一改成 200ms「1/12 屏宽轻推 + 淡入淡出」，进/出详情立刻跟手；播放页转屏只用 150ms 淡入淡出
@@ -433,6 +433,16 @@
     紧凑模式只影响 Rail，Compact 手机竖屏仍是底部导航 + 顶部工具条。
   - 新增 `RailCompactModeTest` 3 例（紧凑主 tab / 工具项同为 32dp、普通模式保持 44/40dp、
     紧凑一定更矮且 10 项 < 640dp）；全量单测 **124/124**。
+- **设置页两下拉并排 + 竖屏底部栏收紧（v0.3.53）**：
+  - 「每行卡片数」的 **竖屏 / 横屏** 两个下拉从上下两行改为**一左一右并排**
+    （`Row` + 各 `weight(1f)`），选项文字很短，省掉一行高度。
+  - 并排后每个下拉只有半屏宽，`OutlinedTextField` 里改显示短值 **`自动` / `N 列`**，
+    完整的 `自动（3 列）` / `自动（6 列）` 说明仍保留在下拉选项里，信息不丢；
+    `ColumnChoiceDropdown` 增加 `modifier` 参数承接 `weight`。
+  - Compact 竖屏底部 `NavigationBar` 从 M3 默认 80dp **收紧到 64dp**
+    （`WindowSizeRules.NAV_BAR_COMPACT_HEIGHT_DP`，`>= 48dp` 触控目标），
+    四个 tab 的图标与文字仍完整；只作用于 `NavigationBar`，Rail / 横屏 / 紧凑模式不受影响。
+  - 新增 `NavBarHeightTest` 2 例（比 M3 默认矮、仍满足触控目标）；全量单测 **126/126**。
 
 ## 使用
 
@@ -504,7 +514,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 56`、`versionName = 0.3.52-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 57`、`versionName = 0.3.53-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

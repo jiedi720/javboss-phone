@@ -134,7 +134,11 @@ fun MainScreen(
     Scaffold(
         bottomBar = {
             if (!rail) {
-                NavigationBar {
+                NavigationBar(
+                    // v0.3.53：竖屏底部导航栏收紧到 64dp（M3 默认 80dp），
+                    // 图标与文字仍完整显示，触控目标不低于 48dp。
+                    modifier = Modifier.height(WindowSizeRules.NAV_BAR_COMPACT_HEIGHT_DP.dp),
+                ) {
                     mainTabs.forEachIndexed { index, item ->
                         NavigationBarItem(
                             selected = tab == index,
