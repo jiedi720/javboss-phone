@@ -41,7 +41,8 @@
   （紧凑工具项，不新增第二条工具条、不加宽 rail；详见 v0.3.50 段），
   设置页「左侧栏紧凑模式」可让主 tab 与工具项只留图标并压到 32dp 一屏放下
   （详见 v0.3.51 / v0.3.52 段），
-  Compact 手机竖屏仍用页面顶栏，底部导航栏收紧到 **64dp**（详见 v0.3.53 段）；
+  Compact 手机竖屏仍用页面顶栏，底部导航栏 **72dp**、图标上方留 8dp 冗余
+  （详见 v0.3.53 / v0.3.54 段）；
   **冷启动默认进 JAV**，可在设置页「启动显示界面」改成 视频 / JAV（只在下次启动生效，当前会话不跳转）
   页面转场重写过：Navigation Compose 默认是 700ms 淡入淡出（手感明显慢半拍），
   这里统一改成 200ms「1/12 屏宽轻推 + 淡入淡出」，进/出详情立刻跟手；播放页转屏只用 150ms 淡入淡出
@@ -443,6 +444,14 @@
     （`WindowSizeRules.NAV_BAR_COMPACT_HEIGHT_DP`，`>= 48dp` 触控目标），
     四个 tab 的图标与文字仍完整；只作用于 `NavigationBar`，Rail / 横屏 / 紧凑模式不受影响。
   - 新增 `NavBarHeightTest` 2 例（比 M3 默认矮、仍满足触控目标）；全量单测 **126/126**。
+- **底部栏上方补冗余（v0.3.54）**：
+  - 用户反馈 v0.3.53 的 64dp 底部栏图标紧贴栏顶、上方几乎没留白，显得被裁切。
+  - 修正：栏高 64dp → **72dp**（仍比 M3 默认 80dp 矮 8dp），但新增的 8dp
+    通过 `NavigationBarItem(modifier = Modifier.padding(top = 8.dp))`
+    **全部加在图标上方**；内容区仍是 `72 - 8 = 64dp`，与 v0.3.53 完全一致，
+    因此图标、文字、下方留白的绝对位置都不变，只在上方补出冗余。
+  - `WindowSizeRules` 新增 `NAV_BAR_TOP_PADDING_DP = 8`；`NavBarHeightTest` 新增 1 例
+    断言内容区回到 64dp；全量单测 **127/127**。
 
 ## 使用
 
@@ -514,7 +523,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 57`、`versionName = 0.3.53-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 58`、`versionName = 0.3.54-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

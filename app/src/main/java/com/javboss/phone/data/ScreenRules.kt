@@ -98,12 +98,19 @@ object WindowSizeRules {
     const val RAIL_COMPACT_DIVIDER_PADDING_DP = 2
 
     /**
-     * v0.3.53：Compact（手机竖屏）底部 NavigationBar 的高度。
-     * M3 默认 80dp，四个带图标+文字的 tab 显得过高；收紧到 64dp 更紧凑，
-     * 仍 >= 48dp 触控目标，内容区相应多出 16dp。仅作用于 NavigationBar，
-     * Medium / Expanded 的 NavigationRail 不受影响。
+     * v0.3.54：Compact（手机竖屏）底部 NavigationBar 的高度。
+     * M3 默认 80dp；v0.3.53 收到 64dp 后图标上方几乎没有留白、显得被裁，
+     * 这里放宽到 72dp（仍比默认矮 8dp），并把新增的 8dp 通过
+     * [NAV_BAR_TOP_PADDING_DP] 全部加在图标上方：图标 / 文字 / 下方留白保持原样。
+     * 仅作用于 NavigationBar，Medium / Expanded 的 NavigationRail 不受影响。
      */
-    const val NAV_BAR_COMPACT_HEIGHT_DP = 64
+    const val NAV_BAR_COMPACT_HEIGHT_DP = 72
+
+    /**
+     * v0.3.54：新增高度全部落在图标上方，内容区仍是 72 - 8 = 64dp，
+     * 与 v0.3.53 完全一致，下方留白不变；触控目标仍 >= 48dp。
+     */
+    const val NAV_BAR_TOP_PADDING_DP = 8
 
     /** 网格列数硬上限：防止自由窗口被拖到超宽时卡片过密（仅用于手选档） */
     const val GRID_MAX_COLUMNS = 8

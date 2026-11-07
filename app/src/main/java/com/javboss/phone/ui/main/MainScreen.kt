@@ -135,12 +135,13 @@ fun MainScreen(
         bottomBar = {
             if (!rail) {
                 NavigationBar(
-                    // v0.3.53：竖屏底部导航栏收紧到 64dp（M3 默认 80dp），
-                    // 图标与文字仍完整显示，触控目标不低于 48dp。
+                    // v0.3.54：72dp 仍比 M3 默认 80dp 紧凑，但图标上方要有冗余。
+                    // 新增的 8dp 全部作为 item 顶部 padding，图标 / 文字 / 下方留白不动。
                     modifier = Modifier.height(WindowSizeRules.NAV_BAR_COMPACT_HEIGHT_DP.dp),
                 ) {
                     mainTabs.forEachIndexed { index, item ->
                         NavigationBarItem(
+                            modifier = Modifier.padding(top = WindowSizeRules.NAV_BAR_TOP_PADDING_DP.dp),
                             selected = tab == index,
                             onClick = { tools.closeSheets(); tab = index },
                             icon = { Icon(item.icon, contentDescription = item.label) },
