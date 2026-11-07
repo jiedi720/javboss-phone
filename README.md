@@ -39,6 +39,7 @@
   窗口缩放实时切换且当前 tab 与页面状态保留（详见 v0.3.42 段）；
   **横屏 / Rail 模式下，视频与 JAV 页原顶栏的视角 / 排序 / 搜索功能并入这条原左侧栏**
   （紧凑工具项，不新增第二条工具条、不加宽 rail；详见 v0.3.50 段），
+  设置页「左侧栏紧凑模式」可让主 tab 与工具项只留图标（详见 v0.3.51 段），
   Compact 手机竖屏仍用页面顶栏；
   **冷启动默认进 JAV**，可在设置页「启动显示界面」改成 视频 / JAV（只在下次启动生效，当前会话不跳转）
   页面转场重写过：Navigation Compose 默认是 700ms 淡入淡出（手感明显慢半拍），
@@ -401,6 +402,23 @@
     收藏夹 / 设置页不新增工具项。
   - 新增 `PageToolsStateTest` 4 例（初始全关、两页开关互不干扰、
     `closeSheets()` 只关弹层不动搜索框、关后可再打开）；全量单测 **117/117**。
+- **去掉顶部多余留白 + 左侧栏紧凑模式（v0.3.51）**：
+  - 用户截图两处红框：横屏 / Rail 模式下**左侧栏主 tab 上方的空白**（`NavigationRail`
+    默认 `windowInsets` 在 Scaffold 已处理状态栏后又叠了一遍）与**内容区第一行封面上方的
+    空白**（网格 `contentPadding` 统一四周留白，宽窗口下显得松）。
+  - 收紧：`NavigationRail(windowInsets = WindowInsets(0, 0, 0, 0))` 清掉重复 inset；
+    `WorksScreen` / `VideosScreen` 在 `toolsInRail` 时把网格 `contentPadding.top` 改为 `0.dp`
+    （左右 / 底部仍保留自适应留白）。**Compact 手机竖屏完全不变**，仍四周统一留白。
+  - 设置页「显示」分组最上方新增 **左侧栏紧凑模式** 开关（`rail_compact_mode`，默认关），
+    开启后原左侧栏的**主 tab 与页面工具项都只画图标、不画文字**；
+    纯规则 `WindowSizeRules.railShowLabel(widthDp, compactMode)`：紧凑模式一律隐藏文字，
+    关闭时沿用「Expanded 才常驻文字」的旧宽度规则。
+  - 设置改动经 `SettingsManager` 的 `StateFlow` + `rememberRailCompactMode()` 即时生效，
+    不用重启 App；`RailToolButton` 紧凑模式收到 40dp（普通 44dp），
+    但 `label` 仍作为 `contentDescription` 保留，语义树 / 无障碍仍可读。
+  - 不新增第二条工具条、不加宽 64dp rail；新增 `RailCompactModeTest` 4 例
+    （各宽度下紧凑模式都隐藏文字、普通模式保留宽度规则、840dp 边界、极大宽度不回退）；
+    全量单测 **121/121**。
 
 ## 使用
 
@@ -472,7 +490,7 @@ armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 si
 换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
 
 当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 54`、`versionName = 0.3.50-modified`，桌面显示名「JavBoss Modified」。
+`versionCode = 55`、`versionName = 0.3.51-modified`，桌面显示名「JavBoss Modified」。
 打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
 
 release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），

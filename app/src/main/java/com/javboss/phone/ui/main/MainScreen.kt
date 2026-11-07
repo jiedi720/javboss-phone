@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -59,6 +60,7 @@ import com.javboss.phone.ui.components.LocalCoverMask
 import com.javboss.phone.ui.components.adaptiveContentWidth
 import com.javboss.phone.ui.components.rememberNavigationForm
 import com.javboss.phone.ui.components.rememberPageToolsState
+import com.javboss.phone.ui.components.rememberRailCompactMode
 import com.javboss.phone.ui.components.rememberWindowWidthDp
 import com.javboss.phone.ui.favorites.FavoritesScreen
 import com.javboss.phone.ui.settings.SettingsScreen
@@ -116,7 +118,9 @@ fun MainScreen(
     var tab by rememberSaveable { mutableIntStateOf(startTab) }
     val widthDp = rememberWindowWidthDp()
     val rail = rememberNavigationForm() == NavigationForm.RAIL
-    val railShowsLabel = WindowSizeRules.railShowsLabel(widthDp)
+    // v0.3.51：紧凑模式开启后强制只画图标；关闭时沿用「Expanded 才常驻文字」的旧规则
+    val railCompact = rememberRailCompactMode()
+    val railShowsLabel = WindowSizeRules.railShowLabel(widthDp, railCompact)
 
     // 页面工具的开关提到这里：原左侧栏与页面顶栏读写同一份状态，
     // 旋转 / 分屏 / 自由窗口切换导航形式时搜索框、排序菜单不会重置。
@@ -147,6 +151,9 @@ fun MainScreen(
             if (rail) {
                 NavigationRail(
                     modifier = Modifier.width(WindowSizeRules.RAIL_WIDTH_DP.dp),
+                    // Scaffold 的 padding 已经处理过状态栏；rail 自己再按默认 insets
+                    // 加一遍会在主 tab 上方叠出一块空白（用户红框处），这里清零。
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                 ) {
                     mainTabs.forEachIndexed { index, item ->
                         val itemLabel: @Composable (() -> Unit)? =
@@ -176,11 +183,13 @@ fun MainScreen(
                                     RailToolButton(
                                         icon = Icons.AutoMirrored.Filled.Sort,
                                         label = "排序",
+                                        showLabel = railShowsLabel,
                                         onClick = { tools.videosSortOpen = true },
                                     )
                                     RailToolButton(
                                         icon = if (tools.videosSearchOpen) Icons.Filled.Close else Icons.Filled.Search,
                                         label = if (tools.videosSearchOpen) "收起" else "搜索",
+                                        showLabel = railShowsLabel,
                                         onClick = {
                                             val next = !tools.videosSearchOpen
                                             tools.videosSearchOpen = next
@@ -195,6 +204,7 @@ fun MainScreen(
                                         RailToolButton(
                                             icon = libraryTabIcon(libTab),
                                             label = libTab.label,
+                                            showLabel = railShowsLabel,
                                             selected = worksViewModel.uiState.tab == libTab,
                                             onClick = { worksViewModel.onTabChange(libTab) },
                                         )
@@ -207,6 +217,7 @@ fun MainScreen(
                                         RailToolButton(
                                             icon = Icons.AutoMirrored.Filled.Sort,
                                             label = "排序",
+                                            showLabel = railShowsLabel,
                                             onClick = {
                                                 if (worksViewModel.uiState.tab == LibraryTab.WORKS) {
                                                     worksViewModel.loadFilterOptions()
@@ -218,6 +229,7 @@ fun MainScreen(
                                     RailToolButton(
                                         icon = if (tools.worksSearchOpen) Icons.Filled.Close else Icons.Filled.Search,
                                         label = if (tools.worksSearchOpen) "收起" else "搜索",
+                                        showLabel = railShowsLabel,
                                         onClick = {
                                             val next = !tools.worksSearchOpen
                                             tools.worksSearchOpen = next
@@ -277,13 +289,16 @@ fun MainScreen(
 }
 
 /**
- * 原左侧栏里的紧凑工具项：图标 + 一行短标签，44dp 高，不额外占 rail 宽度。
+ * 原左侧栏里的紧凑工具项：不额外占 rail 宽度。
+ * 普通模式是「图标 + 一行短标签」44dp 高；紧凑模式只画图标，收到 40dp。
  * 选中态用于标出 JAV 当前视角；排序 / 搜索这类动作按钮不高亮。
+ * 紧凑模式下文字不画，但 [label] 仍作为 contentDescription 保留，语义树仍可读。
  */
 @Composable
 private fun RailToolButton(
     icon: ImageVector,
     label: String,
+    showLabel: Boolean,
     onClick: () -> Unit,
     selected: Boolean = false,
 ) {
@@ -301,7 +316,7 @@ private fun RailToolButton(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 2.dp)
-            .height(44.dp)
+            .height(if (showLabel) 44.dp else 40.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(container)
             .clickable(onClick = onClick),
@@ -309,8 +324,10 @@ private fun RailToolButton(
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp), tint = content)
-        Spacer(Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = content, maxLines = 1)
+        if (showLabel) {
+            Spacer(Modifier.height(2.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = content, maxLines = 1)
+        }
     }
 }
 

@@ -250,6 +250,25 @@ fun SettingsScreen(
         SectionTitle("显示")
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
+                // v0.3.51：开启后横屏 / 宽窗口的原左侧栏只留图标，主 tab 与
+                // 页面工具项都不再显示文字，整体更紧凑
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("左侧栏紧凑模式", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "只显示图标，不显示文字",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = state.railCompactMode,
+                        onCheckedChange = viewModel::setRailCompactMode,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(10.dp))
                 Text("启动显示界面", style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(4.dp))
                 // 冷启动只给「视频 / JAV」两个入口；收藏夹与设置不作为启动页

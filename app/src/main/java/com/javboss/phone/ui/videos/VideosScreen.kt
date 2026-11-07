@@ -67,6 +67,7 @@ fun VideosScreen(
 ) {
     val state = viewModel.uiState
     val gridState = rememberLazyGridState()
+    val adaptivePadding = rememberAdaptivePadding()
     // 两个开关提到 MainScreen：顶部按钮和原左侧栏写的是同一份状态，
     // 切换导航形式 / 旋转时搜索框与排序菜单不会重置。
     val searchOpen = tools.videosSearchOpen
@@ -167,7 +168,14 @@ fun VideosScreen(
                     // 极窄窗口保底 1 列，不按设备或方向另算一套最小宽度
                     columns = GridCells.Fixed(rememberVideoGridColumns()),
                     state = gridState,
-                    contentPadding = PaddingValues(rememberAdaptivePadding()),
+                    // v0.3.51：Rail 模式内容区顶部不再留白（用户红框处），卡片紧贴状态栏下方；
+                    // Compact 手机竖屏仍保留四周统一留白，避免卡片贴边。
+                    contentPadding = PaddingValues(
+                        start = adaptivePadding,
+                        top = if (toolsInRail) 0.dp else adaptivePadding,
+                        end = adaptivePadding,
+                        bottom = adaptivePadding,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
                     verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
                     modifier = Modifier.fillMaxSize(),

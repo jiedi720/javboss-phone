@@ -165,6 +165,14 @@ object WindowSizeRules {
     /** Rail 在 Expanded 才常驻显示文字标签；Medium 只留图标，省横向空间 */
     fun railShowsLabel(widthDp: Int): Boolean = isExpanded(widthDp)
 
+    /**
+     * v0.3.51：左侧栏最终是否显示文字标签。
+     * 设置里的「左侧栏紧凑模式」开启后一律只画图标（主 tab 与页面工具项都适用）；
+     * 关闭时沿用 [railShowsLabel] 的宽度规则，保持旧行为。
+     */
+    fun railShowLabel(widthDp: Int, compactMode: Boolean): Boolean =
+        !compactMode && railShowsLabel(widthDp)
+
     /** 详情 / 设置是否采用左右双栏 */
     fun useTwoPane(widthDp: Int): Boolean = widthDp >= TWO_PANE_MIN_DP
 

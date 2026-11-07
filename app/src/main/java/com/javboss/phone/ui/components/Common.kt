@@ -248,6 +248,20 @@ fun rememberUseTwoPane(): Boolean = WindowSizeRules.useTwoPane(rememberWindowWid
 @Composable
 fun rememberAdaptivePadding(): Dp = WindowSizeRules.horizontalPadding(rememberWindowWidthDp()).dp
 
+/**
+ * v0.3.51「左侧栏紧凑模式」：设置页改完立刻生效（StateFlow），
+ * 开启后 MainScreen 的原 NavigationRail 只画图标、不画文字。
+ */
+@Composable
+fun rememberRailCompactMode(): Boolean {
+    val context = LocalContext.current
+    val settings = remember(context) {
+        (context.applicationContext as JavBossApp).container.settings
+    }
+    val compact by settings.railCompactModeFlow.collectAsState()
+    return compact
+}
+
 /** 网格间距 */
 @Composable
 fun rememberGridSpacing(): Dp = WindowSizeRules.gridSpacing(rememberWindowWidthDp()).dp

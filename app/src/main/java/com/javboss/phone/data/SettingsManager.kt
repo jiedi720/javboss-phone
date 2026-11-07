@@ -61,6 +61,8 @@ class SettingsManager(private val context: Context) {
     private val keyCoverMask = booleanPreferencesKey("cover_mask")
     // 锁屏后自动给封面打码的总开关（默认开，保持旧行为）
     private val keyAutoMaskOnLock = booleanPreferencesKey("auto_mask_on_lock")
+    // v0.3.51 左侧栏紧凑模式：只显示图标、不显示文字（默认关）
+    private val keyRailCompactMode = booleanPreferencesKey("rail_compact_mode")
     private val keyFavSort = stringPreferencesKey("fav_sort")
     private val keyFavSortAsc = booleanPreferencesKey("fav_sort_asc")
     private val keyFavItemSort = stringPreferencesKey("fav_item_sort")
@@ -108,6 +110,14 @@ class SettingsManager(private val context: Context) {
     private val _autoMaskOnLock = MutableStateFlow(true)
     val autoMaskOnLockFlow: StateFlow<Boolean> = _autoMaskOnLock
     val autoMaskOnLock: Boolean get() = _autoMaskOnLock.value
+
+    /**
+     * 左侧栏紧凑模式：开启后原 NavigationRail 的主 tab 与页面工具项都只画图标。
+     * StateFlow 让设置页一改，已打开的左侧栏立刻跟着变，不用重启 App。
+     */
+    private val _railCompactMode = MutableStateFlow(false)
+    val railCompactModeFlow: StateFlow<Boolean> = _railCompactMode
+    val railCompactMode: Boolean get() = _railCompactMode.value
 
     /** 上次选用的排序（枚举名 + 升降序），下次打开 App 直接沿用，不回到默认值 */
     @Volatile
@@ -190,6 +200,7 @@ class SettingsManager(private val context: Context) {
             ?: 0
         _coverMask.value = prefs[keyCoverMask] ?: false
         _autoMaskOnLock.value = prefs[keyAutoMaskOnLock] ?: true
+        _railCompactMode.value = prefs[keyRailCompactMode] ?: false
         javSortName = prefs[keyJavSort]
         javSortAsc = prefs[keyJavSortAsc] ?: false
         idolSortName = prefs[keyIdolSort]
@@ -279,6 +290,12 @@ class SettingsManager(private val context: Context) {
     suspend fun saveAutoMaskOnLock(enabled: Boolean) {
         _autoMaskOnLock.value = enabled
         context.settingsDataStore.edit { it[keyAutoMaskOnLock] = enabled }
+    }
+
+    /** 左侧栏紧凑模式：立即生效 + 持久化 */
+    suspend fun saveRailCompactMode(enabled: Boolean) {
+        _railCompactMode.value = enabled
+        context.settingsDataStore.edit { it[keyRailCompactMode] = enabled }
     }
 
     /** 启动显示界面：只在下次冷启动生效，当前会话不跳转，避免把用户从设置页弹走 */

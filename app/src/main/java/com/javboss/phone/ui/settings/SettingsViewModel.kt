@@ -28,6 +28,8 @@ data class SettingsUiState(
     val coverMask: Boolean = false,
     /** 锁屏后自动给封面打码；关掉后锁屏不再触发（常开的封面毛玻璃不受影响） */
     val autoMaskOnLock: Boolean = true,
+    /** v0.3.51 左侧栏紧凑模式：只显示图标、不显示文字 */
+    val railCompactMode: Boolean = false,
     /** 冷启动默认进入的 tab（默认 JAV） */
     val launchTab: LaunchTab = LaunchTab.JAV,
     /** 按所在网络自动切换登录：总开关 */
@@ -69,6 +71,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             landscapeColumnsChoice = container.settings.landscapeColumnsChoice,
             coverMask = container.settings.coverMask,
             autoMaskOnLock = container.settings.autoMaskOnLock,
+            railCompactMode = container.settings.railCompactMode,
             launchTab = container.settings.launchTab,
             autoSwitchEnabled = container.settings.autoSwitchEnabled,
             lanPresetUrl = container.settings.lanPresetUrl,
@@ -109,6 +112,13 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         if (enabled == uiState.autoMaskOnLock) return
         uiState = uiState.copy(autoMaskOnLock = enabled)
         viewModelScope.launch { container.settings.saveAutoMaskOnLock(enabled) }
+    }
+
+    /** 左侧栏紧凑模式：写入后已打开的 NavigationRail 立刻只画图标 */
+    fun setRailCompactMode(enabled: Boolean) {
+        if (enabled == uiState.railCompactMode) return
+        uiState = uiState.copy(railCompactMode = enabled)
+        viewModelScope.launch { container.settings.saveRailCompactMode(enabled) }
     }
 
     /** 启动显示界面：只改设置，不动当前 tab，下次从桌面冷启动才生效 */
