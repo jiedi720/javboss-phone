@@ -1,96 +1,92 @@
+<div align="center">
+
 # JavBoss Phone
 
-[JavBoss](https://github.com/Solr159/JavBoss) 的第三方 Android 手机客户端（学习项目）。
-通过 JavBoss 服务端的 REST API 获取数据，以手机触摸交互呈现。
+**JavBoss 的第三方 Android 客户端**
 
-本仓库 fork 自 [zsdcxd/javboss-phone](https://github.com/zsdcxd/javboss-phone)
-（上游停在 v0.2.1），在其基础上独立迭代，当前为 **v0.3.56-modified / versionCode 60**。
-相对上游的改进点见下节，逐版本细节见「功能」各段。
+面向手机、平板与横屏窗口的自托管媒体库客户端
 
-> 本项目与 JavBoss 官方无关，仅调用其自托管服务端的 HTTP API。
+<p>
+  <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
+  <img src="https://img.shields.io/badge/版本-v0.3.56--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
+  <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
+</p>
 
-## 与上游原版的改进点
+[项目主页](https://github.com/jiedi720/javboss-phone) ·
+[上游项目](https://github.com/zsdcxd/javboss-phone) ·
+[JavBoss 服务端](https://github.com/Solr159/JavBoss)
 
-对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **41 个提交**，**60 个文件 / +9,925 / −633 行**
-（新增 27 个文件，其中 13 个是新的 JVM 单测文件，合计 14 suites / 126 例）。
-上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
-局域网接入说明**全部保留**。
+</div>
 
-### 工程与发布
+> 本项目是独立维护的第三方客户端，与 JavBoss 官方无关。通过 JavBoss 自托管服务端的 REST API 获取数据，不提供服务端功能。
 
-| 项 | 上游 v0.2.1 | 本分支 |
-| --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.56-modified / versionCode 60 |
-| 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
-| 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
-| 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **126 例 / 14 suites**，窗口分级、列数、地址、标签、文件版本等纯规则都有回归测试 |
-| 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
-| 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
+## 项目简介
 
-### 登录与网络
+本项目 fork 自 [zsdcxd/javboss-phone](https://github.com/zsdcxd/javboss-phone)，基于上游 v0.2.1 持续迭代。
 
-| 改进点 | 说明 |
+| 项目 | 当前信息 |
 | --- | --- |
-| 地址格式 | 上游只能省略协议补 `http://`；现同时支持 **IP:端口** 与 **完整 URL**（https、路径前缀） |
-| 地址预设 | ★ 存命名预设、登录成功自动收录、点选即用、可重命名 / 删除、同址去重、最近使用排前、上限 20 |
-| 一键登录 | 记住密码随预设存本地，存过的预设带 🔒，点一下直接登录 |
-| 按网络自动切换 | 「家里 / 外面」两条预设 + 独立短超时客户端探测 `/auth/status`；冷启动 / 回前台 / 网络变化时自动重登，失败**回滚原会话**、播放中不切换、可「立即检测」 |
+| 当前版本 | **v0.3.56-modified**（versionCode 60） |
+| Android 包名 | `com.javboss.modified` |
+| 应用名称 | JavBoss Modified |
+| 发布架构 | `arm64-v8a` |
+| 许可证 | GPL-3.0 |
 
-### 列表 · 网格 · 导航
+## 核心功能
 
-| 上游 v0.2.1 | 本分支 |
+| 模块 | 功能 |
 | --- | --- |
-| 两列**瀑布流**（最后一列偏上、网格对不齐） | `LazyVerticalGrid` + `GridCells.Fixed` **等高行网格**，四个网格统一 |
-| 固定 2 列 | 按当前窗口宽度动态算；**JAV / 视频各自独立**、竖屏 / 横屏分开共 4 个下拉（2/3 与 5/6/7，默认 3/5，无「自动」档） |
-| 「作品」tab、四视角、筛选弹层 | 改称 **JAV**（与 Web 命名一致）；排序 / 筛选合并为顶栏同一按钮，维度与升降序照搬 Web 纵向列表并本地持久化 |
-| 视频卡只有缩略图 + 搜索 / 排序 | 标题单行（去扩展名）、左下时长、右下播放钮、左上标签、第二行文件夹路径可跳转、顶栏与 JAV 对齐 |
-| 收藏夹内页无排序 / 搜索 | 补齐与 JAV 相同的 6 维度排序 + 搜索 + 同款底部菜单 |
-| 无观看 / 评分信息 | 右上角「已观看」徽标（`watched_ms > 0` 才画）+ 时长小浮层；左上角 Web 同款**爱心评分**（5 颗、0.5 档、半心精确对半、可拖动 / 点击、写回服务端） |
-| 点封面弹文件选择 | 点封面**直接进详情**，只有封面右下角播放钮在多版本时才选文件 |
-| 封面裁切居中 | 按 `cover_crop_position` / `cover_crop_left` 还原 Web 端裁切锚点 |
+| **媒体库** | 视频与 JAV 作品库、女优 / 片商 / 系列视角、收藏夹、搜索、排序与筛选 |
+| **卡片与布局** | 等高网格、独立列数设置、封面裁切还原、观看状态与喜爱度评分 |
+| **播放体验** | ExoPlayer / libVLC 双引擎、竖屏悬浮小窗、手势控制、播放时长同步 |
+| **详情与图片** | 多版本文件管理、样品图、截图浏览、全屏缩放与保存 |
+| **网络与登录** | 多服务器预设、记住密码、一键登录、家里 / 外网自动切换 |
+| **平板适配** | 根据窗口宽度切换底部导航 / 左侧导航栏，支持横屏、分屏与自由窗口 |
+| **隐私与稳定性** | 封面毛玻璃、锁屏打码、崩溃日志、自动化单元测试 |
 
-### 平板与窗口自适应
+## 快速开始
 
-| 改进点 | 说明 |
-| --- | --- |
-| 只有底部导航、只考虑手机 | 只按**当前应用窗口实际可用 dp 宽度**分级（Compact / Medium / Expanded），不看设备型号 / 是否平板 / `smallestScreenWidthDp`；Compact 底部栏、宽窗口左侧 `NavigationRail`，旋转 / 分屏 / 自由窗口实时切换且保留 tab 与状态 |
-| 横屏顶栏挤在一行 | Rail 模式下 JAV / 视频的视角 / 排序 / 搜索**并入原左侧栏**（不新增第二条工具条、不加宽 64dp rail）；「紧凑模式」只留图标并压到 32dp 一屏放下 |
-| 详情页单栏 | Expanded 真双栏：左封面 + 信息 + 文件版本、右标签 / 样品图 / 截图，各自独立滚动 |
-| 弹窗 / 大图 / 设置 / 登录拉伸整屏 | Medium / Expanded 统一限宽；登录 480dp、设置 720 / 960dp |
-| 播放器强制横屏、平板强制竖屏 | 按 `startFullscreen(窗口宽, 窗口高)` 判断，只有 Expanded 且宽 > 高才直接全屏；非全屏仅 Compact 锁竖屏 |
-| 顶部 / 底部留白 | 清掉 Rail 重复 inset 与内容区顶部留白；Compact 底部栏 82dp + 图标上方 18dp，栏顶正好盖住露出的半截封面 |
-| 主题 | `#E57373` 粉红 → `#FF9000` 橙，secondary / tertiary / 启动器图标同步换色 |
+### 1. 准备服务端
 
-### 详情页 · 图片 · 服务端能力
+先在 Windows 电脑运行 [JavBoss](https://github.com/Solr159/JavBoss)，并允许手机通过局域网访问：
 
-| 改进点 | 说明 |
-| --- | --- |
-| 只有视频截图 | 新增**样品图像**（`POST /jav/items/{id}/sample-images`）与**点封面查看完整封面**（`ContentScale.Fit`，不按 2:3 裁切） |
-| 无大图交互 | 全屏查看器支持双指 1x–5x 缩放、放大后拖动、多图左右切换、**长按弹菜单确认后保存到本地** |
-| 多版本路径显示成同一条 | 按 `/videos/{id}` 的 `locations` 逐条展开，每条带准确 `location_id`；长按可**重命名 / 删除磁盘真实文件**（PATCH / DELETE） |
-| 标签混用一套接口 | 视频标签（`/tags` + `/videos/tags/replace`）与 JAV 自定义标签（`/jav/tags` + `PUT /jav/items/{id}`）**严格分流** |
-| 目录只读 | 设置页「读取路径」按服务端目录管理重做，开关可**启用 / 停用**（`PATCH /directories/{id}`） |
-| 观看时长不同步 | 播放会话 `POST /videos/{id}/playback-sessions` + 每 10s 累计上报（只算真实播放、410 自动重建），手机看的时长实时进服务端统计 |
+- **JavBoss v1.9.0 及之后**：在「全局设置」中开启「允许局域网访问」，然后重启服务端。
+- **更早版本**：启动时使用 `-addr 0.0.0.0:8655` 参数。
 
-### 播放
+首次启动如出现 Windows 防火墙提示，请允许专用网络访问。
 
-| 上游 v0.2.1 | 本分支 |
-| --- | --- |
-| 进入即自动横屏 + 沉浸 | 窄窗口**先竖屏小窗**：宽度恒等于屏宽、16:9 横向铺满，默认居中、把手只允许上下拖动、位置本页记住；点全屏按钮才切横屏 |
-| 竖屏背景整屏全黑 | 换成**与 JAV 列表卡同一张封面**（`jav/{code}/cover`）+ 适度毛玻璃 + 半透明，切视频同步更新；横屏仍是纯黑舞台 |
-| 控制条占满宽度 | 竖屏控制条紧凑化，把宽度让给进度条；引擎标识只在全屏显示 |
+### 2. 连接手机
 
-### 隐私 · 设置 · 稳定性
+1. 确保手机与运行 JavBoss 的电脑连接同一局域网。
+2. 在电脑上运行 `ipconfig`，找到电脑的 IPv4 地址。
+3. 打开客户端，在登录页填写服务端地址，例如 `http://192.168.1.10:8655`。
+4. 输入 JavBoss 网页端密码并登录。
 
-| 改进点 | 说明 |
-| --- | --- |
-| 无封面隐私 | 「封面毛玻璃」开关；「锁屏自动打码」开关（默认开，解锁立即打码、毛玻璃而非马赛克，冷启动不继承） |
-| 设置页 | 「每行卡片数」置顶、「关于」移底、启动显示界面（视频 / JAV）、退出登录改主题色并收紧高度 |
-| 文件名 A→Z 排序闪退 | `refresh()` 与 `loadMore()` 一样先 `distinctBy { it.id }`，避免 `LazyVerticalGrid` 重复 key 崩溃 |
-| 视频 tab 偶发混入 JAV 文件、重启才好 | `/config` 改三态：失败 / 未知**不缓存**、每次刷新重试、保守发 `hide_jav=1` |
-| 已观看浮层关不掉 / 大图长按直接下载 | 浮层补 `onDismissRequest` + 3 秒自动收起且不拦截触摸；长按改弹菜单确认后再保存 |
+> 端口以服务端 `config.toml` 中的 `port` 为准（默认 8655）。请为服务端设置强密码，不要将未受保护的服务直接暴露到公网。
+
+## 构建
+
+```bash
+# Debug
+gradlew.bat assembleDebug
+
+# Release（需要 keystore.properties 和 keystore/release.jks）
+gradlew.bat assembleRelease
+```
+
+Release APK 输出目录：`app/build/outputs/apk/release/`。
+
+当前 Release 仅构建 `arm64-v8a`，启用 R8 混淆与资源压缩。包名为 `com.javboss.modified`，与原版可共存安装；由于包名不同，旧版应用的数据不会自动迁移，首次安装需要重新登录和配置。
+
+## 文档
+
+- [服务器地址与预设规则](docs/server-address-and-presets.md)
+- [JavBoss 服务端项目](https://github.com/Solr159/JavBoss)
+- [上游 Android 客户端](https://github.com/zsdcxd/javboss-phone)
+
+<details>
+<summary><strong>查看完整功能说明</strong>（展开后包含各页面与交互细节）</summary>
 
 ## 功能
 
@@ -581,92 +577,97 @@
     `WindowSizeRulesTest` 删除 3 例「视频恒少一列」旧断言，改 1 例
     「极窄窗口下独立选择各自收敛」。
 
-## 使用
+</details>
 
-### 服务端准备：让 Windows 桌面版允许局域网访问
+<details>
+<summary><strong>查看与上游 v0.2.1 的完整差异</strong>（展开查看逐项对比）</summary>
 
-JavBoss 电脑版默认只允许本机访问，手机需要先开启局域网访问。请按所用
-JavBoss 版本选择下面的方式。
+## 与上游原版的改进点
 
-#### v1.9.0 及之后：在全局设置中开启（推荐）
+对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
+本仓库从 `b812953`（2026-11-05）起增加 **41 个提交**，**60 个文件 / +9,925 / −633 行**
+（新增 27 个文件，其中 13 个是新的 JVM 单测文件，合计 14 suites / 126 例）。
+上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
+局域网接入说明**全部保留**。
 
-1. 在电脑浏览器打开 JavBoss，进入“全局设置”。
-2. 开启“允许局域网访问”。
-3. 按页面提示重启 JavBoss。
-4. 首次启动若弹出 Windows 防火墙提示，勾选“专用网络”并允许访问。
+### 工程与发布
 
-#### v1.9.0 之前：使用启动参数开启
+| 项 | 上游 v0.2.1 | 本分支 |
+| --- | --- | --- |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.56-modified / versionCode 60 |
+| 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
+| 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
+| 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
+| 单测 | 无 | **126 例 / 14 suites**，窗口分级、列数、地址、标签、文件版本等纯规则都有回归测试 |
+| 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
+| 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 
-旧版没有上述设置项时，启动 JavBoss 时加上 `-addr 0.0.0.0:8655`：
+### 登录与网络
 
-1. **打开 cmd**：在 `javboss.exe` 所在文件夹的地址栏输入 `cmd` 回车，
-   会直接以该目录为工作目录打开命令行窗口。
-2. **输入启动命令**：
+| 改进点 | 说明 |
+| --- | --- |
+| 地址格式 | 上游只能省略协议补 `http://`；现同时支持 **IP:端口** 与 **完整 URL**（https、路径前缀） |
+| 地址预设 | ★ 存命名预设、登录成功自动收录、点选即用、可重命名 / 删除、同址去重、最近使用排前、上限 20 |
+| 一键登录 | 记住密码随预设存本地，存过的预设带 🔒，点一下直接登录 |
+| 按网络自动切换 | 「家里 / 外面」两条预设 + 独立短超时客户端探测 `/auth/status`；冷启动 / 回前台 / 网络变化时自动重登，失败**回滚原会话**、播放中不切换、可「立即检测」 |
 
-   ```
-   javboss.exe -addr 0.0.0.0:8655
-   ```
+### 列表 · 网格 · 导航
 
-   也可以把 `javboss.exe` 直接拖进 cmd 窗口以填入完整路径，再在末尾补上参数：
+| 上游 v0.2.1 | 本分支 |
+| --- | --- |
+| 两列**瀑布流**（最后一列偏上、网格对不齐） | `LazyVerticalGrid` + `GridCells.Fixed` **等高行网格**，四个网格统一 |
+| 固定 2 列 | 按当前窗口宽度动态算；**JAV / 视频各自独立**、竖屏 / 横屏分开共 4 个下拉（2/3 与 5/6/7，默认 3/5，无「自动」档） |
+| 「作品」tab、四视角、筛选弹层 | 改称 **JAV**（与 Web 命名一致）；排序 / 筛选合并为顶栏同一按钮，维度与升降序照搬 Web 纵向列表并本地持久化 |
+| 视频卡只有缩略图 + 搜索 / 排序 | 标题单行（去扩展名）、左下时长、右下播放钮、左上标签、第二行文件夹路径可跳转、顶栏与 JAV 对齐 |
+| 收藏夹内页无排序 / 搜索 | 补齐与 JAV 相同的 6 维度排序 + 搜索 + 同款底部菜单 |
+| 无观看 / 评分信息 | 右上角「已观看」徽标（`watched_ms > 0` 才画）+ 时长小浮层；左上角 Web 同款**爱心评分**（5 颗、0.5 档、半心精确对半、可拖动 / 点击、写回服务端） |
+| 点封面弹文件选择 | 点封面**直接进详情**，只有封面右下角播放钮在多版本时才选文件 |
+| 封面裁切居中 | 按 `cover_crop_position` / `cover_crop_left` 还原 Web 端裁切锚点 |
 
-   ```
-   C:\Apps\JavBoss\javboss.exe -addr 0.0.0.0:8655
-   ```
+### 平板与窗口自适应
 
-3. **放行防火墙**：首次启动若弹出 Windows 防火墙提示，勾选“专用网络”并允许访问；
-   若没有弹窗，手动添加：设置 → Windows Defender 防火墙 → 高级设置 →
-   入站规则 → 新建规则 → 端口 → TCP 8655 → 允许连接。
+| 改进点 | 说明 |
+| --- | --- |
+| 只有底部导航、只考虑手机 | 只按**当前应用窗口实际可用 dp 宽度**分级（Compact / Medium / Expanded），不看设备型号 / 是否平板 / `smallestScreenWidthDp`；Compact 底部栏、宽窗口左侧 `NavigationRail`，旋转 / 分屏 / 自由窗口实时切换且保留 tab 与状态 |
+| 横屏顶栏挤在一行 | Rail 模式下 JAV / 视频的视角 / 排序 / 搜索**并入原左侧栏**（不新增第二条工具条、不加宽 64dp rail）；「紧凑模式」只留图标并压到 32dp 一屏放下 |
+| 详情页单栏 | Expanded 真双栏：左封面 + 信息 + 文件版本、右标签 / 样品图 / 截图，各自独立滚动 |
+| 弹窗 / 大图 / 设置 / 登录拉伸整屏 | Medium / Expanded 统一限宽；登录 480dp、设置 720 / 960dp |
+| 播放器强制横屏、平板强制竖屏 | 按 `startFullscreen(窗口宽, 窗口高)` 判断，只有 Expanded 且宽 > 高才直接全屏；非全屏仅 Compact 锁竖屏 |
+| 顶部 / 底部留白 | 清掉 Rail 重复 inset 与内容区顶部留白；Compact 底部栏 82dp + 图标上方 18dp，栏顶正好盖住露出的半截封面 |
+| 主题 | `#E57373` 粉红 → `#FF9000` 橙，secondary / tertiary / 启动器图标同步换色 |
 
-#### 连接手机
+### 详情页 · 图片 · 服务端能力
 
-1. 在 cmd 中运行 `ipconfig`，找到电脑的“IPv4 地址”（如 `192.168.1.10`）。
-2. 让手机与电脑连接同一局域网；在登录页填入
-   `http://192.168.1.10:8655` 和网页版登录密码。
+| 改进点 | 说明 |
+| --- | --- |
+| 只有视频截图 | 新增**样品图像**（`POST /jav/items/{id}/sample-images`）与**点封面查看完整封面**（`ContentScale.Fit`，不按 2:3 裁切） |
+| 无大图交互 | 全屏查看器支持双指 1x–5x 缩放、放大后拖动、多图左右切换、**长按弹菜单确认后保存到本地** |
+| 多版本路径显示成同一条 | 按 `/videos/{id}` 的 `locations` 逐条展开，每条带准确 `location_id`；长按可**重命名 / 删除磁盘真实文件**（PATCH / DELETE） |
+| 标签混用一套接口 | 视频标签（`/tags` + `/videos/tags/replace`）与 JAV 自定义标签（`/jav/tags` + `PUT /jav/items/{id}`）**严格分流** |
+| 目录只读 | 设置页「读取路径」按服务端目录管理重做，开关可**启用 / 停用**（`PATCH /directories/{id}`） |
+| 观看时长不同步 | 播放会话 `POST /videos/{id}/playback-sessions` + 每 10s 累计上报（只算真实播放、410 自动重建），手机看的时长实时进服务端统计 |
 
-注意事项：
+### 播放
 
-- 使用旧版启动参数时，cmd 窗口需保持打开；关闭窗口即停止服务。如需常驻，
-  可建一个快捷方式，把参数写进快捷方式的“目标”栏，再配任务计划程序开机启动
-- 端口以 JavBoss 的 `config.toml` 里的 `port` 为准（默认 8655）；旧版的
-  `-addr` 参数只决定监听地址，改过端口时手机登录地址也要对应修改
-- 播放走的是服务端 HTTP 流（direct / HLS），与电脑上的 mpv 无关，
-  不影响网页版继续用 mpv 播放
-- 服务暴露到局域网后，知道密码的人才能访问，请设置强密码
-- 会话 Cookie 只会发送给当前登录的同源服务器；切换服务器或退出登录会清除旧会话
+| 上游 v0.2.1 | 本分支 |
+| --- | --- |
+| 进入即自动横屏 + 沉浸 | 窄窗口**先竖屏小窗**：宽度恒等于屏宽、16:9 横向铺满，默认居中、把手只允许上下拖动、位置本页记住；点全屏按钮才切横屏 |
+| 竖屏背景整屏全黑 | 换成**与 JAV 列表卡同一张封面**（`jav/{code}/cover`）+ 适度毛玻璃 + 半透明，切视频同步更新；横屏仍是纯黑舞台 |
+| 控制条占满宽度 | 竖屏控制条紧凑化，把宽度让给进度条；引擎标识只在全屏显示 |
 
-## 构建
+### 隐私 · 设置 · 稳定性
 
-```bash
-# debug
-gradlew.bat assembleDebug
+| 改进点 | 说明 |
+| --- | --- |
+| 无封面隐私 | 「封面毛玻璃」开关；「锁屏自动打码」开关（默认开，解锁立即打码、毛玻璃而非马赛克，冷启动不继承） |
+| 设置页 | 「每行卡片数」置顶、「关于」移底、启动显示界面（视频 / JAV）、退出登录改主题色并收紧高度 |
+| 文件名 A→Z 排序闪退 | `refresh()` 与 `loadMore()` 一样先 `distinctBy { it.id }`，避免 `LazyVerticalGrid` 重复 key 崩溃 |
+| 视频 tab 偶发混入 JAV 文件、重启才好 | `/config` 改三态：失败 / 未知**不缓存**、每次刷新重试、保守发 `hide_jav=1` |
+| 已观看浮层关不掉 / 大图长按直接下载 | 浮层补 `onDismissRequest` + 3 秒自动收起且不拦截触摸；长按改弹菜单确认后再保存 |
 
-# release（需要 keystore.properties + keystore/release.jks）
-gradlew.bat assembleRelease
-```
+</details>
 
-产物在 `app/build/outputs/apk/release/`。release **只打单一架构 `arm64-v8a`**
-（`splits.abi.include("arm64-v8a")`、`isUniversalApk = false`），因此只有一个
-`app-arm64-v8a-release.apk`（约 65MB，libvlc 原生库占大头），不再输出
-armeabi-v7a / x86_64 / universal。这与 VLC 的构建产物一致（VLC 的 signedRelease 也只含 arm64-v8a）；
-换机型时把 build.gradle.kts 里的 include 改成对应 ABI 重新构建即可。
-
-当前构建标识：`applicationId = com.javboss.modified`、
-`versionCode = 60`、`versionName = 0.3.56-modified`，桌面显示名「JavBoss Modified」。
-打包时间由 `buildConfigField BUILD_TIME` 写入 `BuildConfig`，设置页直接展示。
-
-release 已开启 **R8 混淆裁剪 + 资源压缩**（`isMinifyEnabled = true` / `isShrinkResources = true`），
-APK 从 64.6MB 降到 52.8MB：dex 由 13.7MB 压到 2.2MB（`material-icons-extended` 里 1 万多个未引用图标被剥掉），
-剩下 50MB 是 libvlc 原生库。keep 规则在 `app/proguard-rules.pro`，**注意 Retrofit 的接口与注解必须显式保留**
-（仅靠 AAR 自带 consumer rules 会被裁掉 `@GET` 与路径字符串，应用会在请求时直接崩）。改规则后务必重跑登录/列表/详情/播放四条路径。
-
-- 换 `applicationId` 是为了**与原版 `com.javboss.phone` 共存**：Android 判断「是否覆盖」
-  只看包名 + 签名，同包名装更高 versionCode 只会覆盖升级；只有包名不同才会并存成两个应用。
-- **v0.3.47 起**包名由 `com.javboss.phone.preset` 改为 `com.javboss.modified`
-  （去掉已名不副实的 phone / preset，与桌面名一致），源码 `namespace` 仍保持
-  `com.javboss.phone` 不变（两者互相独立，proguard keep 规则无需改动）。
-- 因此本包与原版、以及与 v0.3.46 及更早的 `preset` 包的数据
-  （会话 Cookie、预设地址、设置项）完全隔离，也不会把任何一个顶掉；
-  **代价是不能覆盖升级、数据不迁移**：换包名后需重新登录、重新配置一次。
+---
 
 ## License
 
