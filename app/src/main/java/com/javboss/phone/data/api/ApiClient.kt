@@ -51,6 +51,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** 与服务端 Gin 路由一一对应（见 JavBoss/internal/server/api.go） */
@@ -256,8 +257,16 @@ interface JavBossApi {
     suspend fun scanDirectory(@Path("id") id: Long)
 }
 
-/** 登录态失效（服务端返回 401）时抛出，UI 层捕获后跳回登录页 */
-class AuthExpiredException : Exception("登录状态已失效")
+/**
+ * 登录态失效（服务端返回 401）时抛出，UI 层捕获后跳回登录页。
+ *
+ * 必须继承 [IOException]：401 是在 OkHttp application interceptor 里抛出的，
+ * OkHttp 4.12.0 的 RealCall.AsyncCall 只把 IOException 交给 onFailure；抛其它 Throwable
+ * 会先被包装成 IOException 回调、再把原异常原样重新抛到 Dispatcher 线程（无人捕获，
+ * 触发全局 UncaughtExceptionHandler 闪退），而 Retrofit 协程里只能拿到包装后的
+ * IOException，UI 层的 catch(AuthExpiredException) 也永远不会命中。
+ */
+class AuthExpiredException : IOException("登录状态已失效")
 
 class ApiException(val statusCode: Int, message: String) : Exception(message)
 

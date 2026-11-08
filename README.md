@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.57--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.58--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.57-modified**（versionCode 61） |
+| 当前版本 | **v0.3.58-modified**（versionCode 62） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -600,6 +600,28 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     退出全屏回 PORTRAIT / 宽窗口一律 UNSPECIFIED / **复现抖环场景：冻结值仍锁横屏，
     而用旋转后宽度重算会得到 UNSPECIFIED** / 分级阈值）；全量单测 132 例 / 15 suites。
 
+- **修复 401 登录态失效时闪退（v0.3.58）**：
+  - 实机崩溃报告：`s3.b: 登录状态已失效` 在 **OkHttp Dispatcher 线程**未被捕获，
+    冒泡到全局 `UncaughtExceptionHandler`（`CrashReporter`）导致闪退；
+    用 `mapping.txt` 反混淆后确认抛出点是 `ApiClient.kt:286` 的 401 application interceptor
+    （R8 把它内联进了 `CallServerInterceptor`，所以堆栈首帧看着像库代码）。
+  - 根因：`AuthExpiredException` 继承的是 `Exception` 而非 `IOException`。
+    OkHttp 4.12.0 的 `RealCall.AsyncCall.run()` 只把 `IOException` 交给 `onFailure`；
+    遇到其它 `Throwable` 会先 `cancel()`、包装成 `IOException("canceled due to ...")` 回调，
+    然后 **`throw t` 把原异常原样重新抛到 Dispatcher 线程**，无人捕获即闪退。
+  - 连带失效：Retrofit 协程拿到的是包装后的 `IOException`（原异常降级为 `suppressed`），
+    全项目 30+ 处 `catch (e: AuthExpiredException)` 一次都不会命中，`sessionExpired`
+    不置位，原本设计好的「401 自动跳登录页」也一起失效；
+    `AuthRepository.isAuthenticated()` 的 `runCatching` 同样拦不住（异常根本没进协程）。
+  - 修正：`AuthExpiredException` 改为 `IOException` 子类（零新增依赖）。401 现在走
+    `onFailure` → Retrofit 在协程里恢复**原始**异常 → 现有所有 `catch` 生效 →
+    `sessionExpired = true` → 各页面 `LaunchedEffect` 跳回登录页，既不闪退也不留死状态。
+    ViewModel / LoginViewModel / AuthRepository 全部不用改。
+  - 单测：新增 `AuthExpiredExceptionTest` 2 例（断言是 `IOException`、文案保持可读）；
+    全量单测 134 例 / 16 suites。
+  - 注：该缺陷由上游首个版本 `6998baf`（2026-07-23）引入，
+    并非 v0.3.57 的播放器修复引入。
+
 </details>
 
 <details>
@@ -608,8 +630,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **41 个提交**，**60 个文件 / +9,925 / −633 行**
-（新增 28 个文件，其中 14 个是新的 JVM 单测文件，合计 15 suites / 132 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **42 个提交**，**62 个文件 / +10,301 / −682 行**
+（新增 29 个文件，其中 15 个是新的 JVM 单测文件，合计 16 suites / 134 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -617,11 +639,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.57-modified / versionCode 61 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.58-modified / versionCode 62 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **132 例 / 15 suites**，窗口分级、列数、方向、地址、标签、文件版本等纯规则都有回归测试 |
+| 单测 | 无 | **134 例 / 16 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 
@@ -686,6 +708,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 | 无封面隐私 | 「封面毛玻璃」开关；「锁屏自动打码」开关（默认开，解锁立即打码、毛玻璃而非马赛克，冷启动不继承） |
 | 设置页 | 「每行卡片数」置顶、「关于」移底、启动显示界面（视频 / JAV）、退出登录改主题色并收紧高度 |
 | 文件名 A→Z 排序闪退 | `refresh()` 与 `loadMore()` 一样先 `distinctBy { it.id }`，避免 `LazyVerticalGrid` 重复 key 崩溃 |
+| 401 登录态失效时闪退 | `AuthExpiredException` 改为 `IOException` 子类：OkHttp `AsyncCall` 只把 `IOException` 交给 `onFailure`，原先抛 `Exception` 会被原样重新抛到 Dispatcher 线程触发全局崩溃、且 UI 层 `catch` 永远拿不到；现在 401 正常走 `onFailure` → 协程恢复原异常 → `sessionExpired` 置位后自动跳回登录页 |
 | 视频 tab 偶发混入 JAV 文件、重启才好 | `/config` 改三态：失败 / 未知**不缓存**、每次刷新重试、保守发 `hide_jav=1` |
 | 已观看浮层关不掉 / 大图长按直接下载 | 浮层补 `onDismissRequest` + 3 秒自动收起且不拦截触摸；长按改弹菜单确认后再保存 |
 
