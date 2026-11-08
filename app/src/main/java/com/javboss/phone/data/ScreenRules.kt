@@ -68,6 +68,21 @@ enum class NavigationForm {
 }
 
 /**
+ * 播放页的方向锁定决策（不依赖 Android 的 ActivityInfo，便于 JVM 单测）。
+ * Compose 侧再把它映射到 `ActivityInfo.SCREEN_ORIENTATION_*` 常量。
+ */
+enum class PlayerOrientation {
+    /** 竖屏小窗：强制 PORTRAIT */
+    PORTRAIT,
+
+    /** 点全屏后：强制感应横屏（允许 180° 翻转，但不会自己回到竖屏） */
+    SENSOR_LANDSCAPE,
+
+    /** 宽窗口 / 平板：不强制方向，交给系统（分屏、自由窗口不被拧成竖屏） */
+    UNSPECIFIED,
+}
+
+/**
  * 统一的窗口自适应规则。
  *
  * 所有函数都只接收「当前应用窗口实际可用宽度（dp）」，返回 dp 数值（Int）或枚举，
@@ -344,4 +359,22 @@ object WindowSizeRules {
      */
     fun startFullscreen(widthDp: Int, heightDp: Int): Boolean =
         widthDp >= EXPANDED_MIN_DP && widthDp > heightDp
+
+    /**
+     * v0.3.57：播放页方向锁定。
+     *
+     * **第二个入参是「进入播放页那一刻」冻结的 Compact 判定，不是旋转后的当前宽度。**
+     * 旧实现把 `windowWidthDp` 放进方向 `LaunchedEffect` 的 key：竖屏手机点全屏 →
+     * `SENSOR_LANDSCAPE` → 转横屏后窗口宽度变大，`isCompact()` 变 false →
+     * 方向被改成 `UNSPECIFIED` → 系统按姿态拧回竖屏 → 宽度变小又设回横屏，形成抖环。
+     * 方向只看冻结值，旋转 / 分屏 / 自由窗口改变窗口宽度都不会重新判定方向。
+     *
+     * - Compact（手机竖屏）：竖屏小窗锁 PORTRAIT，点全屏锁 SENSOR_LANDSCAPE；
+     * - 宽窗口（平板横屏、宽自由窗口）：一律 UNSPECIFIED，不强制方向。
+     */
+    fun playerOrientation(fullscreen: Boolean, compactAtEntry: Boolean): PlayerOrientation = when {
+        fullscreen && compactAtEntry -> PlayerOrientation.SENSOR_LANDSCAPE
+        !fullscreen && compactAtEntry -> PlayerOrientation.PORTRAIT
+        else -> PlayerOrientation.UNSPECIFIED
+    }
 }

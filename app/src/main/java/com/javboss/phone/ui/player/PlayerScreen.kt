@@ -89,8 +89,11 @@ import coil3.compose.AsyncImage
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
+import com.javboss.phone.data.PlayerOrientation
 import com.javboss.phone.data.SeekSensitivity
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.ui.components.adaptivePlayerStageWidth
@@ -131,6 +134,10 @@ fun PlayerScreen(
     val startFullscreen = remember {
         WindowSizeRules.startFullscreen(windowWidthDp, windowHeightDp)
     }
+    // v0.3.57：方向判定只在进播放页时冻结一次，绝不随旋转后的窗口宽度重算。
+    // 旧实现把 windowWidthDp 放进方向 effect 的 key：竖屏手机点全屏转横屏后宽度变大，
+    // isCompact() 变 false → 方向被改成 UNSPECIFIED → 系统拧回竖屏 → 又设回横屏，抖环。
+    val compactAtEntry = remember { WindowSizeRules.isCompact(windowWidthDp) }
     var fullscreen by remember { mutableStateOf(startFullscreen) }
     val previousOrientation = remember(activity) { activity?.requestedOrientation }
 
@@ -154,15 +161,25 @@ fun PlayerScreen(
     // 宽横向窗口首次 fullscreen 即为 true → 直接沉浸全屏；
     // 手机 / 平板竖屏首次为 false → 竖屏小窗 + 显示系统栏。
     // Compact 才锁方向；平板 / 宽窗口一律不强制 PORTRAIT，避免分屏、自由窗口被拧成竖屏。
-    LaunchedEffect(fullscreen, windowWidthDp) {
+    //
+    // v0.3.57 把「方向」与「系统栏」拆成两个 effect：
+    // - 方向只看进页时冻结的 compactAtEntry，key 里刻意不含 windowWidthDp / windowHeightDp；
+    //   旋转 / 分屏 / 自由窗口改变窗口宽度时绝不重新判定方向，抖环就此消失。
+    // - 系统栏跟随 fullscreen，并在窗口尺寸变化后重新应用（部分 ROM 在配置变更后
+    //   会把已隐藏的系统栏重新显示出来），但它不影响方向。
+    LaunchedEffect(fullscreen, compactAtEntry) {
+        activity?.requestedOrientation = when (
+            WindowSizeRules.playerOrientation(fullscreen, compactAtEntry)
+        ) {
+            PlayerOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            PlayerOrientation.SENSOR_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            PlayerOrientation.UNSPECIFIED -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    LaunchedEffect(fullscreen, windowWidthDp, windowHeightDp) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        val compact = WindowSizeRules.isCompact(windowWidthDp)
-        activity?.requestedOrientation = when {
-            fullscreen && compact -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            !fullscreen && compact -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
         if (fullscreen) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             controller.hide(WindowInsetsCompat.Type.systemBars())
@@ -412,6 +429,16 @@ private fun UnifiedPlayerStage(
             }
         }
         onDispose { engine.release() }
+    }
+
+    // v0.3.57 禁止后台播放：Activity 真正不可见（按 Home / 切到别的 App / 锁屏）时
+    // 立刻暂停引擎，并把「真实在播」置 false，让观看时长上报协程立即补报最后一次。
+    // 只监听 ON_STOP、不监听 ON_PAUSE：下拉通知栏 / 系统弹窗等轻微失焦不该打断播放。
+    // 切回前台不自动续播，用户点播放按钮再继续。
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        currentEngine.setPlaying(false)
+        onPlaybackState(false)
+        isPlaying = false
     }
 
     BackHandler {

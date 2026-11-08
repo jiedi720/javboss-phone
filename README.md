@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.56--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.57--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.56-modified**（versionCode 60） |
+| 当前版本 | **v0.3.57-modified**（versionCode 61） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -577,6 +577,29 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     `WindowSizeRulesTest` 删除 3 例「视频恒少一列」旧断言，改 1 例
     「极窄窗口下独立选择各自收敛」。
 
+- **禁止后台播放 + 修复竖屏切横屏反复回竖屏（v0.3.57）**：
+  - 用户反馈两处：① 切到别的 App / 按 Home 后仍有声音（后台播放）；
+    ② 竖屏小窗点全屏切横屏后，方向反复被拧回竖屏。
+  - 后台播放根因：`UnifiedPlayerStage` 只在 `DisposableEffect(activeEngine)` 的
+    `onDispose` 里释放引擎，完全没监听 Activity 生命周期；`MainActivity.onStop()`
+    只做锁屏打码判定。现新增 `LifecycleEventEffect(Lifecycle.Event.ON_STOP)`：
+    Activity 真正不可见时立刻 `setPlaying(false)`，并同步 `onPlaybackState(false)`
+    让观看时长上报协程立即补报最后一次；切回前台**不自动续播**，用户点播放按钮再继续。
+    只监听 `ON_STOP`（真正不可见），不监听 `ON_PAUSE`，避免下拉通知栏 / 系统弹窗
+    这类轻微失焦误打断播放。用项目已有的 `lifecycle-runtime-compose 2.8.7`，零新增依赖。
+  - 方向抖环根因：原 `LaunchedEffect(fullscreen, windowWidthDp)` 把**旋转后的当前窗口宽度**
+    放进 key。竖屏手机点全屏 → `SENSOR_LANDSCAPE` → 转横屏后宽度变大、
+    `isCompact()` 变 false → 方向被改成 `UNSPECIFIED` → 系统按姿态拧回竖屏 →
+    宽度变小又设回横屏，循环往复。
+  - 修正：进播放页时用 `remember` **冻结一次** Compact 判定（`compactAtEntry`），
+    方向 effect 的 key 改为 `(fullscreen, compactAtEntry)`，刻意不含窗口宽高；
+    系统栏 hide/show 拆成独立的 `LaunchedEffect(fullscreen, windowWidthDp, windowHeightDp)`，
+    旋转后重新应用沉浸状态但不碰方向。方向决策抽成 `WindowSizeRules.playerOrientation()`
+    纯函数 + `PlayerOrientation` 枚举（不依赖 `ActivityInfo`，可在 JVM 单测里锁死）。
+  - 单测：新增 `PlayerOrientationTest` 6 例（竖屏锁 PORTRAIT / 全屏锁 SENSOR_LANDSCAPE /
+    退出全屏回 PORTRAIT / 宽窗口一律 UNSPECIFIED / **复现抖环场景：冻结值仍锁横屏，
+    而用旋转后宽度重算会得到 UNSPECIFIED** / 分级阈值）；全量单测 132 例 / 15 suites。
+
 </details>
 
 <details>
@@ -586,7 +609,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
 本仓库从 `b812953`（2026-11-05）起增加 **41 个提交**，**60 个文件 / +9,925 / −633 行**
-（新增 27 个文件，其中 13 个是新的 JVM 单测文件，合计 14 suites / 126 例）。
+（新增 28 个文件，其中 14 个是新的 JVM 单测文件，合计 15 suites / 132 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -594,11 +617,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.56-modified / versionCode 60 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.57-modified / versionCode 61 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **126 例 / 14 suites**，窗口分级、列数、地址、标签、文件版本等纯规则都有回归测试 |
+| 单测 | 无 | **132 例 / 15 suites**，窗口分级、列数、方向、地址、标签、文件版本等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 
@@ -654,6 +677,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 | 进入即自动横屏 + 沉浸 | 窄窗口**先竖屏小窗**：宽度恒等于屏宽、16:9 横向铺满，默认居中、把手只允许上下拖动、位置本页记住；点全屏按钮才切横屏 |
 | 竖屏背景整屏全黑 | 换成**与 JAV 列表卡同一张封面**（`jav/{code}/cover`）+ 适度毛玻璃 + 半透明，切视频同步更新；横屏仍是纯黑舞台 |
 | 控制条占满宽度 | 竖屏控制条紧凑化，把宽度让给进度条；引擎标识只在全屏显示 |
+| 切出 App 仍出声、竖屏切横屏方向抖动 | `ON_STOP` 立即暂停引擎（**禁止后台播放**，回前台不自动续播）；方向判定冻结进页时的窗口分级，不随旋转重判，抖环消失 |
 
 ### 隐私 · 设置 · 稳定性
 
