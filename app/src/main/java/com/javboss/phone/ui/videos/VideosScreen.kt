@@ -42,10 +42,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.TagManageRules
+import com.javboss.phone.data.TagScope
+import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.PageToolsState
 import com.javboss.phone.ui.components.CompactIconButton
 import com.javboss.phone.ui.components.GridFooter
+import com.javboss.phone.ui.components.TagManageDialog
+import com.javboss.phone.ui.components.TagToolChip
 import com.javboss.phone.ui.components.VideoCard
 import com.javboss.phone.ui.components.adaptiveSearchWidth
 import com.javboss.phone.ui.components.adaptiveSheetWidth
@@ -59,6 +64,8 @@ import com.javboss.phone.ui.components.rememberVideoGridColumns
 fun VideosScreen(
     onVideoClick: (videoId: Long, code: String?) -> Unit,
     onPlay: (videoId: Long, code: String?) -> Unit,
+    /** v0.3.62：封面左下角标签点击，按标签筛选作品（详情页点击标签同款语义） */
+    onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onSessionExpired: () -> Unit,
     /** v0.3.50：横屏（Rail）时顶栏功能并入原左侧栏，开关由 MainScreen 统一下发 */
     tools: PageToolsState,
@@ -72,6 +79,11 @@ fun VideosScreen(
     // 切换导航形式 / 旋转时搜索框与排序菜单不会重置。
     val searchOpen = tools.videosSearchOpen
     val showSort = tools.videosSortOpen
+
+    // v0.3.62：封面左下角标签点击 → 打开「标签：XXX」作品列表，按 tag.id 筛选
+    val onTagFilter: (TagDto) -> Unit = { tag ->
+        onOpenJavList(TagManageRules.filterTitle(tag.name), "", tag.id.toString(), 0, 0)
+    }
 
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) onSessionExpired()
@@ -101,6 +113,8 @@ fun VideosScreen(
             ) {
                 Text("视频", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.weight(1f))
+                // v0.3.62：视频标签管理（GET/POST /tags + PATCH/DELETE /tags/{id}）
+                TagToolChip(onClick = { tools.videosTagsOpen = true })
                 CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
                     tools.videosSortOpen = true
                 }
@@ -153,6 +167,26 @@ fun VideosScreen(
             }
         }
 
+        // 标签筛选提示：标签管理弹层里点标签后按 /videos?tags=name 筛，可一键清除
+        if (state.tagFilter.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "标签：${state.tagFilter}",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = viewModel::clearTagFilter) { Text("清除") }
+            }
+        }
+
         PullToRefreshBox(
             isRefreshing = state.loading && state.videos.isNotEmpty(),
             onRefresh = viewModel::refresh,
@@ -186,13 +220,13 @@ fun VideosScreen(
                             title = video.displayTitle,
                             durationSec = video.durationSec,
                             watchedMs = video.watchedMs,
-                            // 服务端视频自身 tags + 关联作品 jav.tags，合并去重后给卡片左上角显示
-                            tags = (video.tags + video.jav?.tags.orEmpty())
-                                .distinctBy { tag ->
-                                    if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}"
-                                }
-                                .map { it.name }
-                                .filter { it.isNotBlank() },
+                            // v0.3.62：视频自身 tags + 关联作品 jav.tags 合并去重，
+                            // JAV 标签在前，同名时保留 JAV tag.id（筛选作品用），
+                            // 左下角一行一个堆叠显示、点标签按该标签筛选作品。
+                            tags = (video.jav?.tags.orEmpty() + video.tags)
+                                .filter { it.name.isNotBlank() }
+                                .distinctBy { it.name.trim() },
+                            onTagClick = onTagFilter,
                             onPlay = { onPlay(video.id, video.jav?.code) },
                             onClick = { onVideoClick(video.id, video.jav?.code) },
                             // 第二行文件夹路径：点它按 directory_id + subdirectory 筛该目录全部视频
@@ -266,5 +300,17 @@ fun VideosScreen(
                 }
             }
         }
+    }
+
+    // v0.3.62：视频标签管理（GET/POST /tags + PATCH/DELETE /tags/{id}）
+    if (tools.videosTagsOpen) {
+        TagManageDialog(
+            scope = TagScope.VIDEO,
+            onDismiss = { tools.videosTagsOpen = false },
+            onApplyFilter = { tag ->
+                viewModel.filterByTag(tag.name)
+                tools.videosTagsOpen = false
+            },
+        )
     }
 }

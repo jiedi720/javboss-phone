@@ -84,6 +84,8 @@ class VideoRepository(private val apiClient: ApiClient) {
         hideJav: Boolean = false,
         directoryId: Long? = null,
         subdirectory: String? = null,
+        /** 按标签名筛选；null = 不筛。Web 端 /videos?tags= 同款参数 */
+        tags: String? = null,
     ): VideoListResponse = apiClient.api().listVideos(
         limit = limit,
         offset = offset,
@@ -92,6 +94,7 @@ class VideoRepository(private val apiClient: ApiClient) {
         hideJav = if (hideJav) 1 else 0,
         directoryId = directoryId,
         subdirectory = subdirectory,
+        tags = tags,
     )
 
     suspend fun getVideo(id: Long): VideoDto =
@@ -225,6 +228,13 @@ class VideoRepository(private val apiClient: ApiClient) {
     suspend fun createJavTag(name: String): TagDto =
         apiClient.api().createJavTag(TagNameRequest(name))
 
+    /** 重命名 / 删除 JAV 标签（/jav/tags/{id}） */
+    suspend fun renameJavTag(id: Long, name: String) =
+        apiClient.api().renameJavTag(id, TagNameRequest(name))
+
+    suspend fun deleteJavTag(id: Long) =
+        apiClient.api().deleteJavTag(id)
+
     /** 全量替换一批作品的标签（勾选保存语义） */
     suspend fun replaceJavTags(javIds: List<Long>, tagIds: List<Long>) =
         apiClient.api().replaceJavTags(JavTagsReplaceRequest(javIds, tagIds))
@@ -241,6 +251,13 @@ class VideoRepository(private val apiClient: ApiClient) {
     /** 新建视频标签（POST /tags，不是 /jav/tags） */
     suspend fun createVideoTag(name: String): TagDto =
         apiClient.api().createVideoTag(TagNameRequest(name))
+
+    /** 重命名 / 删除视频标签（/tags/{id}） */
+    suspend fun renameVideoTag(id: Long, name: String) =
+        apiClient.api().renameVideoTag(id, TagNameRequest(name))
+
+    suspend fun deleteVideoTag(id: Long) =
+        apiClient.api().deleteVideoTag(id)
 
     /** 全量替换单个视频的标签；tagIds 为空即清空该视频的全部标签 */
     suspend fun replaceVideoTags(videoId: Long, tagIds: List<Long>) =

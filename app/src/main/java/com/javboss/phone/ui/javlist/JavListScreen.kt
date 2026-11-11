@@ -29,7 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.TagColorRules
+import com.javboss.phone.data.TagManageRules
 import com.javboss.phone.data.api.dto.JavDto
+import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoPickDialog
@@ -51,6 +53,8 @@ fun JavListScreen(
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
     /** code 原样带到播放页，保证竖屏背景用的就是这张 JAV 封面 */
     onPlay: (videoId: Long, code: String?) -> Unit,
+    /** v0.3.62：封面左下角标签点击，按该标签筛选作品 */
+    onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: JavListViewModel = viewModel(),
@@ -131,7 +135,16 @@ fun JavListScreen(
                             favoriteTarget = FavoriteTarget.jav(jav.id),
                             watchedMs = jav.watchedMs,
                             onPlay = playAction,
-                            customTags = TagColorRules.customTagNames(jav.tags),
+                            customTags = TagColorRules.customTags(jav.tags),
+                            onCustomTagClick = { tag: TagDto ->
+                                onOpenJavList(
+                                    TagManageRules.filterTitle(tag.name),
+                                    "",
+                                    tag.id.toString(),
+                                    0,
+                                    0,
+                                )
+                            },
                         )
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {

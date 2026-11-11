@@ -216,6 +216,9 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 seriesId = args.getLong("seriesId"),
                 onOpenDetail = { videoId, code -> navController.navigate(Routes.detail(videoId, code)) },
                 onPlay = { videoId, code -> navController.navigate(Routes.player(videoId, code)) },
+                onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->
+                    navController.navigate(Routes.javList(title, idolIds, tagIds, studioId, seriesId))
+                },
                 onBack = { navController.popBackStack() },
                 onSessionExpired = goLogin,
             )
@@ -239,6 +242,9 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 kind = entry.arguments?.getString("kind").orEmpty().ifBlank { "jav" },
                 onOpenIdol = { idolId, name ->
                     navController.navigate(Routes.javList("演员：$name", idolIds = idolId.toString()))
+                },
+                onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->
+                    navController.navigate(Routes.javList(title, idolIds, tagIds, studioId, seriesId))
                 },
             )
         }

@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.TagManageRules
 import com.javboss.phone.data.VideoTagEvents
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.VideoDto
@@ -38,6 +39,8 @@ data class VideosUiState(
     /** 目录筛选：点卡片第二行文件夹路径时设置，null = 不过滤 */
     val directoryId: Long? = null,
     val subdirectory: String = "",
+    /** v0.3.62：标签筛选（/videos?tags=<name>），空串 = 不过滤 */
+    val tagFilter: String = "",
     val error: String? = null,
     val sessionExpired: Boolean = false,
 )
@@ -84,6 +87,7 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
             hideJav = hideJav ?: true,
             directoryId = uiState.directoryId,
             subdirectory = uiState.subdirectory.ifBlank { null },
+            tags = uiState.tagFilter.ifBlank { null },
         )
     }
 
@@ -159,6 +163,7 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
             directoryId = directoryId,
             subdirectory = subdirectory,
             search = "",
+            tagFilter = "",
         )
         refresh()
     }
@@ -167,6 +172,29 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
     fun clearDirectoryFilter() {
         if (uiState.directoryId == null) return
         uiState = uiState.copy(directoryId = null, subdirectory = "")
+        refresh()
+    }
+
+    /**
+     * v0.3.62：标签管理弹层里点标签，用服务端 `/videos?tags=<name>` 按标签名筛视频。
+     * 与目录筛选互斥，避免两个筛选条件叠加时用户看不懂当前列表范围。
+     */
+    fun filterByTag(name: String) {
+        val query = TagManageRules.videoTagQuery(listOf(name))
+        if (query.isEmpty()) return
+        uiState = uiState.copy(
+            tagFilter = query,
+            directoryId = null,
+            subdirectory = "",
+            search = "",
+        )
+        refresh()
+    }
+
+    /** 清除标签筛选，回到全部视频 */
+    fun clearTagFilter() {
+        if (uiState.tagFilter.isEmpty()) return
+        uiState = uiState.copy(tagFilter = "")
         refresh()
     }
 

@@ -13,6 +13,7 @@ import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.data.api.dto.IdolDto
+import com.javboss.phone.data.api.dto.TagDto
 import kotlinx.coroutines.launch
 
 data class FavoritesUiState(
@@ -119,8 +120,8 @@ data class FavRating(
     val durationMin: Int = 0,
     /** 发行时间（unix 秒），对应 JavDto.release_unix */
     val releaseUnix: Long = 0,
-    /** 该作品的自定义标签名（provider=3），给封面左下角番号上方堆叠显示用 */
-    val customTags: List<String> = emptyList(),
+    /** 该作品的自定义标签（provider=3），保留 TagDto 以便点击角标按 tag.id 筛选作品 */
+    val customTags: List<TagDto> = emptyList(),
 )
 
 /**
@@ -279,7 +280,7 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                                     watchedMs = it.watchedMs,
                                     durationMin = it.durationMin,
                                     releaseUnix = it.releaseUnix,
-                                    customTags = TagColorRules.customTagNames(it.tags),
+                                    customTags = TagColorRules.customTags(it.tags),
                                 )
                             }
                     }.getOrDefault(emptyMap())
@@ -304,7 +305,7 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
     fun watchedMsOf(code: String): Long = uiState.ratings[code.uppercase()]?.watchedMs ?: 0L
 
     /** 封面左下角番号正上方要堆叠显示的自定义标签（作品收藏夹条目） */
-    fun customTagsOf(code: String): List<String> =
+    fun customTagsOf(code: String): List<TagDto> =
         uiState.ratings[code.uppercase()]?.customTags.orEmpty()
 
     /** 改喜爱度：写回服务端后同步本地映射（收藏夹卡片左上角那颗星） */

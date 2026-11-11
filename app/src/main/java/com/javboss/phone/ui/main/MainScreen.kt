@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -208,6 +209,14 @@ fun MainScreen(
                         ) {
                             when (tab) {
                                 0 -> {
+                                    // v0.3.62：视频标签管理（/tags）
+                                    RailToolButton(
+                                        icon = Icons.Filled.Sell,
+                                        label = "标签",
+                                        showLabel = railShowsLabel,
+                                        compact = railCompact,
+                                        onClick = { tools.videosTagsOpen = true },
+                                    )
                                     RailToolButton(
                                         icon = Icons.AutoMirrored.Filled.Sort,
                                         label = "排序",
@@ -249,6 +258,14 @@ fun MainScreen(
                                         )
                                     )
                                     // 与原顶栏一致：片商 / 系列视角没有排序入口
+                                    // v0.3.62：JAV 标签管理（/jav/tags）
+                                    RailToolButton(
+                                        icon = Icons.Filled.Sell,
+                                        label = "标签",
+                                        showLabel = railShowsLabel,
+                                        compact = railCompact,
+                                        onClick = { tools.worksTagsOpen = true },
+                                    )
                                     if (worksViewModel.uiState.tab == LibraryTab.WORKS ||
                                         worksViewModel.uiState.tab == LibraryTab.IDOLS
                                     ) {
@@ -300,6 +317,7 @@ fun MainScreen(
                                 0 -> VideosScreen(
                                     onVideoClick = onOpenDetail,
                                     onPlay = onPlay,
+                                    onOpenJavList = onOpenJavList,
                                     onSessionExpired = onSessionExpired,
                                     viewModel = videosViewModel,
                                     tools = tools,

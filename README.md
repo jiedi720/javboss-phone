@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.61--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.62--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.61-modified**（versionCode 65） |
+| 当前版本 | **v0.3.62-modified**（versionCode 66） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -707,6 +707,35 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 单测：新增 `FavIdolSortTest` 7 例、`TagColorRulesTest` 5 例；
     全量单测 154 例 / 20 suites。
 
+- **JAV / 视频标签管理与封面标签点击筛选（v0.3.62）**：
+  - 用户反馈 4 项，逐条登记销项：① JAV 界面顶栏「系列」右边加「标签」按钮，
+    显示服务端 JAV 标签功能，要和服务端一样能新增 / 编辑标签；② 视频界面上方
+    也加「标签」按钮，走服务端视频标签功能；③ 视频封面左下角显示视频标签，
+    样式与 JAV 一致；④ 点击封面左下角的标签按该标签筛选作品，语义同详情页
+    点击标签。
+  - 两套标签表严格分流：新增 `TagScope.JAV / VIDEO` 与纯规则 `TagManageRules`
+    （`listPath` / `itemPath` / `filterTitle` / `videoTagQuery` / `validName`），
+    `ApiClient` 补 `PATCH` / `DELETE /jav/tags/{id}` 与 `PATCH` / `DELETE /tags/{id}`，
+    `VideoRepository` 对应补 4 个方法，`listVideos` 补 `@Query("tags")`。
+  - `TagManageDialog` 复用一个弹层按 scope 分派 `GET` 列表 / `POST` 新建 /
+    `PATCH` 重命名 / `DELETE` 删除，标签行按 `provider` 分蓝绿 / 橘色；
+    点标签回调筛选。JAV 页打开 `TagScope.JAV`，视频页打开 `TagScope.VIDEO`。
+  - 顶栏：`TagToolChip` 放在 JAV「系列」右边与视频页顶栏工具组；Rail 模式在
+    原 64dp 左侧栏追加同功能图标按钮（`Icons.Filled.Sell`），`PageToolsState`
+    新增 `worksTagsOpen` / `videosTagsOpen`，`closeSheets()` 一并关闭，旋转 /
+    分屏切换不丢弹层状态。
+  - 封面标签：`WorkCard.customTags` 与 `VideoCard.tags` 由 `List<String>` 改为
+    `List<TagDto>`，共用 `CoverTagStack`（一行一个、左对齐、从下到上堆叠、
+    自定义蓝绿 / 刮削橘色）。视频卡标签从左上角单条文本改为左下角堆叠胶囊
+    （在时长胶囊上方），数据源为 `video.jav.tags + video.tags` 合并去重。
+    作品墙 / 过滤列表 / 作品收藏夹 / 视频卡四处角标都可点击，统一走
+    `onOpenJavList("标签：名称", "", tag.id, 0, 0)`，与详情页点击标签完全一致。
+  - 视频标签管理里点标签走服务端 `/videos?tags=<name>` 按标签名筛视频：
+    `VideosViewModel` 新增 `tagFilter` / `filterByTag()` / `clearTagFilter()`，
+    页面顶部显示可清除的「标签：X」提示条。
+  - 单测：新增 `TagManageRulesTest` 7 例（两套端点不混用、标题、tags 查询拼装、
+    空名校验、`customTags` 保留 id / 去重）；全量单测 161 例 / 21 suites。
+
 </details>
 
 <details>
@@ -715,8 +744,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **48 个提交**，**71 个文件 / +11,628 / −783 行**
-（新增 37 个文件，其中 20 个是新的 JVM 单测文件，合计 20 suites / 154 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **49 个提交**，**74 个文件 / +12,344 / −783 行**
+（新增 40 个文件，其中 21 个是新的 JVM 单测文件，合计 21 suites / 161 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -724,11 +753,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.61-modified / versionCode 65 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.62-modified / versionCode 66 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **154 例 / 20 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色等纯规则都有回归测试 |
+| 单测 | 无 | **161 例 / 21 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

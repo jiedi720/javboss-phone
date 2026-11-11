@@ -19,11 +19,15 @@ object TagColorRules {
     fun isCustom(tag: TagDto): Boolean = isCustom(tag.provider)
 
     /**
-     * 作品卡封面左下角番号正上方要显示的自定义标签名。
-     * 保持服务端返回顺序、过滤空名、按名字去重（视频 tags 与 jav.tags 合并时可能重复）。
+     * 作品卡封面左下角番号正上方要显示的自定义标签。
+     * 保留 TagDto（带 id），这样点标签时能直接用详情页同款方式按 tag_id 筛选作品。
+     * 保持服务端返回顺序、过滤空名、按名字去重（同名标签只显示一次，保留第一个的 id）。
      */
-    fun customTagNames(tags: List<TagDto>): List<String> =
+    fun customTags(tags: List<TagDto>): List<TagDto> =
         tags.filter { isCustom(it) && it.name.isNotBlank() }
-            .map { it.name }
-            .distinct()
+            .distinctBy { it.name.trim() }
+
+    /** 只取名字（收藏夹内页早期实现用，保留兼容） */
+    fun customTagNames(tags: List<TagDto>): List<String> =
+        customTags(tags).map { it.name }
 }

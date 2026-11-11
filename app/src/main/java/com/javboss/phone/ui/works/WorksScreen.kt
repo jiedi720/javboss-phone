@@ -53,8 +53,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.TagColorRules
+import com.javboss.phone.data.TagManageRules
+import com.javboss.phone.data.TagScope
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.JavDto
+import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.PageToolsState
 import com.javboss.phone.ui.components.CompactIconButton
@@ -64,6 +67,8 @@ import com.javboss.phone.ui.components.IdolCard
 import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
+import com.javboss.phone.ui.components.TagManageDialog
+import com.javboss.phone.ui.components.TagToolChip
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.FavoriteTarget
 import com.javboss.phone.ui.components.WorkCard
@@ -131,6 +136,12 @@ fun WorksScreen(
         }
     }
 
+    // v0.3.62：封面左下角标签 / 标签管理弹层里点标签，都走详情页点击标签同款语义：
+    // 打开「标签：XXX」的作品列表，按 tag.id 筛选。
+    val onTagFilter: (TagDto) -> Unit = { tag ->
+        onOpenJavList(TagManageRules.filterTitle(tag.name), "", tag.id.toString(), 0, 0)
+    }
+
     Column(Modifier.fillMaxSize()) {
         // v0.3.50：Rail 模式下这一栏功能并入原左侧 NavigationRail，
         // 内容区顶部不再画工具条；Compact 手机竖屏保持原样。
@@ -151,6 +162,8 @@ fun WorksScreen(
                         onClick = { viewModel.onTabChange(tab) },
                     )
                 }
+                // v0.3.62：「系列」右边的「标签」按钮，打开服务端 JAV 标签管理
+                TagToolChip(onClick = { tools.worksTagsOpen = true })
                 Spacer(Modifier.weight(1f))
                 // 排序 / 筛选：只留一个按钮，打开后是同一个菜单（作品视角多一段筛选区）
                 if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
@@ -248,7 +261,8 @@ fun WorksScreen(
                                 favoriteTarget = FavoriteTarget.jav(jav.id),
                                 watchedMs = jav.watchedMs,
                                 onPlay = playAction,
-                                customTags = TagColorRules.customTagNames(jav.tags),
+                                customTags = TagColorRules.customTags(jav.tags),
+                                onCustomTagClick = onTagFilter,
                             )
                         }
                         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -428,6 +442,15 @@ fun WorksScreen(
                 }
             }
         }
+    }
+
+    // v0.3.62：JAV 标签管理（GET/POST /jav/tags + PATCH/DELETE /jav/tags/{id}）
+    if (tools.worksTagsOpen) {
+        TagManageDialog(
+            scope = TagScope.JAV,
+            onDismiss = { tools.worksTagsOpen = false },
+            onApplyFilter = onTagFilter,
+        )
     }
 }
 

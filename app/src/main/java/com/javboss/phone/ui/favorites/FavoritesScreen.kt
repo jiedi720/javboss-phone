@@ -56,8 +56,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.FavoriteRepository
+import com.javboss.phone.data.TagManageRules
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
+import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.RatingDialog
@@ -299,6 +301,8 @@ fun FavGroupScreen(
     /** 收藏夹实体类型：jav（作品网格）/ idol（女优网格） */
     kind: String = FavoriteRepository.KIND_JAV,
     onOpenIdol: (idolId: Long, name: String) -> Unit = { _, _ -> },
+    /** v0.3.62：封面左下角标签点击，按该标签筛选作品 */
+    onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit = { _, _, _, _, _ -> },
     viewModel: FavGroupViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
@@ -432,8 +436,18 @@ fun FavGroupScreen(
                                 onRatingClick = { ratingTarget = item },
                                 watchedMs = viewModel.watchedMsOf(item.code),
                                 favoriteCount = 1,
-                                // 封面左下角番号正上方堆叠显示该作品的自定义标签
+                                // 封面左下角番号正上方堆叠显示该作品的自定义标签，
+                                // v0.3.62：点击按该标签筛选作品
                                 customTags = viewModel.customTagsOf(item.code),
+                                onCustomTagClick = { tag: TagDto ->
+                                    onOpenJavList(
+                                        TagManageRules.filterTitle(tag.name),
+                                        "",
+                                        tag.id.toString(),
+                                        0,
+                                        0,
+                                    )
+                                },
                                 // 收藏夹条目只有番号，星级映射里的 javId 才是 /jav/items/{id} 需要的 id
                                 favoriteTarget = state.ratings[item.code.uppercase()]
                                     ?.javId

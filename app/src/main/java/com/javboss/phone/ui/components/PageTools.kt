@@ -7,7 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
 /**
- * 页面工具条（视角切换 / 排序 / 搜索）的开关状态。
+ * 页面工具条（视角切换 / 排序 / 搜索 / 标签管理）的开关状态。
  *
  * v0.3.50 起这套状态统一提到 MainScreen：
  * - Compact（手机竖屏）由页面顶部那一栏按钮读写；
@@ -25,16 +25,24 @@ class PageToolsState {
     /** JAV 页排序 / 筛选底部弹层是否打开 */
     var worksSortOpen by mutableStateOf(false)
 
+    /** JAV 页标签管理弹层是否打开（「系列」右边的「标签」按钮） */
+    var worksTagsOpen by mutableStateOf(false)
+
     /** 视频页搜索框是否展开 */
     var videosSearchOpen by mutableStateOf(false)
 
     /** 视频页排序底部弹层是否打开 */
     var videosSortOpen by mutableStateOf(false)
 
-    /** 切换主 tab 时关掉瞬时弹层，避免切回来莫名弹出一个排序菜单 */
+    /** 视频页标签管理弹层是否打开 */
+    var videosTagsOpen by mutableStateOf(false)
+
+    /** 切换主 tab 时关掉瞬时弹层，避免切回来莫名弹出一个排序菜单 / 标签管理框 */
     fun closeSheets() {
         worksSortOpen = false
+        worksTagsOpen = false
         videosSortOpen = false
+        videosTagsOpen = false
     }
 }
 

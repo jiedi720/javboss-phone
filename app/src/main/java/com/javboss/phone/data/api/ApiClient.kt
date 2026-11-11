@@ -77,6 +77,8 @@ interface JavBossApi {
         /** 点卡片上的文件夹路径时按目录筛选（Web 端 /videos 同款参数） */
         @Query("directory_id") directoryId: Long? = null,
         @Query("subdirectory") subdirectory: String? = null,
+        /** 按标签名筛选（Web 端 `/videos?tags=a,b`）；点封面标签时用单个标签名 */
+        @Query("tags") tags: String? = null,
     ): VideoListResponse
 
     /**
@@ -198,6 +200,13 @@ interface JavBossApi {
     @POST("tags")
     suspend fun createVideoTag(@Body body: TagNameRequest): TagDto
 
+    /** 视频标签重命名 / 删除：Web 端 PATCH、DELETE `/tags/{id}` */
+    @PATCH("tags/{id}")
+    suspend fun renameVideoTag(@Path("id") id: Long, @Body body: TagNameRequest)
+
+    @DELETE("tags/{id}")
+    suspend fun deleteVideoTag(@Path("id") id: Long)
+
     @POST("videos/tags/replace")
     suspend fun replaceVideoTags(@Body body: VideoTagsReplaceRequest)
 
@@ -282,6 +291,13 @@ interface JavBossApi {
 
     @POST("jav/tags")
     suspend fun createJavTag(@Body body: TagNameRequest): TagDto
+
+    /** JAV 标签重命名 / 删除：Web 端 PATCH、DELETE `/jav/tags/{id}` */
+    @PATCH("jav/tags/{id}")
+    suspend fun renameJavTag(@Path("id") id: Long, @Body body: TagNameRequest)
+
+    @DELETE("jav/tags/{id}")
+    suspend fun deleteJavTag(@Path("id") id: Long)
 
     @POST("jav/tags/replace")
     suspend fun replaceJavTags(@Body body: JavTagsReplaceRequest)

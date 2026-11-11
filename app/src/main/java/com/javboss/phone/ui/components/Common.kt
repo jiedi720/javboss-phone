@@ -83,6 +83,7 @@ import com.javboss.phone.data.NavigationForm
 import com.javboss.phone.data.PrivacyMask
 import com.javboss.phone.data.WindowClass
 import com.javboss.phone.data.WindowSizeRules
+import com.javboss.phone.data.api.dto.TagDto
 import java.time.LocalDate
 import java.time.Period
 import kotlin.math.roundToInt
@@ -96,6 +97,71 @@ val CustomTagContainer = Color(0xFFA7F3D0)
 val CustomTagLabel = Color(0xFF047857)
 val ScrapedTagContainer = Color(0xFFFED7AA)
 val ScrapedTagLabel = Color(0xFFC2410C)
+
+/**
+ * 顶栏「标签」按钮（v0.3.62）：与视角 chip 同款紧凑外观，点击打开服务端标签管理。
+ * JAV 页放在「系列」右边，视频页放在顶栏工具组里；Rail 模式下由左侧栏的图标按钮代替。
+ */
+@Composable
+fun TagToolChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
+    Box(
+        modifier
+            .height(if (compact) 30.dp else 40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (compact) 9.dp else 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "标签",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * 封面左下角标签角标（v0.3.62）：JAV 卡与视频卡共用。
+ * 一行一个、左对齐，多个标签 asReversed() 从下往上堆叠；
+ * 自定义标签（provider=3）蓝绿、固有刮削标签橘色，与详情页 chip / 标签管理同色。
+ * [onTagClick] 非 null 时每个胶囊可点，用于「按该标签筛选作品」（详情页点击标签同款语义）。
+ */
+@Composable
+private fun BoxScope.CoverTagStack(
+    tags: List<TagDto>,
+    bottomPadding: Dp,
+    onTagClick: ((TagDto) -> Unit)?,
+) {
+    if (tags.isEmpty()) return
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomStart)
+            .widthIn(max = 110.dp)
+            .padding(start = 6.dp, bottom = bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalAlignment = Alignment.Start,
+    ) {
+        tags.asReversed().forEach { tag ->
+            Text(
+                text = tag.name,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (tag.isCustom) CustomTagLabel else ScrapedTagLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (tag.isCustom) CustomTagContainer else ScrapedTagContainer)
+                    .then(
+                        onTagClick?.let { cb -> Modifier.clickable { cb(tag) } } ?: Modifier
+                    )
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
 
 /** 秒 → "mm:ss" 或 "h:mm:ss" */
 fun formatDuration(totalSec: Long): String {
@@ -424,8 +490,14 @@ fun VideoCard(
     modifier: Modifier = Modifier,
     /** 服务端统计的该视频累计观看时长；> 0 才在封面右上角显示已观看图标 */
     watchedMs: Long = 0,
-    /** 服务端给视频打的标签名（含作品 jav.tags 合并去重），非空时在封面左上角显示 */
-    tags: List<String> = emptyList(),
+    /**
+     * 视频自身 tags + 关联作品 jav.tags 合并去重后的标签（v0.3.62 起保留 TagDto，
+     * 以便点击角标时按 tag.id 筛选作品，与详情页点击标签一致）。
+     * 非空时在封面左下角（时长胶囊上方）一行一个堆叠显示。
+     */
+    tags: List<TagDto> = emptyList(),
+    /** 非 null 时左下角标签可点击，回调该标签用于筛选 */
+    onTagClick: ((TagDto) -> Unit)? = null,
     /** 非 null 时在封面右下角显示与 JAV 卡片同一颗播放钮；点击不进详情，直接起播 */
     onPlay: (() -> Unit)? = null,
     /** 视频所在子目录（path 去掉文件名），非空时在标题下方第二行显示，对齐 Web 端卡片 */
@@ -434,7 +506,6 @@ fun VideoCard(
     onSubdirectoryClick: (() -> Unit)? = null,
 ) {
     val masked = LocalCoverMask.current.masked
-    val tagNames = tags.filter { it.isNotBlank() }.distinct()
     Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
         Column {
             Box(
@@ -452,28 +523,9 @@ fun VideoCard(
                 )
                 // 服务端已有观看记录才显示（右上角，与 JAV 卡同一套）
                 WatchedBadge(watchedMs)
-                // 标签：左上角小胶囊，最多列 2 个 + 溢出计数。
-                // 叠在封面上而不是信息栏，卡片高度保持不变（信息栏仍只有一行标题）；
-                // 限宽避免盖住右上角的「已观看」徽标。
-                if (tagNames.isNotEmpty()) {
-                    Text(
-                        text = buildString {
-                            append(tagNames.take(2).joinToString(" · "))
-                            if (tagNames.size > 2) append(" +${tagNames.size - 2}")
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .widthIn(max = 120.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0x99000000))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
+                // 标签改到左下角（v0.3.62）：与 JAV 卡同一套堆叠胶囊，
+                // 放在时长胶囊上方，点标签按该标签筛选作品。
+                CoverTagStack(tags, bottomPadding = 30.dp, onTagClick = onTagClick)
                 val duration = formatDuration(durationSec)
                 if (duration.isNotEmpty()) {
                     Text(
@@ -847,8 +899,13 @@ fun WorkCard(
     watchedMs: Long = 0,
     /** 非 null 时在封面右下角显示播放钮；点击不进入详情，直接起播 */
     onPlay: (() -> Unit)? = null,
-    /** 自定义标签（provider=3）：封面左下角番号正上方，一行一个、从下到上堆叠 */
-    customTags: List<String> = emptyList(),
+    /**
+     * 自定义标签（provider=3）：封面左下角番号正上方，一行一个、从下到上堆叠。
+     * v0.3.62 起保留 TagDto，[onCustomTagClick] 非 null 时角标可点，按该标签筛选作品。
+     */
+    customTags: List<TagDto> = emptyList(),
+    /** 非 null 时封面左下角自定义标签可点击（详情页点击标签同款语义） */
+    onCustomTagClick: ((TagDto) -> Unit)? = null,
 ) {
     val masked = LocalCoverMask.current.masked
     Card(
@@ -901,32 +958,9 @@ fun WorkCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
-                // 自定义标签：番号条正上方，一行一个、左对齐；多个从下往上堆叠
+                // 标签：番号条正上方，一行一个、左对齐；多个从下往上堆叠
                 // （asReversed 让第一个标签最靠近番号，其余依次向上延伸）
-                if (customTags.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .widthIn(max = 110.dp)
-                            .padding(start = 6.dp, bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        horizontalAlignment = Alignment.Start,
-                    ) {
-                        customTags.asReversed().forEach { name ->
-                            Text(
-                                text = name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = CustomTagLabel,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(CustomTagContainer)
-                                    .padding(horizontal = 5.dp, vertical = 1.dp),
-                            )
-                        }
-                    }
-                }
+                CoverTagStack(customTags, bottomPadding = 24.dp, onTagClick = onCustomTagClick)
                 // 放在番号条之后，保证盖在渐变之上且优先接收点击
                 if (onPlay != null) {
                     Box(Modifier.align(Alignment.BottomEnd)) {
