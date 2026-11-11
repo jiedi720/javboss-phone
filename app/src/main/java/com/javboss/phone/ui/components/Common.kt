@@ -64,6 +64,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -71,6 +72,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
 import com.javboss.phone.data.CardBadgeRules
+import com.javboss.phone.data.CoverTagFoldRules
+import com.javboss.phone.data.CoverTagItem
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -99,6 +102,16 @@ val ScrapedTagContainer = Color(0xFFFED7AA)
 val ScrapedTagLabel = Color(0xFFC2410C)
 
 /**
+ * 标签管理弹层的实心胶囊（v0.3.64）：反查 Web bundle 标签管理面板 `mq`，
+ * 深色 / skeuo 主题下自定义标签是 `bg-emerald-500 text-white`、
+ * 刮削标签是 `bg-orange-500 text-white`，数量为深色 `rounded-full` 小徽标。
+ * 封面角标仍沿用上面的浅色系，两者不混用。
+ */
+val CustomTagChipBg = Color(0xFF10B981)
+val ScrapedTagChipBg = Color(0xFFF97316)
+val TagChipCountBg = Color(0xFF1F2937)
+
+/**
  * 顶栏「标签」按钮（v0.3.62）：与视角 chip 同款紧凑外观，点击打开服务端标签管理。
  * JAV 页放在「系列」右边，视频页放在顶栏工具组里；Rail 模式下由左侧栏的图标按钮代替。
  */
@@ -124,10 +137,13 @@ fun TagToolChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 /**
- * 封面左下角标签角标（v0.3.62）：JAV 卡与视频卡共用。
+ * 封面左下角标签角标（v0.3.62，v0.3.64 按服务端分类折叠）：JAV 卡与视频卡共用。
  * 一行一个、左对齐，多个标签 asReversed() 从下往上堆叠；
- * 自定义标签（provider=3）蓝绿、固有刮削标签橘色，与详情页 chip / 标签管理同色。
- * [onTagClick] 非 null 时每个胶囊可点，用于「按该标签筛选作品」（详情页点击标签同款语义）。
+ * 自定义标签（provider=3）蓝绿、固有刮削标签橘色，与详情页 chip 同色。
+ *
+ * v0.3.64：同一分类（如「体位」）下有多个自定义标签时，[CoverTagFoldRules] 把它们
+ * 折成一个「体位 ▾」分类胶囊，点击展开显示具体标签；该分类只有一个标签时直接显示
+ * 具体标签名。分类胶囊只切换展开/收起，具体标签才回调 [onTagClick] 按该标签筛选。
  */
 @Composable
 private fun BoxScope.CoverTagStack(
@@ -135,7 +151,24 @@ private fun BoxScope.CoverTagStack(
     bottomPadding: Dp,
     onTagClick: ((TagDto) -> Unit)?,
 ) {
-    if (tags.isEmpty()) return
+    val items = remember(tags) { CoverTagFoldRules.fold(tags) }
+    if (items.isEmpty()) return
+    // 展开的分类名集合（纯本地 UI 状态，随组合销毁自动收起）
+    var expandedKeys by remember { mutableStateOf(setOf<String>()) }
+
+    // 展开后：分类胶囊保留（再点收起），紧跟该分类下的具体标签
+    val display = mutableListOf<CoverTagItem>()
+    items.forEach { item ->
+        if (item.isGroup && item.expandKey in expandedKeys) {
+            display.add(item)
+            item.children.forEach { child ->
+                display.add(CoverTagItem(label = child.name, tag = child, custom = child.isCustom))
+            }
+        } else {
+            display.add(item)
+        }
+    }
+
     Column(
         modifier = Modifier
             .align(Alignment.BottomStart)
@@ -144,18 +177,39 @@ private fun BoxScope.CoverTagStack(
         verticalArrangement = Arrangement.spacedBy(3.dp),
         horizontalAlignment = Alignment.Start,
     ) {
-        tags.asReversed().forEach { tag ->
+        display.asReversed().forEach { item ->
+            val expanded = item.isGroup && item.expandKey in expandedKeys
+            val label = if (item.isGroup) {
+                item.label + if (expanded) " ▴" else " ▾"
+            } else {
+                item.label
+            }
             Text(
-                text = tag.name,
+                text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (tag.isCustom) CustomTagLabel else ScrapedTagLabel,
+                fontWeight = if (item.isGroup) FontWeight.Bold else null,
+                color = if (item.custom) CustomTagLabel else ScrapedTagLabel,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(if (tag.isCustom) CustomTagContainer else ScrapedTagContainer)
+                    .background(if (item.custom) CustomTagContainer else ScrapedTagContainer)
                     .then(
-                        onTagClick?.let { cb -> Modifier.clickable { cb(tag) } } ?: Modifier
+                        if (item.isGroup) {
+                            // 分类胶囊：只展开/收起，不触发按标签筛选
+                            Modifier.clickable {
+                                val key = item.expandKey
+                                expandedKeys = if (key in expandedKeys) {
+                                    expandedKeys - key
+                                } else {
+                                    expandedKeys + key
+                                }
+                            }
+                        } else {
+                            onTagClick?.let { cb ->
+                                item.tag?.let { tag -> Modifier.clickable { cb(tag) } }
+                            } ?: Modifier
+                        }
                     )
                     .padding(horizontal = 5.dp, vertical = 1.dp),
             )
@@ -493,7 +547,7 @@ fun VideoCard(
     /**
      * 视频自身 tags + 关联作品 jav.tags 合并去重后的标签（v0.3.62 起保留 TagDto，
      * 以便点击角标时按 tag.id 筛选作品，与详情页点击标签一致）。
-     * 非空时在封面左下角（时长胶囊上方）一行一个堆叠显示。
+     * 非空时在封面左下角（时长胶囊上方）堆叠显示；v0.3.64 起自定义标签按分类折叠。
      */
     tags: List<TagDto> = emptyList(),
     /** 非 null 时左下角标签可点击，回调该标签用于筛选 */
@@ -902,6 +956,7 @@ fun WorkCard(
     /**
      * 自定义标签（provider=3）：封面左下角番号正上方，一行一个、从下到上堆叠。
      * v0.3.62 起保留 TagDto，[onCustomTagClick] 非 null 时角标可点，按该标签筛选作品。
+     * v0.3.64 起同一分类多个标签折叠成分类胶囊，点击展开后显示具体标签。
      */
     customTags: List<TagDto> = emptyList(),
     /** 非 null 时封面左下角自定义标签可点击（详情页点击标签同款语义） */

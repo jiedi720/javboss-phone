@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.63--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.64--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.63-modified**（versionCode 67） |
+| 当前版本 | **v0.3.64-modified**（versionCode 68） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -758,6 +758,30 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     sort_order、同序按 id、空分类归默认、服务端顺序、未知分类排最后、默认分类
     占位、组内标签顺序）；全量单测 170 例 / 22 suites。
 
+- **标签管理界面流式胶囊 + 封面标签按分类折叠（v0.3.64）**：
+  - 用户反馈 3 项：① 标签界面上方「管理…」说明文字去掉；② 不要一个标签一行，
+    改成服务端截图那样「分组标题 + 自动换行圆角胶囊」（标签名 + 数量，自定义绿 /
+    刮削橘，标签太多时不方便一行一个管理）；③ 封面上同一分类（如「体位」）有
+    多个自定义标签时只显示分类名胶囊，点击展开具体标签；只有一个时直接显示具体标签。
+  - 反查 Web bundle 标签管理面板 `mq` 确认胶囊契约：`tt(e)` 判 provider=3，
+    深色 / skeuo 主题下自定义 `bg-emerald-500 text-white`、刮削
+    `bg-orange-500 text-white`，数量为 `rounded-full` 深色小徽标，胶囊点击语义是
+    「筛选标签 name」。客户端据此新增 `CustomTagChipBg` / `ScrapedTagChipBg` /
+    `TagChipCountBg` 三个实心色，封面角标仍沿用原浅色系，两者不混用。
+  - `TagManageDialog` 删除顶部说明文字；分组内改 `FlowRow` 自动换行实心胶囊，
+    短按＝按标签筛选（沿用 v0.3.62 语义），长按弹出「重命名 / 删除」菜单；
+    重命名 / 删除确认条移到内容区顶部，不嵌套弹层、不占胶囊版面。
+  - 新增纯规则 `CoverTagFoldRules` + `CoverTagItem`：只折叠自定义标签的非空
+    `category`，同分类 >= 2 个 → 分类胶囊（`children` 保留全部具体标签），
+    只有 1 个 → 退化为具体标签；空分类（默认分类）与刮削标签不折叠；
+    保持首次出现顺序、过滤空名、按名去重。
+  - `CoverTagStack` 用该规则渲染：分类胶囊显示「体位 ▾」，点击展开 / 收起
+    （展开后变「体位 ▴」）并显示该分类下的具体标签；只有具体标签才回调按
+    `TagDto` 筛选，分类胶囊本身不筛选。展开状态是纯本地 UI 状态，随组合销毁收起。
+  - 单测：新增 `CoverTagFoldRulesTest` 7 例（同分类多标签折叠、单标签退化、
+    空分类不折叠、刮削标签不折叠、空名 / 同名去重、混合顺序、配色标记）；
+    全量单测 177 例 / 23 suites。
+
 </details>
 
 <details>
@@ -766,8 +790,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **50 个提交**，**76 个文件 / +12,632 / −782 行**
-（新增 42 个文件，其中 21 个是新的 JVM 单测文件，合计 22 suites / 170 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **51 个提交**，**78 个文件 / +12,907 / −782 行**
+（新增 44 个文件，其中 22 个是新的 JVM 单测文件，合计 23 suites / 177 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -775,11 +799,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.63-modified / versionCode 67 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.64-modified / versionCode 68 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **170 例 / 22 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组等纯规则都有回归测试 |
+| 单测 | 无 | **177 例 / 23 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 
