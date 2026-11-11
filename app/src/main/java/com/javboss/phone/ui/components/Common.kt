@@ -3,6 +3,7 @@ package com.javboss.phone.ui.components
 import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,6 +73,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import com.javboss.phone.data.CardBadgeRules
 import com.javboss.phone.data.CoverTagFoldRules
 import com.javboss.phone.data.CoverTagItem
@@ -102,14 +105,74 @@ val ScrapedTagContainer = Color(0xFFFED7AA)
 val ScrapedTagLabel = Color(0xFFC2410C)
 
 /**
- * 标签管理弹层的实心胶囊（v0.3.64）：反查 Web bundle 标签管理面板 `mq`，
- * 深色 / skeuo 主题下自定义标签是 `bg-emerald-500 text-white`、
- * 刮削标签是 `bg-orange-500 text-white`，数量为深色 `rounded-full` 小徽标。
- * 封面角标仍沿用上面的浅色系，两者不混用。
+ * 全 App 统一的标签胶囊配色（v0.3.64 引入菜单，v0.3.65 推广到封面角标 / 详情页）。
+ * 反查 Web bundle 标签管理面板 `mq`：深色 / skeuo 主题下自定义标签
+ * `bg-emerald-500 text-white`、刮削标签 `bg-orange-500 text-white`，
+ * 数量为深色 `rounded-full` 小徽标。
  */
 val CustomTagChipBg = Color(0xFF10B981)
 val ScrapedTagChipBg = Color(0xFFF97316)
 val TagChipCountBg = Color(0xFF1F2937)
+
+/**
+ * 全 App 共用的标签胶囊：实心彩底白字、全圆角，菜单 / 封面角标 / 详情页标签区
+ * 共用同一份外观（v0.3.65 用户要求「标签样式统一为菜单里的彩底白字胶囊」）。
+ *
+ * @param count 非 null 时在名称右侧显示深色圆形数量徽标（标签管理菜单用）
+ * @param compact 封面角标用小号内边距
+ * @param selected 多选查找 / 多选调整分类时的选中态（白色描边）
+ * @param trailing 编辑模式下的重命名 / 删除小按钮等尾部内容
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun TagChip(
+    label: String,
+    custom: Boolean,
+    modifier: Modifier = Modifier,
+    count: Int? = null,
+    compact: Boolean = false,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    trailing: @Composable RowScope.() -> Unit = {},
+) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = modifier
+            .clip(shape)
+            .background(if (custom) CustomTagChipBg else ScrapedTagChipBg)
+            .then(if (selected) Modifier.border(2.dp, Color.White, shape) else Modifier)
+            .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onLongClick)
+            .padding(
+                horizontal = if (compact) 7.dp else 12.dp,
+                vertical = if (compact) 3.dp else 6.dp,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (count != null) {
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "$count",
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(TagChipCountBg)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            )
+        }
+        trailing()
+    }
+}
 
 /**
  * 顶栏「标签」按钮（v0.3.62）：与视角 chip 同款紧凑外观，点击打开服务端标签管理。
@@ -184,34 +247,24 @@ private fun BoxScope.CoverTagStack(
             } else {
                 item.label
             }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (item.isGroup) FontWeight.Bold else null,
-                color = if (item.custom) CustomTagLabel else ScrapedTagLabel,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (item.custom) CustomTagContainer else ScrapedTagContainer)
-                    .then(
-                        if (item.isGroup) {
-                            // 分类胶囊：只展开/收起，不触发按标签筛选
-                            Modifier.clickable {
-                                val key = item.expandKey
-                                expandedKeys = if (key in expandedKeys) {
-                                    expandedKeys - key
-                                } else {
-                                    expandedKeys + key
-                                }
-                            }
+            // v0.3.65：封面角标与标签菜单共用同一颗实心彩底白字胶囊
+            TagChip(
+                label = label,
+                custom = item.custom,
+                compact = true,
+                modifier = Modifier.widthIn(max = 110.dp),
+                onClick = {
+                    if (item.isGroup) {
+                        val key = item.expandKey
+                        expandedKeys = if (key in expandedKeys) {
+                            expandedKeys - key
                         } else {
-                            onTagClick?.let { cb ->
-                                item.tag?.let { tag -> Modifier.clickable { cb(tag) } }
-                            } ?: Modifier
+                            expandedKeys + key
                         }
-                    )
-                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                    } else {
+                        item.tag?.let { tag -> onTagClick?.invoke(tag) }
+                    }
+                },
             )
         }
     }
@@ -414,6 +467,16 @@ fun Modifier.adaptiveMaxWidth(maxDp: Int): Modifier =
 @Composable
 fun Modifier.adaptiveDialogWidth(): Modifier =
     adaptiveMaxWidth(WindowSizeRules.dialogMaxWidth(rememberWindowWidthDp()))
+
+/**
+ * 标签管理弹层专用宽度（v0.3.65）：比通用对话框更宽，配合
+ * `DialogProperties(usePlatformDefaultWidth = false)` 让手机上也能撑到接近全屏宽，
+ * 宽窗口再按 [WindowSizeRules.tagDialogMaxWidth] 收窄。
+ */
+@Composable
+fun Modifier.adaptiveTagDialogWidth(): Modifier =
+    this.fillMaxWidth(0.94f)
+        .adaptiveMaxWidth(WindowSizeRules.tagDialogMaxWidth(rememberWindowWidthDp()))
 
 /** BottomSheet 内容统一限宽 */
 @Composable

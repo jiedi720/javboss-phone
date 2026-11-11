@@ -75,4 +75,39 @@ class TagManageRulesTest {
         )
         assertEquals(1, noId.size)
     }
+
+    // ---------- v0.3.65：分类管理端点 / 多选查找 ----------
+
+    @Test
+    fun `category management endpoints stay on the two separate tables`() {
+        assertEquals("jav/tag-categories", TagManageRules.categoryListPath(TagScope.JAV))
+        assertEquals("tags/categories", TagManageRules.categoryListPath(TagScope.VIDEO))
+        assertEquals(
+            "jav/tag-categories/order",
+            TagManageRules.categoryOrderPath(TagScope.JAV),
+        )
+        assertEquals("tags/categories/order", TagManageRules.categoryOrderPath(TagScope.VIDEO))
+        assertEquals(
+            "jav/tag-categories/7",
+            TagManageRules.categoryItemPath(TagScope.JAV, 7),
+        )
+        assertEquals("tags/categories/7", TagManageRules.categoryItemPath(TagScope.VIDEO, 7))
+        assertEquals("jav/tags/category", TagManageRules.categorizePath(TagScope.JAV))
+        assertEquals("tags/category", TagManageRules.categorizePath(TagScope.VIDEO))
+    }
+
+    @Test
+    fun `multiFilterTitle joins clean tag names`() {
+        assertEquals("标签：体位、身材", TagManageRules.multiFilterTitle(listOf(" 体位 ", "身材")))
+        assertEquals("标签：A、B", TagManageRules.multiFilterTitle(listOf("A", "", "A", "B")))
+        assertEquals("", TagManageRules.multiFilterTitle(emptyList()))
+        assertEquals("标签：A", TagManageRules.multiFilterTitle(listOf("A")))
+    }
+
+    @Test
+    fun `javTagIdsQuery builds a comma-separated tag_ids list`() {
+        val tags = listOf(TagDto(3, "A"), TagDto(0, "无 id"), TagDto(5, "B"), TagDto(3, "重复"))
+        assertEquals("3,5", TagManageRules.javTagIdsQuery(tags))
+        assertEquals("", TagManageRules.javTagIdsQuery(emptyList()))
+    }
 }

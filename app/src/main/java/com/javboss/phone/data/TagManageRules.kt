@@ -40,4 +40,25 @@ object TagManageRules {
 
     /** 新建 / 重命名都要求非空名字，避免把空白名称发给服务端 */
     fun validName(name: String): Boolean = name.trim().isNotEmpty()
+
+    // ---------- v0.3.65：分类管理 / 多选查找 ----------
+
+    /** 分类排序端点：PUT `.../categories/order`，body {category_ids} */
+    fun categoryOrderPath(scope: TagScope): String = "${categoryListPath(scope)}/order"
+
+    /** 分类重命名 / 删除端点：PATCH|DELETE `.../categories/{id}` */
+    fun categoryItemPath(scope: TagScope, id: Long): String = "${categoryListPath(scope)}/$id"
+
+    /** 批量把标签归入分类：POST `.../category`，body {tag_ids, category_id} */
+    fun categorizePath(scope: TagScope): String = "${listPath(scope)}/category"
+
+    /** 多选查找的列表标题：`标签：A、B、C`（去空白 / 丢空 / 去重） */
+    fun multiFilterTitle(names: List<String>): String {
+        val clean = names.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        return if (clean.isEmpty()) "" else "标签：${clean.joinToString("、")}"
+    }
+
+    /** JAV 列表按 tag id 多选筛选：/jav 的 tag_ids 是逗号分隔的 id */
+    fun javTagIdsQuery(tags: List<com.javboss.phone.data.api.dto.TagDto>): String =
+        tags.map { it.id }.filter { it > 0 }.distinct().joinToString(",")
 }

@@ -177,10 +177,12 @@ class VideosViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * v0.3.62：标签管理弹层里点标签，用服务端 `/videos?tags=<name>` 按标签名筛视频。
-     * 与目录筛选互斥，避免两个筛选条件叠加时用户看不懂当前列表范围。
+     * v0.3.65：「多选查找」一次传多个名字，仍由 [TagManageRules.videoTagQuery] 拼成
+     * 逗号分隔的查询串（Web 端 `/videos?tags=a,b` 同款）。与目录筛选互斥，
+     * 避免两个筛选条件叠加时用户看不懂当前列表范围。
      */
-    fun filterByTag(name: String) {
-        val query = TagManageRules.videoTagQuery(listOf(name))
+    fun filterByTags(names: List<String>) {
+        val query = TagManageRules.videoTagQuery(names)
         if (query.isEmpty()) return
         uiState = uiState.copy(
             tagFilter = query,

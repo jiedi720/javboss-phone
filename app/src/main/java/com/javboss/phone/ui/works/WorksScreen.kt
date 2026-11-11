@@ -449,7 +449,19 @@ fun WorksScreen(
         TagManageDialog(
             scope = TagScope.JAV,
             onDismiss = { tools.worksTagsOpen = false },
-            onApplyFilter = onTagFilter,
+            // v0.3.65：多选查找把选中的多个标签一起按 tag_id 交给 /jav
+            onApplyFilter = { selected ->
+                val ids = TagManageRules.javTagIdsQuery(selected)
+                if (ids.isNotEmpty()) {
+                    onOpenJavList(
+                        TagManageRules.multiFilterTitle(selected.map { it.name }),
+                        "",
+                        ids,
+                        0,
+                        0,
+                    )
+                }
+            },
         )
     }
 }

@@ -308,6 +308,17 @@ object WindowSizeRules {
         WindowClass.EXPANDED -> 640
     }
 
+    /**
+     * 标签管理弹层专用最大宽度（v0.3.65）：标签多、还要放工具条与流式胶囊，
+     * 比通用对话框更宽；Compact 仍交给平台默认（配合 fillMaxWidth 撑满），
+     * 宽窗口按窗口宽度收窄，避免胶囊行拉得过长。
+     */
+    fun tagDialogMaxWidth(widthDp: Int): Int = when (classify(widthDp)) {
+        WindowClass.COMPACT -> NO_LIMIT
+        WindowClass.MEDIUM -> 720
+        WindowClass.EXPANDED -> 900
+    }
+
     /** ModalBottomSheet 内容最大宽度 */
     fun sheetMaxWidth(widthDp: Int): Int = when (classify(widthDp)) {
         WindowClass.COMPACT -> NO_LIMIT

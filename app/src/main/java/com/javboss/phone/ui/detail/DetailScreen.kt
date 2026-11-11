@@ -94,12 +94,9 @@ import coil3.compose.AsyncImage
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.ui.components.CenterMessage
-import com.javboss.phone.ui.components.CustomTagContainer
-import com.javboss.phone.ui.components.CustomTagLabel
 import com.javboss.phone.ui.components.LabeledValue
 import com.javboss.phone.ui.components.LocalCoverMask
-import com.javboss.phone.ui.components.ScrapedTagContainer
-import com.javboss.phone.ui.components.ScrapedTagLabel
+import com.javboss.phone.ui.components.TagChip
 import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.coverFrost
 import com.javboss.phone.ui.components.coverImageModelMasked
@@ -1086,16 +1083,13 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 tags.forEach { tag ->
-                    AssistChip(
+                    // v0.3.65：与标签菜单 / 封面角标统一为实心彩底白字胶囊
+                    TagChip(
+                        label = tag.name,
+                        custom = tag.isCustom,
                         onClick = {
                             p.onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
                         },
-                        label = { Text(tag.name) },
-                        // 与 Web 端一致：自定义标签（provider=3）蓝绿色、固有刮削标签橘色
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (tag.isCustom) CustomTagContainer else ScrapedTagContainer,
-                            labelColor = if (tag.isCustom) CustomTagLabel else ScrapedTagLabel,
-                        ),
                     )
                 }
             }

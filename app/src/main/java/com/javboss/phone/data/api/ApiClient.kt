@@ -30,7 +30,10 @@ import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
 import com.javboss.phone.data.api.dto.StreamsResponse
 import com.javboss.phone.data.api.dto.StudioListResponse
+import com.javboss.phone.data.api.dto.TagCategoryAssignRequest
 import com.javboss.phone.data.api.dto.TagCategoryDto
+import com.javboss.phone.data.api.dto.TagCategoryNameRequest
+import com.javboss.phone.data.api.dto.TagCategoryOrderRequest
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
@@ -205,6 +208,40 @@ interface JavBossApi {
     /** 视频标签分类：GET `/tags/categories`，返回分类数组 */
     @GET("tags/categories")
     suspend fun listVideoTagCategories(): List<TagCategoryDto>
+
+    // ---------- 标签分类管理（v0.3.65）：JAV / 视频两套独立表 ----------
+    // Web bundle：mn/hn/gn/_n/vn（JAV）、Vr/Hr/Ur/Wr/Gr（视频），
+    // 排序 PUT .../categories/order {category_ids}，批量归类 POST .../category {tag_ids, category_id}。
+
+    @POST("jav/tag-categories")
+    suspend fun createJavTagCategory(@Body body: TagCategoryNameRequest): TagCategoryDto
+
+    @PUT("jav/tag-categories/order")
+    suspend fun reorderJavTagCategories(@Body body: TagCategoryOrderRequest)
+
+    @PATCH("jav/tag-categories/{id}")
+    suspend fun renameJavTagCategory(@Path("id") id: Long, @Body body: TagCategoryNameRequest)
+
+    @DELETE("jav/tag-categories/{id}")
+    suspend fun deleteJavTagCategory(@Path("id") id: Long)
+
+    @POST("jav/tags/category")
+    suspend fun assignJavTagsCategory(@Body body: TagCategoryAssignRequest)
+
+    @POST("tags/categories")
+    suspend fun createVideoTagCategory(@Body body: TagCategoryNameRequest): TagCategoryDto
+
+    @PUT("tags/categories/order")
+    suspend fun reorderVideoTagCategories(@Body body: TagCategoryOrderRequest)
+
+    @PATCH("tags/categories/{id}")
+    suspend fun renameVideoTagCategory(@Path("id") id: Long, @Body body: TagCategoryNameRequest)
+
+    @DELETE("tags/categories/{id}")
+    suspend fun deleteVideoTagCategory(@Path("id") id: Long)
+
+    @POST("tags/category")
+    suspend fun assignVideoTagsCategory(@Body body: TagCategoryAssignRequest)
 
     @POST("tags")
     suspend fun createVideoTag(@Body body: TagNameRequest): TagDto

@@ -13,7 +13,10 @@ import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
 import com.javboss.phone.data.api.dto.StreamsResponse
 import com.javboss.phone.data.api.dto.StudioListResponse
+import com.javboss.phone.data.api.dto.TagCategoryAssignRequest
 import com.javboss.phone.data.api.dto.TagCategoryDto
+import com.javboss.phone.data.api.dto.TagCategoryNameRequest
+import com.javboss.phone.data.api.dto.TagCategoryOrderRequest
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
@@ -65,6 +68,36 @@ class VideoRepository(private val apiClient: ApiClient) {
      */
     private var hideJavCache: Boolean? = null
 
+    /**
+     * v0.3.65：列表接口内嵌 tags 不带 category，分类名只存在于标签管理端点。
+     * 这里缓存两套全量标签表的 `id -> category` 索引（两套表 id 各自自增、可能冲突，
+     * 必须分开存），在列表数据交给 UI 前用 [TagCategoryRules.enrich] 回填。
+     * 只在**成功**读到数据时缓存；失败保持 null，下次列表请求会重试。
+     */
+    @Volatile
+    private var javTagCategoryById: Map<Long, String>? = null
+
+    @Volatile
+    private var videoTagCategoryById: Map<Long, String>? = null
+
+    private suspend fun ensureTagCategoryIndex() {
+        if (javTagCategoryById == null) {
+            runCatching { apiClient.api().listJavTags() }
+                .onSuccess { javTagCategoryById = TagCategoryRules.indexOf(it) }
+        }
+        if (videoTagCategoryById == null) {
+            // 这里要**全量**标签表，不能带 hide_jav，否则只挂在 JAV 上的标签查不到分类
+            runCatching { apiClient.api().listVideoTags(hideJav = null) }
+                .onSuccess { videoTagCategoryById = TagCategoryRules.indexOf(it) }
+        }
+    }
+
+    /** 分类被增删改 / 标签被重新归类后调用，让下次列表加载重新拉全量表 */
+    fun invalidateTagCategories() {
+        javTagCategoryById = null
+        videoTagCategoryById = null
+    }
+
     /** 返回 null = 配置未知（未读到 / 失败），调用方需保守处理并允许重试 */
     suspend fun videosHideJav(): Boolean? {
         hideJavCache?.let { return it }
@@ -87,16 +120,27 @@ class VideoRepository(private val apiClient: ApiClient) {
         subdirectory: String? = null,
         /** 按标签名筛选；null = 不筛。Web 端 /videos?tags= 同款参数 */
         tags: String? = null,
-    ): VideoListResponse = apiClient.api().listVideos(
-        limit = limit,
-        offset = offset,
-        search = search,
-        sort = sort,
-        hideJav = if (hideJav) 1 else 0,
-        directoryId = directoryId,
-        subdirectory = subdirectory,
-        tags = tags,
-    )
+    ): VideoListResponse {
+        val response = apiClient.api().listVideos(
+            limit = limit,
+            offset = offset,
+            search = search,
+            sort = sort,
+            hideJav = if (hideJav) 1 else 0,
+            directoryId = directoryId,
+            subdirectory = subdirectory,
+            tags = tags,
+        )
+        ensureTagCategoryIndex()
+        return response.copy(items = response.items.map { video ->
+            video.copy(
+                tags = TagCategoryRules.enrich(video.tags, videoTagCategoryById.orEmpty()),
+                jav = video.jav?.let { jav ->
+                    jav.copy(tags = TagCategoryRules.enrich(jav.tags, javTagCategoryById.orEmpty()))
+                },
+            )
+        })
+    }
 
     suspend fun getVideo(id: Long): VideoDto =
         apiClient.api().getVideo(id)
@@ -164,8 +208,8 @@ class VideoRepository(private val apiClient: ApiClient) {
         sort: String = "",
         seed: Long? = null,
         favoriteGroupId: Long? = null,
-    ): JavListResponse =
-        apiClient.api().searchJav(
+    ): JavListResponse {
+        val response = apiClient.api().searchJav(
             limit = limit,
             offset = offset,
             search = search,
@@ -179,6 +223,11 @@ class VideoRepository(private val apiClient: ApiClient) {
             seed = seed,
             favoriteGroupId = favoriteGroupId,
         )
+        ensureTagCategoryIndex()
+        return response.copy(items = response.items.map { jav ->
+            jav.copy(tags = TagCategoryRules.enrich(jav.tags, javTagCategoryById.orEmpty()))
+        })
+    }
 
     suspend fun listJavPrefixes(): List<PrefixDto> =
         apiClient.api().listJavPrefixes()
@@ -192,6 +241,55 @@ class VideoRepository(private val apiClient: ApiClient) {
             TagScope.JAV -> apiClient.api().listJavTagCategories()
             TagScope.VIDEO -> apiClient.api().listVideoTagCategories()
         }
+
+    // ---------- v0.3.65：分类管理（新建 / 重命名 / 删除 / 排序 / 批量归类） ----------
+
+    suspend fun createTagCategory(scope: TagScope, name: String): TagCategoryDto {
+        val body = TagCategoryNameRequest(name.trim())
+        val created = when (scope) {
+            TagScope.JAV -> apiClient.api().createJavTagCategory(body)
+            TagScope.VIDEO -> apiClient.api().createVideoTagCategory(body)
+        }
+        invalidateTagCategories()
+        return created
+    }
+
+    suspend fun renameTagCategory(scope: TagScope, id: Long, name: String) {
+        val body = TagCategoryNameRequest(name.trim())
+        when (scope) {
+            TagScope.JAV -> apiClient.api().renameJavTagCategory(id, body)
+            TagScope.VIDEO -> apiClient.api().renameVideoTagCategory(id, body)
+        }
+        invalidateTagCategories()
+    }
+
+    suspend fun deleteTagCategory(scope: TagScope, id: Long) {
+        when (scope) {
+            TagScope.JAV -> apiClient.api().deleteJavTagCategory(id)
+            TagScope.VIDEO -> apiClient.api().deleteVideoTagCategory(id)
+        }
+        invalidateTagCategories()
+    }
+
+    /** ids 是分类按新顺序排列后的 id 列表，服务端据此重写 sort_order */
+    suspend fun reorderTagCategories(scope: TagScope, ids: List<Long>) {
+        val body = TagCategoryOrderRequest(ids)
+        when (scope) {
+            TagScope.JAV -> apiClient.api().reorderJavTagCategories(body)
+            TagScope.VIDEO -> apiClient.api().reorderVideoTagCategories(body)
+        }
+        invalidateTagCategories()
+    }
+
+    /** 把选中的一批标签整体归入某个分类（categoryId=0 表示移回默认分类） */
+    suspend fun assignTagsCategory(scope: TagScope, tagIds: List<Long>, categoryId: Long) {
+        val body = TagCategoryAssignRequest(tagIds, categoryId)
+        when (scope) {
+            TagScope.JAV -> apiClient.api().assignJavTagsCategory(body)
+            TagScope.VIDEO -> apiClient.api().assignVideoTagsCategory(body)
+        }
+        invalidateTagCategories()
+    }
 
     suspend fun listJavIdols(
         limit: Int,

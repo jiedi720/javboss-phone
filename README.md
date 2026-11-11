@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.64--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.65--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.64-modified**（versionCode 68） |
+| 当前版本 | **v0.3.65-modified**（versionCode 69） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -782,6 +782,41 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     空分类不折叠、刮削标签不折叠、空名 / 同名去重、混合顺序、配色标记）；
     全量单测 177 例 / 23 suites。
 
+- **封面折叠数据链路修复 + 标签样式统一 + 服务端同款标签菜单（v0.3.65）**：
+  - 用户复查指出 v0.3.64「封面上自定义标签按分类折叠」**实际没修正**，并追加
+    4 项：① 标签样式统一为菜单里的彩底白字胶囊；② 标签菜单要像服务端一样有
+    「编辑 / 分类管理 / 多选查找」；③ 右下角关闭改为右上角 ×，腾出下方空间
+    显示更多标签；④ 标签菜单栏宽度再宽一些。
+  - **根因（复查回溯）**：不是 `CoverTagFoldRules` 规则写错，而是规则读的
+    `TagDto.category` 恒为空。反查 Web bundle `mq` 面板：分类分组用的是
+    `GET /jav/tags` / `GET /tags` 返回的**全量标签表**；而 `/jav`、`/videos`
+    列表接口内嵌的 `tags[]` 是简化对象（只有 id / name / provider / count），
+    不带 `category`。只读探查服务端 SQLite 也确认 `jav_tag.category_id` /
+    `jav_tag_category` 有分类数据，但列表接口不下发。属于「写了规则但没接通数据」。
+  - **修复**：新增纯规则 `TagCategoryRules`（`indexOf` / `enrich` / `moveCategory`）；
+    `VideoRepository` 缓存两套全量标签表的 `id -> category` 索引，在
+    `searchJavs()` / `listVideos()` 把数据交给 UI 前用 `enrich()` 回填
+    `JavDto.tags` / `VideoDto.tags` / `VideoDto.jav.tags`；分类增删改与批量
+    归类后 `invalidateTagCategories()` 清缓存。这样 `CoverTagFoldRules` 才真正
+    拿到非空分类，封面折叠生效。已带非空分类的不覆盖、索引查不到的不臆造。
+  - **样式统一**：`Common.kt` 抽出共享 `TagChip`（实心彩底白字 + 数量深色徽标 +
+    选中描边 + 长按 + 尾部按钮），封面角标 `CoverTagStack`、标签管理弹层、
+    详情页标签区三处统一调用，不再各用一套浅色 / 深色 chip。
+  - **服务端同款菜单**：`TagManageDialog` 顶部工具条加「分类管理 / 编辑·退出编辑 /
+    多选查找·退出多选」（反查 Web bundle `mq` 文案与 `Qe.length!==0&&(i(Qe),t())`
+    多选筛选语义）；新增 `CategoryManageDialog`（分类新建 / 重命名 / 删除 /
+    上移下移排序）与 `AssignCategoryDialog`（批量归类，含默认分类 id=0）。
+    `onApplyFilter` 改为 `List<TagDto>`：JAV 多选按 `/jav?tag_ids=1,2` 筛、
+    视频多选按 `/videos?tags=A,B` 筛。新增两套分类管理端点（JAV
+    `jav/tag-categories`、视频 `tags/categories`）与请求 DTO。
+  - **布局**：关闭移到标题栏右上角 `IconButton(Close)`、`confirmButton = {}`，
+    内容区高度 460 → 520dp，底部空间让给胶囊列表；`ScreenRules.tagDialogMaxWidth()`
+    （Compact 不限 / Medium 720 / Expanded 900，均宽于普通 dialog 560/640）+
+    `Modifier.adaptiveTagDialogWidth()` + `DialogProperties(usePlatformDefaultWidth = false)` 加宽。
+  - 单测：新增 `TagCategoryRulesTest` 8 例（含「回填后折叠生效 / 未回填保持展开」
+    这条断链回归）、`TagManageRulesTest` +3 例（分类端点分流、多选标题、tag_ids 查询）、
+    `WindowSizeRulesTest` +1 例（标签弹层加宽）；全量单测 **189 例 / 24 suites**。
+
 </details>
 
 <details>
@@ -791,7 +826,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
 本仓库从 `b812953`（2026-11-05）起增加 **51 个提交**，**78 个文件 / +12,907 / −782 行**
-（新增 44 个文件，其中 22 个是新的 JVM 单测文件，合计 23 suites / 177 例）。
+（新增 44 个文件，其中 22 个是新的 JVM 单测文件，合计 24 suites / 189 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -799,11 +834,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.64-modified / versionCode 68 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.65-modified / versionCode 69 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **177 例 / 23 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠等纯规则都有回归测试 |
+| 单测 | 无 | **189 例 / 24 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

@@ -307,8 +307,9 @@ fun VideosScreen(
         TagManageDialog(
             scope = TagScope.VIDEO,
             onDismiss = { tools.videosTagsOpen = false },
-            onApplyFilter = { tag ->
-                viewModel.filterByTag(tag.name)
+            // v0.3.65：多选查找把多个标签名拼成 /videos?tags=a,b
+            onApplyFilter = { selected ->
+                viewModel.filterByTags(selected.map { it.name })
                 tools.videosTagsOpen = false
             },
         )

@@ -413,6 +413,25 @@ data class RemoveFavoriteItemsRequest(
 @Serializable
 data class TagNameRequest(val name: String)
 
+// ---------- 标签分类管理（v0.3.65，Web bundle `mn/hn/gn/_n/vn` / `Vr/Hr/Ur/Wr/Gr`） ----------
+
+/** 新建 / 重命名分类：POST .../categories、PATCH .../categories/{id}，body {name} */
+@Serializable
+data class TagCategoryNameRequest(val name: String)
+
+/** 分类排序：PUT .../categories/order，body {category_ids}（顺序即 sort_order） */
+@Serializable
+data class TagCategoryOrderRequest(
+    @SerialName("category_ids") val categoryIds: List<Long>,
+)
+
+/** 批量把标签归入分类：POST .../category，body {tag_ids, category_id} */
+@Serializable
+data class TagCategoryAssignRequest(
+    @SerialName("tag_ids") val tagIds: List<Long>,
+    @SerialName("category_id") val categoryId: Long,
+)
+
 @Serializable
 data class JavTagsReplaceRequest(
     @SerialName("jav_ids") val javIds: List<Long>,

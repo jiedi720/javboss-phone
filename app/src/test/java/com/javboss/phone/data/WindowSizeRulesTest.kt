@@ -304,6 +304,20 @@ class WindowSizeRulesTest {
         assertEquals(1400, WindowSizeRules.contentMaxWidth(1067))
     }
 
+    @Test
+    fun `tag dialog is wider than the generic dialog on wide windows`() {
+        // v0.3.65：标签菜单要显示更多胶囊，宽窗口上限比普通 dialog 更宽
+        assertEquals(WindowSizeRules.NO_LIMIT, WindowSizeRules.tagDialogMaxWidth(400))
+        assertEquals(720, WindowSizeRules.tagDialogMaxWidth(700))
+        assertEquals(900, WindowSizeRules.tagDialogMaxWidth(1067))
+        assertTrue(
+            WindowSizeRules.tagDialogMaxWidth(700) > WindowSizeRules.dialogMaxWidth(700),
+        )
+        assertTrue(
+            WindowSizeRules.tagDialogMaxWidth(1067) > WindowSizeRules.dialogMaxWidth(1067),
+        )
+    }
+
     // ---------- 旧规则保持兼容 ----------
 
     @Test
