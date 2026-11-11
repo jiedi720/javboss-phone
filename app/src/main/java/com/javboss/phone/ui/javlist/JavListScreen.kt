@@ -125,6 +125,7 @@ fun JavListScreen(
                             title = jav.title,
                             onClick = { onWorkClick(jav) },
                             cropPosition = jav.coverCropPosition,
+                            favoriteCount = jav.favoriteCount,
                             watchedMs = jav.watchedMs,
                             onPlay = playAction,
                         )

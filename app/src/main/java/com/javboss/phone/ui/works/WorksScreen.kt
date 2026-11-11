@@ -242,6 +242,7 @@ fun WorksScreen(
                                 cropPosition = jav.coverCropPosition,
                                 rating = jav.favoriteRating,
                                 onRatingClick = { ratingTarget = jav },
+                                favoriteCount = jav.favoriteCount,
                                 watchedMs = jav.watchedMs,
                                 onPlay = playAction,
                             )
@@ -272,6 +273,7 @@ fun WorksScreen(
                                     onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
                                 },
                                 cropLeft = idol.coverCropLeft ?: 0.47,
+                                favoriteCount = idol.favoriteCount,
                             )
                         }
                         item(span = { GridItemSpan(maxLineSpan) }) {

@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.58--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.59--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.58-modified**（versionCode 62） |
+| 当前版本 | **v0.3.59-modified**（versionCode 63） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -622,6 +622,26 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 注：该缺陷由上游首个版本 `6998baf`（2026-07-23）引入，
     并非 v0.3.57 的播放器修复引入。
 
+- **横屏详情页操作栏对齐 + 补齐服务端收藏图标（v0.3.59）**：
+  - 用户反馈两处：① 横屏（Expanded 双栏）详情页「播放 / 收藏 / 编辑」第三颗「编辑」
+    按钮文字看不见、图标尺寸和前两颗不一样，竖屏正常；② 女优 / 作品封面右上角
+    缺服务端的收藏图标。
+  - 横屏按钮根因：双栏左栏固定 `300.dp`，三颗 M3 `Button` 按自然宽度
+    （默认左右各 24dp 内边距 + 24dp 图标 + 文字）总宽超出，`Row` 把最后一颗挤扁，
+    于是文字被裁、图标被压缩变形。现在给 `DetailHeader` 加 `compactActions`，
+    **仅双栏下**三颗 `weight(1f)` 等宽、内边距收到 6dp、图标统一 20dp；
+    竖屏单栏沿用原来的自然宽度排版，逐像素不变。
+  - 收藏图标：Web 端 JAV / 女优 / 片商 / 系列四类卡封面右上角都有同一颗圆形爱心，
+    判定字段是服务端 `favorite_count > 0`（实心琥珀色 `bg-amber-400 / text-amber-950`），
+    未收藏时靠 `group-hover` 才显形。客户端 `IdolDto` 之前根本没声明 `favorite_count`
+    （`ignoreUnknownKeys` 静默丢弃），`WorkCard` 也没用上已有的 `JavDto.favoriteCount`。
+    现在 `IdolDto` 补字段，两张卡共用 `FavoriteBadge`：`favoriteCount > 0` 才画实心爱心，
+    为 0 时整块不画（手机没有 hover、客户端也没有「加入收藏夹」入口，
+    画一颗空心图标只是视觉噪音）；作品卡同时有「已观看」徽标时收藏徽标向左错开 30dp，
+    两颗圆钮不重叠。判定抽成纯规则 `CardBadgeRules.showFavoriteBadge()`，可 JVM 单测。
+  - 单测：新增 `FavoriteBadgeTest` 3 例（正数显示 / 0 隐藏 / 负值当未收藏）；
+    全量单测 137 例 / 17 suites。
+
 </details>
 
 <details>
@@ -630,8 +650,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **42 个提交**，**62 个文件 / +10,301 / −682 行**
-（新增 29 个文件，其中 15 个是新的 JVM 单测文件，合计 16 suites / 134 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **46 个提交**，**64 个文件 / +10,449 / −682 行**
+（新增 31 个文件，其中 16 个是新的 JVM 单测文件，合计 17 suites / 137 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -639,11 +659,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.58-modified / versionCode 62 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.59-modified / versionCode 63 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **134 例 / 16 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型等纯规则都有回归测试 |
+| 单测 | 无 | **137 例 / 17 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

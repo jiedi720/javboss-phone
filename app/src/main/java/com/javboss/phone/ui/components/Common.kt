@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
+import com.javboss.phone.data.CardBadgeRules
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -593,6 +594,8 @@ fun IdolCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     cropLeft: Double? = 0.47,
+    /** 服务端收藏次数（jav_idol.favorite_count）；> 0 才在封面右上角显示实心收藏爱心 */
+    favoriteCount: Int = 0,
 ) {
     var imageSize by remember(coverUrl) { mutableStateOf<Pair<Int, Int>?>(null) }
     val masked = LocalCoverMask.current.masked
@@ -636,6 +639,8 @@ fun IdolCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
+                // 服务端收藏状态：女优卡封面右上角，与 Web 端「加入女优收藏夹」同源
+                FavoriteBadge(favoriteCount)
             }
             Column(Modifier.padding(8.dp)) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -743,6 +748,41 @@ private fun CoverPlayButton(onClick: () -> Unit) {
     }
 }
 
+/**
+ * 封面右上角的「服务端收藏状态」徽标：对齐 Web 端 JAV / 女优 / 片商 / 系列四类卡
+ * 右上角那颗圆形爱心（title「加入作品收藏夹 / 加入女优收藏夹」）。
+ *
+ * 服务端 `favorite_count > 0` 才显示：实心爱心 + 琥珀色（Web 端
+ * `bg-amber-400 / text-amber-950`）；为 0 时整块不画——Web 端未收藏时靠
+ * `group-hover` 才显形，手机没有 hover，客户端也没有「加入收藏夹」入口，
+ * 画一颗空心图标只会是视觉噪音。
+ *
+ * [endPadding]：与同样挂在右上角的「已观看」徽标错开，避免两颗圆钮重叠。
+ */
+@Composable
+private fun BoxScope.FavoriteBadge(
+    favoriteCount: Int,
+    endPadding: Dp = 6.dp,
+) {
+    if (!CardBadgeRules.showFavoriteBadge(favoriteCount)) return
+    Box(
+        Modifier
+            .align(Alignment.TopEnd)
+            .padding(top = 6.dp, end = endPadding)
+            .size(24.dp)
+            .clip(CircleShape)
+            .background(Color(0xFFFBBF24)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.Favorite,
+            contentDescription = "已收藏 $favoriteCount 次",
+            tint = Color(0xFF78350F),
+            modifier = Modifier.size(15.dp),
+        )
+    }
+}
+
 /** 作品卡片：2:3 封面 + 番号 + 标题（作品墙/过滤列表/收藏夹条目共用） */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -756,6 +796,8 @@ fun WorkCard(
     cropPosition: Double? = null,
     rating: Double = 0.0,
     onRatingClick: (() -> Unit)? = null,
+    /** 服务端收藏次数（jav.favorite_count）；> 0 才在封面右上角显示实心收藏爱心 */
+    favoriteCount: Int = 0,
     /** 服务端统计的该作品累计观看时长（jav.watched_ms）；> 0 才在封面右上角显示已观看图标 */
     watchedMs: Long = 0,
     /** 非 null 时在封面右下角显示播放钮；点击不进入详情，直接起播 */
@@ -792,6 +834,11 @@ fun WorkCard(
                         RatingBadge(rating, onRatingClick)
                     }
                 }
+                // 服务端收藏状态：与「已观看」同挂右上角，已观看存在时向左错开 30dp
+                FavoriteBadge(
+                    favoriteCount = favoriteCount,
+                    endPadding = if (watchedMs > 0) 36.dp else 6.dp,
+                )
                 // 服务端已有观看记录才显示（对齐 Web 端的 watch-time-icons / 「已观看：…」）
                 WatchedBadge(watchedMs)
                 if (code.isNotBlank()) {

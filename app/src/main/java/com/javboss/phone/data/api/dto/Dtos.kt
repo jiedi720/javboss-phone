@@ -194,6 +194,11 @@ data class IdolDto(
      */
     @SerialName("cover_crop_left") val coverCropLeft: Double? = null,
     @SerialName("work_count") val workCount: Int = 0,
+    /**
+     * 被加入女优收藏夹的次数（Web 端女优卡封面右上角那颗实心爱心的判定依据，
+     * 字段与 /jav 的 `favorite_count` 同名同义）。缺失时按 0 处理 = 不显示徽标。
+     */
+    @SerialName("favorite_count") val favoriteCount: Int = 0,
     @SerialName("height_cm") val heightCm: Int = 0,
     @SerialName("birth_date") val birthDate: String = "",
     // 以下四项与 Web 端女优卡片封面下方的数据行同源（jav_idol.bust/waist/hips/cup，缺失时为 0）

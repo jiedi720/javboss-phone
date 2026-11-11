@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -209,7 +211,9 @@ fun DetailScreen(
                                 .fillMaxHeight()
                                 .verticalScroll(rememberScrollState()),
                         ) {
-                            DetailHeader(body)
+                            // v0.3.59：双栏左栏只有 300dp，操作栏要按等宽按钮排布，
+                            // 否则三颗按钮会互相挤压（见 DetailHeader 的 compactActions）。
+                            DetailHeader(body, compactActions = true)
                         }
                         Spacer(Modifier.width(20.dp))
                         Box(
@@ -789,10 +793,20 @@ private class DetailBodyParams(
     val onFileMenu: (VideoDto) -> Unit,
 )
 
-/** 左栏（双栏）/ 顶部（单栏）：封面 + 基本信息 + 播放 / 收藏 / 编辑 + 文件版本与完整路径 */
+/**
+ * 左栏（双栏）/ 顶部（单栏）：封面 + 基本信息 + 播放 / 收藏 / 编辑 + 文件版本与完整路径
+ *
+ * [compactActions]：横屏双栏左栏固定 300dp 时，三颗按钮按自然宽度（M3 Button 默认
+ * 左右各 24dp 内边距 + 24dp 图标 + 文字）总宽会超出，Row 会把最后一颗挤扁，
+ * 造成「编辑」文字看不见、图标被压缩得和前两颗不一样。开启后改为三颗等宽
+ * （weight）、收窄内边距、统一图标尺寸；竖屏单栏沿用原来的自然宽度排版不变。
+ */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
+private fun ColumnScope.DetailHeader(
+    p: DetailBodyParams,
+    compactActions: Boolean = false,
+) {
     val state = p.state
     val viewModel = p.viewModel
     val jav = state.javMeta
@@ -852,32 +866,49 @@ private fun ColumnScope.DetailHeader(p: DetailBodyParams) {
 
     // 操作栏：播放 / 收藏 / 编辑
     Spacer(Modifier.height(16.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        modifier = if (compactActions) Modifier.fillMaxWidth() else Modifier,
+        horizontalArrangement = Arrangement.spacedBy(if (compactActions) 8.dp else 12.dp),
+    ) {
+        // weight 是 RowScope 的扩展，必须在这层作用域里取值
+        val itemModifier = if (compactActions) Modifier.weight(1f) else Modifier
+        val itemPadding = if (compactActions) {
+            PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+        } else {
+            ButtonDefaults.ContentPadding
+        }
+        val iconModifier = if (compactActions) Modifier.size(20.dp) else Modifier
         Button(
             onClick = {
                 video?.let { p.onPlay(it.id, jav?.code ?: it.jav?.code ?: p.javCode) }
             },
             enabled = video != null,
+            modifier = itemModifier,
+            contentPadding = itemPadding,
         ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = iconModifier)
             Spacer(Modifier.width(4.dp))
-            Text("播放")
+            Text("播放", maxLines = 1)
         }
         OutlinedButton(
             onClick = p.onFavorite,
             enabled = jav != null,
+            modifier = itemModifier,
+            contentPadding = itemPadding,
         ) {
-            Icon(Icons.Filled.Favorite, contentDescription = null)
+            Icon(Icons.Filled.Favorite, contentDescription = null, modifier = iconModifier)
             Spacer(Modifier.width(4.dp))
-            Text("收藏")
+            Text("收藏", maxLines = 1)
         }
         OutlinedButton(
             onClick = p.onEdit,
             enabled = jav != null,
+            modifier = itemModifier,
+            contentPadding = itemPadding,
         ) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
+            Icon(Icons.Filled.Edit, contentDescription = null, modifier = iconModifier)
             Spacer(Modifier.width(4.dp))
-            Text("编辑")
+            Text("编辑", maxLines = 1)
         }
     }
 
