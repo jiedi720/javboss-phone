@@ -859,8 +859,18 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     「当前图 180ms 滑出 → 换图 → 新图从反方向 220ms 滑入」，未越过则 180ms 弹回原位。
     `awaitEachGesture` 是受限挂起作用域，动画统一由页面作用域驱动（`animate`），不会踩
     `Restricted suspending functions` 编译约束。
-  - 单测新增 `ImagePagerRulesTest` 7 例 + `WindowSizeRulesTest` 3 例（左栏宽度下限 / 上限 /
-    单调性）；全量单测 **200 例 / 25 suites**。
+  - 样品图像由单行 `LazyRow` 改为 `FlowRow` **网格铺开**：一次全部显示、不再左右来回滑；
+    去掉「点击可查看大图」提示文字（视频截图那条提示保持不动）。
+  - 横版额外支持**点按屏幕左右两侧翻页**（左侧 30% 上一张 / 右侧 30% 下一张，中间 40%
+    不翻页，首尾不越界）；竖版不启用，保持拖动 + 箭头。判定用
+    `WindowSizeRules.isLandscape()`（窗口宽 > 高）与 `ImagePagerRules.tapTarget()`。
+  - 修一次滑动翻两页：长距离滑动在模拟器 / 部分机型上会被拆成多段手势，每段都触发一次
+    翻页判定。现在**翻页动画期间到达的手势整段忽略**；判定逻辑抽成
+    `ImagePagerRules.resolveTarget()` 便于单测边界。
+  - JAV 封面左下角番号加**半透明黑底胶囊**（`Color(0xB3000000)` + 3dp 圆角），背景图案
+    复杂时也能看清；字号 `labelSmall`(11sp) → `labelMedium`(12sp)，底部渐变保留给上方标签。
+  - 单测新增 `ImagePagerRulesTest` 15 例 + `WindowSizeRulesTest` 4 例（左栏宽度下限 / 上限 /
+    单调性、横版判定）；全量单测 **209 例 / 25 suites**。
 
 </details>
 
@@ -870,8 +880,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **55 个提交**，**80 个文件 / +14,091 / −782 行**
-（新增 46 个文件，其中 23 个是新的 JVM 单测文件，合计 25 suites / 200 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **56 个提交**，**82 个文件 / +14,369 / −782 行**
+（新增 48 个文件，其中 24 个是新的 JVM 单测文件，合计 25 suites / 209 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -883,7 +893,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **200 例 / 25 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
+| 单测 | 无 | **209 例 / 25 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

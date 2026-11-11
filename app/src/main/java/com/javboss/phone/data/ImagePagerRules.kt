@@ -39,4 +39,45 @@ object ImagePagerRules {
         val shortSide = if (width < height) width else height
         return (shortSide * SWIPE_RATIO).coerceIn(MIN_SWIPE_DP, MAX_SWIPE_DP)
     }
+
+    /**
+     * 松手时决定翻到第几张：向左拨（总位移为负）→ 下一张，向右拨 → 上一张，
+     * 没过阈值或已经到头就停在 [index]。
+     *
+     * 抽成纯函数的原因：这段判定曾经写在手势回调里，慢速滑动被拆成多段手势时会连续
+     * 翻两页；判定独立出来后可以单测边界（首尾不越界、刚好等于阈值、负阈值等）。
+     */
+    fun resolveTarget(
+        totalDxPx: Float,
+        thresholdPx: Float,
+        index: Int,
+        size: Int,
+    ): Int {
+        if (size <= 1 || thresholdPx <= 0f) return index
+        val delta = when {
+            totalDxPx <= -thresholdPx -> 1
+            totalDxPx >= thresholdPx -> -1
+            else -> 0
+        }
+        if (delta == 0) return index
+        val target = index + delta
+        return if (target in 0 until size) target else index
+    }
+
+    /** 点按翻页的左右热区宽度占比（v0.3.68，仅横版大图查看器启用） */
+    const val TAP_EDGE_RATIO = 0.3f
+
+    /**
+     * 点按左右侧时的目标索引（v0.3.68）：左侧 30% → 上一张，右侧 30% → 下一张，
+     * 中间 40% 不翻页；已经在首 / 尾时点同侧保持不动。
+     */
+    fun tapTarget(tapX: Float, containerWidth: Float, index: Int, size: Int): Int {
+        if (size <= 1 || containerWidth <= 0f) return index
+        return when {
+            tapX <= containerWidth * TAP_EDGE_RATIO -> if (index > 0) index - 1 else index
+            tapX >= containerWidth * (1f - TAP_EDGE_RATIO) ->
+                if (index < size - 1) index + 1 else index
+            else -> index
+        }
+    }
 }

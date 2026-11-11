@@ -69,4 +69,64 @@ class ImagePagerRulesTest {
         assertTrue(ImagePagerRules.PAGE_IN_MS > 0)
         assertTrue(ImagePagerRules.PAGE_OUT_MS + ImagePagerRules.PAGE_IN_MS <= 600)
     }
+
+    // ---------- 松手判定 ----------
+
+    @Test
+    fun `swipe left goes to next and right goes to previous`() {
+        val threshold = 100f
+        assertEquals(4, ImagePagerRules.resolveTarget(-120f, threshold, index = 3, size = 10))
+        assertEquals(2, ImagePagerRules.resolveTarget(120f, threshold, index = 3, size = 10))
+    }
+
+    @Test
+    fun `swipe below threshold stays on the same page`() {
+        val threshold = 100f
+        assertEquals(3, ImagePagerRules.resolveTarget(-99f, threshold, index = 3, size = 10))
+        assertEquals(3, ImagePagerRules.resolveTarget(99f, threshold, index = 3, size = 10))
+        assertEquals(3, ImagePagerRules.resolveTarget(0f, threshold, index = 3, size = 10))
+    }
+
+    @Test
+    fun `target never leaves the bounds`() {
+        val threshold = 100f
+        assertEquals(0, ImagePagerRules.resolveTarget(500f, threshold, index = 0, size = 5))
+        assertEquals(4, ImagePagerRules.resolveTarget(-500f, threshold, index = 4, size = 5))
+    }
+
+    @Test
+    fun `single image or invalid threshold never pages`() {
+        assertEquals(0, ImagePagerRules.resolveTarget(-500f, 100f, index = 0, size = 1))
+        assertEquals(2, ImagePagerRules.resolveTarget(-500f, 0f, index = 2, size = 5))
+        assertEquals(2, ImagePagerRules.resolveTarget(-500f, -10f, index = 2, size = 5))
+    }
+
+    // ---------- 横版点按翻页 ----------
+
+    @Test
+    fun `tap on left edge goes back and right edge goes forward`() {
+        // 容器宽 1000px，左右各 30% 是热区
+        assertEquals(2, ImagePagerRules.tapTarget(tapX = 100f, containerWidth = 1000f, index = 3, size = 10))
+        assertEquals(4, ImagePagerRules.tapTarget(tapX = 900f, containerWidth = 1000f, index = 3, size = 10))
+    }
+
+    @Test
+    fun `tap in the middle does nothing`() {
+        assertEquals(3, ImagePagerRules.tapTarget(tapX = 500f, containerWidth = 1000f, index = 3, size = 10))
+        // 紧贴热区内边界之外也算中间
+        assertEquals(3, ImagePagerRules.tapTarget(tapX = 301f, containerWidth = 1000f, index = 3, size = 10))
+        assertEquals(3, ImagePagerRules.tapTarget(tapX = 699f, containerWidth = 1000f, index = 3, size = 10))
+    }
+
+    @Test
+    fun `tap at the first or last image stays put`() {
+        assertEquals(0, ImagePagerRules.tapTarget(tapX = 10f, containerWidth = 1000f, index = 0, size = 10))
+        assertEquals(9, ImagePagerRules.tapTarget(tapX = 990f, containerWidth = 1000f, index = 9, size = 10))
+    }
+
+    @Test
+    fun `tap does nothing with a single image`() {
+        assertEquals(0, ImagePagerRules.tapTarget(tapX = 10f, containerWidth = 1000f, index = 0, size = 1))
+        assertEquals(0, ImagePagerRules.tapTarget(tapX = 990f, containerWidth = 1000f, index = 0, size = 1))
+    }
 }

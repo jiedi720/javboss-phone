@@ -383,6 +383,12 @@ object WindowSizeRules {
     }
 
     /**
+     * 当前窗口是否横向（宽 > 高）。旋转、分屏、自由窗口缩放都会改变它，
+     * 一律以窗口实测宽高为准，不看设备方向传感器。
+     */
+    fun isLandscape(widthDp: Int, heightDp: Int): Boolean = widthDp > heightDp
+
+    /**
      * 播放页首次是否直接全屏沉浸。
      *
      * 只依据「当前应用窗口实际宽高」：窗口达到 Expanded 宽度且是横向窗口（宽 > 高）才直接全屏；
@@ -390,7 +396,7 @@ object WindowSizeRules {
      * 设备型号判断，旋转与自由窗口缩放会重新测量。
      */
     fun startFullscreen(widthDp: Int, heightDp: Int): Boolean =
-        widthDp >= EXPANDED_MIN_DP && widthDp > heightDp
+        widthDp >= EXPANDED_MIN_DP && isLandscape(widthDp, heightDp)
 
     /**
      * v0.3.57：播放页方向锁定。

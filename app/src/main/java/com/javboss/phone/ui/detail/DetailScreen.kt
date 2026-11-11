@@ -15,7 +15,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -113,6 +113,7 @@ import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.ui.components.adaptiveImageViewerWidth
 import com.javboss.phone.ui.components.formatWatchedTime
 import com.javboss.phone.ui.components.rememberUseTwoPane
+import com.javboss.phone.ui.components.rememberWindowHeightDp
 import com.javboss.phone.ui.components.rememberWindowWidthDp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -399,6 +400,11 @@ private fun ImageViewerDialog(
     val pageScope = rememberCoroutineScope()
     // 翻页阈值是 dp 规则，运行时再换算成 px（容器尺寸是 px）
     val density = LocalDensity.current
+    // v0.3.68：只有横版窗口才允许「点按左右侧翻页」，竖版保持原来的拖动 / 箭头
+    val tapToFlipByOrientation = WindowSizeRules.isLandscape(
+        rememberWindowWidthDp(),
+        rememberWindowHeightDp(),
+    ) && items.size > 1
 
     /**
      * 翻页动画：当前图按 [forward] 方向滑出 → 换图 → 新图从反方向滑入到正中。
@@ -461,11 +467,22 @@ private fun ImageViewerDialog(
                     .fillMaxWidth()
                     .fillMaxHeight(0.88f)
                     .onSizeChanged { imageBoxSize = it }
-                    // 吞掉图片上的点击：点图片不关闭大图（关闭只留空白处和右上角 ×）
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { }
+                    // 吞掉图片上的点击：点图片不关闭大图（关闭只留空白处和右上角 ×）。
+                    // v0.3.68 起横版额外支持「点按左 / 右两侧翻页」，中间区域仍然只吞点击。
+                    .pointerInput(tapToFlipByOrientation) {
+                        detectTapGestures { offset ->
+                            if (!tapToFlipByOrientation) return@detectTapGestures
+                            val target = ImagePagerRules.tapTarget(
+                                tapX = offset.x,
+                                containerWidth = size.width.toFloat(),
+                                index = index,
+                                size = items.size,
+                            )
+                            if (target != index) {
+                                settlePage(target, forward = target > index)
+                            }
+                        }
+                    }
                     .graphicsLayer {
                         // 翻页位移 + 轻微淡出/缩小：拖动时跟手，动画时像一页纸滑走
                         val boxWidth = imageBoxSize.width.toFloat().coerceAtLeast(1f)
@@ -479,13 +496,14 @@ private fun ImageViewerDialog(
                         coroutineScope {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
-                                // 上一段翻页动画还没跑完就又按下：直接取消并把画面拉回正中
-                                pageJob?.cancel()
-                                slideX = 0f
+                                // 翻页动画还没跑完时的后续手势整段忽略：长距离滑动会被系统
+                                // 拆成多段手势，不拦的话一次滑动会连续翻两页。
+                                val blockedByAnimation = pageJob?.isActive == true
+                                if (!blockedByAnimation) slideX = 0f
                                 var totalDx = 0f
                                 var multiTouch = false
                                 // 长按：到期只弹出保存菜单，由用户确认后才存图；一旦移动就取消
-                                val longPressJob = launch {
+                                val longPressJob = if (blockedByAnimation) null else launch {
                                     delay(viewConfiguration.longPressTimeoutMillis)
                                     saveMenuUrl = currentUrl
                                 }
@@ -494,7 +512,10 @@ private fun ImageViewerDialog(
                                     val pressed = event.changes.count { it.pressed }
                                     val zoomChange = event.calculateZoom()
                                     val panChange = event.calculatePan()
-                                    if (pressed >= 2) {
+                                    if (blockedByAnimation) {
+                                        // 动画期间不接管手势，避免和滑入动画抢同一位移
+                                        event.changes.forEach { it.consume() }
+                                    } else if (pressed >= 2) {
                                         multiTouch = true
                                         // 双指：以两指中心为锚点缩放，同时跟着平移
                                         val newScale = (scale * zoomChange).coerceIn(1f, 5f)
@@ -528,10 +549,13 @@ private fun ImageViewerDialog(
                                     }
                                     if (multiTouch || event.changes.any { it.positionChanged() }) {
                                         // 一旦动了就不再算长按
-                                        longPressJob.cancel()
+                                        longPressJob?.cancel()
                                     }
                                 } while (event.changes.any { it.pressed })
-                                longPressJob.cancel()
+                                longPressJob?.cancel()
+
+                                // 这一段属于「动画未跑完时的残留手势」，滑出 / 滑入动画自己会收尾
+                                if (blockedByAnimation) return@awaitEachGesture
 
                                 if (!multiTouch && scale <= 1f && items.size > 1) {
                                     // 未放大时的单指横向拖动 → 切上一张 / 下一张。
@@ -543,12 +567,13 @@ private fun ImageViewerDialog(
                                             imageBoxSize.height.toDp().value,
                                         ).dp.toPx()
                                     }
-                                    val target = when {
-                                        totalDx <= -threshold -> index + 1
-                                        totalDx >= threshold -> index - 1
-                                        else -> index
-                                    }
-                                    if (target != index && target in items.indices) {
+                                    val target = ImagePagerRules.resolveTarget(
+                                        totalDxPx = totalDx,
+                                        thresholdPx = threshold,
+                                        index = index,
+                                        size = items.size,
+                                    )
+                                    if (target != index) {
                                         settlePage(target, forward = target > index)
                                     } else {
                                         settlePage(target = null, forward = false)
@@ -1210,15 +1235,18 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
             style = MaterialTheme.typography.labelLarge,
         )
         Spacer(Modifier.height(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.sampleImageCount) { index ->
+        // v0.3.68：样品图像改成网格铺开、一次全显示，不再挤在一行里左右来回滑
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(state.sampleImageCount) { index ->
                 AsyncImage(
                     model = coverImageModelMasked(viewModel.sampleThumbnailUrl(index)),
                     contentDescription = "样品图像 ${index + 1}",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .height(120.dp)
-                        .width(120.dp)
+                        .size(120.dp)
                         .coverFrost(masked)
                         .clip(RoundedCornerShape(6.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
@@ -1236,12 +1264,6 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
                 )
             }
         }
-        Text(
-            "点击可查看大图",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
     }
 
     // 视频截图：服务端 /videos/{id}/screenshots，点开看完整截图

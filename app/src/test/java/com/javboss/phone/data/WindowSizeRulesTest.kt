@@ -251,6 +251,16 @@ class WindowSizeRulesTest {
         assertTrue(WindowSizeRules.startFullscreen(840, 400))
     }
 
+    @Test
+    fun `landscape is decided by window width greater than height`() {
+        // v0.3.68：横版大图查看器点按左右侧翻页只在这个判定成立时启用
+        assertTrue(WindowSizeRules.isLandscape(1067, 700))
+        assertTrue(WindowSizeRules.isLandscape(1920, 1080))
+        assertFalse(WindowSizeRules.isLandscape(712, 1067))
+        assertFalse(WindowSizeRules.isLandscape(400, 400))
+        assertEquals(WindowSizeRules.isLandscape(900, 400), WindowSizeRules.startFullscreen(900, 400))
+    }
+
     // ---------- 各类最大宽度 ----------
 
     @Test
