@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -93,8 +94,15 @@ import coil3.compose.AsyncImage
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.CustomTagContainer
+import com.javboss.phone.ui.components.CustomTagLabel
 import com.javboss.phone.ui.components.LabeledValue
+import com.javboss.phone.ui.components.LocalCoverMask
+import com.javboss.phone.ui.components.ScrapedTagContainer
+import com.javboss.phone.ui.components.ScrapedTagLabel
 import com.javboss.phone.ui.components.coverCropAlignment
+import com.javboss.phone.ui.components.coverFrost
+import com.javboss.phone.ui.components.coverImageModelMasked
 import com.javboss.phone.ui.components.formatDuration
 import com.javboss.phone.ui.components.formatFileSize
 import com.javboss.phone.ui.components.adaptiveDialogWidth
@@ -815,17 +823,20 @@ private fun ColumnScope.DetailHeader(
     val title = p.title
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
+    // 封面毛玻璃与列表卡片同源：设置常开 / 锁屏自动打码时，详情页主封面也一起糊
+    val masked = LocalCoverMask.current.masked
     // 封面 + 基本信息
     Row(Modifier.fillMaxWidth()) {
         Column(Modifier.width(140.dp)) {
             AsyncImage(
-                model = viewModel.coverUrl(),
+                model = coverImageModelMasked(viewModel.coverUrl()),
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 alignment = coverCropAlignment(jav?.coverCropPosition),
                 modifier = Modifier
                     .width(140.dp)
                     .aspectRatio(2f / 3f)
+                    .coverFrost(masked)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable {
                         viewModel.fullCoverUrl()?.let { url ->
@@ -992,6 +1003,8 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
     val video = state.video
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 样品图像也跟随同一套封面毛玻璃状态
+    val masked = LocalCoverMask.current.masked
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
 
@@ -1078,6 +1091,11 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
                             p.onOpenJavList("标签：${tag.name}", "", tag.id.toString(), 0, 0)
                         },
                         label = { Text(tag.name) },
+                        // 与 Web 端一致：自定义标签（provider=3）蓝绿色、固有刮削标签橘色
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = if (tag.isCustom) CustomTagContainer else ScrapedTagContainer,
+                            labelColor = if (tag.isCustom) CustomTagLabel else ScrapedTagLabel,
+                        ),
                     )
                 }
             }
@@ -1118,12 +1136,13 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.sampleImageCount) { index ->
                 AsyncImage(
-                    model = viewModel.sampleThumbnailUrl(index),
+                    model = coverImageModelMasked(viewModel.sampleThumbnailUrl(index)),
                     contentDescription = "样品图像 ${index + 1}",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .height(120.dp)
                         .width(120.dp)
+                        .coverFrost(masked)
                         .clip(RoundedCornerShape(6.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
                         .clickable {

@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.TagColorRules
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
@@ -247,6 +248,7 @@ fun WorksScreen(
                                 favoriteTarget = FavoriteTarget.jav(jav.id),
                                 watchedMs = jav.watchedMs,
                                 onPlay = playAction,
+                                customTags = TagColorRules.customTagNames(jav.tags),
                             )
                         }
                         item(span = { GridItemSpan(maxLineSpan) }) {

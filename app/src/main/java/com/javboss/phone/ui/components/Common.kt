@@ -88,6 +88,15 @@ import java.time.Period
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
+/**
+ * 标签配色：与 Web 端标签 chip 一一对应（自定义 `bg-emerald-200 / text-emerald-700`、
+ * 固有刮削 `bg-orange-200 / text-orange-700`）。详情页标签区与作品卡封面角标共用。
+ */
+val CustomTagContainer = Color(0xFFA7F3D0)
+val CustomTagLabel = Color(0xFF047857)
+val ScrapedTagContainer = Color(0xFFFED7AA)
+val ScrapedTagLabel = Color(0xFFC2410C)
+
 /** 秒 → "mm:ss" 或 "h:mm:ss" */
 fun formatDuration(totalSec: Long): String {
     if (totalSec <= 0) return ""
@@ -387,6 +396,17 @@ fun coverImageModel(url: String, smallDecode: Boolean): Any {
 /** 给封面加上毛玻璃：API 31+ 走 RenderEffect，低版本无操作（靠小图放大去糊） */
 fun Modifier.coverFrost(masked: Boolean): Modifier =
     if (masked && coverBlurSupported) blur(COVER_BLUR) else this
+
+/**
+ * 详情页主封面 / 样品图像用的同一套打码模型。
+ * 列表卡片在各自 Composable 里读 `LocalCoverMask`；这里给没有 masked 局部变量的页面一个入口，
+ * 避免把 private 的 `coverBlurSupported` 暴露出去。搭配 `coverFrost(masked)` 使用。
+ */
+@Composable
+fun coverImageModelMasked(url: String?): Any? {
+    val masked = LocalCoverMask.current.masked
+    return url?.let { coverImageModel(it, masked && !coverBlurSupported) }
+}
 
 /**
  * 打码时不做任何"关插值"处理：默认的双线性插值会把小图平滑放大，
@@ -827,6 +847,8 @@ fun WorkCard(
     watchedMs: Long = 0,
     /** 非 null 时在封面右下角显示播放钮；点击不进入详情，直接起播 */
     onPlay: (() -> Unit)? = null,
+    /** 自定义标签（provider=3）：封面左下角番号正上方，一行一个、从下到上堆叠 */
+    customTags: List<String> = emptyList(),
 ) {
     val masked = LocalCoverMask.current.masked
     Card(
@@ -878,6 +900,32 @@ fun WorkCard(
                             )
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
+                }
+                // 自定义标签：番号条正上方，一行一个、左对齐；多个从下往上堆叠
+                // （asReversed 让第一个标签最靠近番号，其余依次向上延伸）
+                if (customTags.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .widthIn(max = 110.dp)
+                            .padding(start = 6.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        customTags.asReversed().forEach { name ->
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CustomTagLabel,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(CustomTagContainer)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                            )
+                        }
+                    }
                 }
                 // 放在番号条之后，保证盖在渐变之上且优先接收点击
                 if (onPlay != null) {

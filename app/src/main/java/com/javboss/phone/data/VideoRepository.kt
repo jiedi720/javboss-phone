@@ -182,8 +182,20 @@ class VideoRepository(private val apiClient: ApiClient) {
     suspend fun listJavTags(): List<TagDto> =
         apiClient.api().listJavTags()
 
-    suspend fun listJavIdols(limit: Int, offset: Int, search: String = "", sort: String = ""): IdolListResponse =
-        apiClient.api().listJavIdols(limit = limit, offset = offset, search = search, sort = sort)
+    suspend fun listJavIdols(
+        limit: Int,
+        offset: Int,
+        search: String = "",
+        sort: String = "",
+        favoriteGroupId: Long? = null,
+    ): IdolListResponse =
+        apiClient.api().listJavIdols(
+            limit = limit,
+            offset = offset,
+            search = search,
+            sort = sort,
+            favoriteGroupId = favoriteGroupId,
+        )
 
     suspend fun listJavStudios(limit: Int, offset: Int, search: String = ""): StudioListResponse =
         apiClient.api().listJavStudios(limit = limit, offset = offset, search = search)

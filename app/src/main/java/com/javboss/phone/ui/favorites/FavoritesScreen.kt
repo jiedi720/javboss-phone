@@ -66,6 +66,7 @@ import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.FavoriteTarget
 import com.javboss.phone.ui.components.IdolCard
 import com.javboss.phone.ui.components.WorkCard
+import com.javboss.phone.ui.components.idolInfoRows
 import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.ui.components.adaptiveSearchWidth
 import com.javboss.phone.ui.components.adaptiveSheetWidth
@@ -391,16 +392,28 @@ fun FavGroupScreen(
                 ) {
                     items(shown, key = { it.id }) { item ->
                         if (kind == FavoriteRepository.KIND_IDOL) {
+                            // 女优收藏夹 items 只给名字 / 作品数，年龄身高三围从
+                            // /jav/idols?favorite_group_id= 的完整 IdolDto 补回来
+                            val idol = state.idolMeta[item.id]
                             IdolCard(
-                                // 女优卡封面用 cover_code（与 Web 端女优卡一致）；
-                                // 服务端没给时退回 sample_code 的作品封面，避免整张空白
                                 coverUrl = viewModel.coverUrl(item.coverCode.ifBlank { item.sampleCode }),
                                 name = item.name,
                                 secondaryName = item.japaneseName.ifBlank { item.romanName },
                                 workCount = item.workCount.toInt(),
-                                infoRows = listOf("作品 ${item.workCount}"),
+                                // 与主界面女优卡完全同源的固定两行：生日(年龄) / 身高·三围·罩杯
+                                infoRows = idol?.let {
+                                    idolInfoRows(
+                                        birthDate = it.birthDate,
+                                        heightCm = it.heightCm,
+                                        bust = it.bust,
+                                        waist = it.waist,
+                                        hips = it.hips,
+                                        cup = it.cup,
+                                    )
+                                } ?: idolInfoRows("", 0, 0, 0, 0, 0),
                                 onClick = { onOpenIdol(item.id, item.name) },
                                 onLongClick = { removeTarget = item },
+                                cropLeft = idol?.coverCropLeft ?: 0.47,
                                 favoriteCount = 1,
                                 favoriteTarget = FavoriteTarget.idol(item.id),
                             )
@@ -419,6 +432,8 @@ fun FavGroupScreen(
                                 onRatingClick = { ratingTarget = item },
                                 watchedMs = viewModel.watchedMsOf(item.code),
                                 favoriteCount = 1,
+                                // 封面左下角番号正上方堆叠显示该作品的自定义标签
+                                customTags = viewModel.customTagsOf(item.code),
                                 // 收藏夹条目只有番号，星级映射里的 javId 才是 /jav/items/{id} 需要的 id
                                 favoriteTarget = state.ratings[item.code.uppercase()]
                                     ?.javId
@@ -483,20 +498,38 @@ fun FavGroupScreen(
                 ) {
                     Text("排序", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(12.dp))
-                    SortList(
-                        entries = FavItemSortBase.entries.map { base ->
-                            val selected = state.sort == base
-                            val direction = if (selected) {
-                                if (state.sortAsc) base.ascLabel else base.descLabel
-                            } else if (base.defaultAsc) {
-                                base.ascLabel
-                            } else {
-                                base.descLabel
-                            }
-                            SortEntry(base.label, selected, direction)
-                        },
-                        onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
-                    )
+                    if (kind == FavoriteRepository.KIND_IDOL) {
+                        // 女优收藏夹内页：作品数量 / 加入时间 / 年龄 / 身高 / 三围 / 罩杯
+                        SortList(
+                            entries = FavIdolSortBase.entries.map { base ->
+                                val selected = state.idolSort == base
+                                val direction = if (selected) {
+                                    if (state.idolSortAsc) base.ascLabel else base.descLabel
+                                } else if (base.defaultAsc) {
+                                    base.ascLabel
+                                } else {
+                                    base.descLabel
+                                }
+                                SortEntry(base.label, selected, direction)
+                            },
+                            onPick = { viewModel.onIdolSortClick(FavIdolSortBase.entries[it]) },
+                        )
+                    } else {
+                        SortList(
+                            entries = FavItemSortBase.entries.map { base ->
+                                val selected = state.sort == base
+                                val direction = if (selected) {
+                                    if (state.sortAsc) base.ascLabel else base.descLabel
+                                } else if (base.defaultAsc) {
+                                    base.ascLabel
+                                } else {
+                                    base.descLabel
+                                }
+                                SortEntry(base.label, selected, direction)
+                            },
+                            onPick = { viewModel.onSortClick(FavItemSortBase.entries[it]) },
+                        )
+                    }
                 }
             }
         }

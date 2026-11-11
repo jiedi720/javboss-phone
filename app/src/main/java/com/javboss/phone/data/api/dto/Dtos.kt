@@ -250,7 +250,15 @@ data class TagDto(
     val id: Long = 0,
     val name: String = "",
     val count: Int = 0,
-)
+    /**
+     * 标签来源。Web 端 `tt(e) = Number(e?.provider)===3` 用 provider=3 判定「自定义标签」，
+     * 其余都是刮削得到的固有标签；/jav 与 /tags 返回的 tag 都带这个字段
+     * （Web 标签 chip 的 key 里就有 `e.provider||0`）。缺省 0 兼容老服务端。
+     */
+    val provider: Int = 0,
+) {
+    val isCustom: Boolean get() = provider == 3
+}
 
 @Serializable
 data class StreamsResponse(

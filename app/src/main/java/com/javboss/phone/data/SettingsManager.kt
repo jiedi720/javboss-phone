@@ -70,6 +70,9 @@ class SettingsManager(private val context: Context) {
     private val keyFavSortAsc = booleanPreferencesKey("fav_sort_asc")
     private val keyFavItemSort = stringPreferencesKey("fav_item_sort")
     private val keyFavItemSortAsc = booleanPreferencesKey("fav_item_sort_asc")
+    // 女优收藏夹内页的排序（v0.3.61，与作品收藏夹分开存）
+    private val keyFavIdolSort = stringPreferencesKey("fav_idol_sort")
+    private val keyFavIdolSortAsc = booleanPreferencesKey("fav_idol_sort_asc")
     private val keyLaunchTab = stringPreferencesKey("launch_tab")
     // 按所在网络自动切换登录：总开关 + 两条预设角色 + 可选探测地址覆盖
     private val keyAutoSwitch = booleanPreferencesKey("auto_switch_login")
@@ -171,6 +174,15 @@ class SettingsManager(private val context: Context) {
     var favItemSortAsc: Boolean = true
         private set
 
+    /** 女优收藏夹内部条目的排序（与作品收藏夹分开） */
+    @Volatile
+    var favIdolSortName: String? = null
+        private set
+
+    @Volatile
+    var favIdolSortAsc: Boolean = true
+        private set
+
     /** 冷启动默认 tab：默认 JAV，设置页可改 */
     @Volatile
     var launchTab: LaunchTab = LaunchTab.JAV
@@ -233,6 +245,8 @@ class SettingsManager(private val context: Context) {
         favSortAsc = prefs[keyFavSortAsc] ?: true
         favItemSortName = prefs[keyFavItemSort]
         favItemSortAsc = prefs[keyFavItemSortAsc] ?: true
+        favIdolSortName = prefs[keyFavIdolSort]
+        favIdolSortAsc = prefs[keyFavIdolSortAsc] ?: true
         launchTab = prefs[keyLaunchTab]
             ?.let { runCatching { LaunchTab.valueOf(it) }.getOrNull() }
             // 旧版可能存过「收藏夹 / 设置」作为启动页，现统一回落到 JAV
@@ -287,6 +301,16 @@ class SettingsManager(private val context: Context) {
         context.settingsDataStore.edit {
             it[keyFavItemSort] = name
             it[keyFavItemSortAsc] = asc
+        }
+    }
+
+    /** 女优收藏夹内页排序：与作品收藏夹分开持久化 */
+    suspend fun saveFavIdolSort(name: String, asc: Boolean) {
+        favIdolSortName = name
+        favIdolSortAsc = asc
+        context.settingsDataStore.edit {
+            it[keyFavIdolSort] = name
+            it[keyFavIdolSortAsc] = asc
         }
     }
 

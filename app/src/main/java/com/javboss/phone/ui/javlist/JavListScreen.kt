@@ -28,6 +28,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.TagColorRules
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.GridFooter
@@ -130,6 +131,7 @@ fun JavListScreen(
                             favoriteTarget = FavoriteTarget.jav(jav.id),
                             watchedMs = jav.watchedMs,
                             onPlay = playAction,
+                            customTags = TagColorRules.customTagNames(jav.tags),
                         )
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {

@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.60--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.61--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.60-modified**（versionCode 64） |
+| 当前版本 | **v0.3.61-modified**（versionCode 65） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -679,6 +679,34 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     `FavoriteBadgeTest` 补 2 例（星标常显语义、观看徽标下移 36dp 几何规则）；
     全量单测 142 例 / 18 suites。
 
+- **女优收藏夹内页 / 详情页封面 / 标签配色（v0.3.61）**：
+  - 用户反馈 4 项，逐条登记销项：① 女优收藏夹进入具体收藏夹后，右上角排序
+    仍是作品维度，要换成女优版本；② 女优收藏夹封面下方信息栏缺年龄 / 身高 /
+    三围，要和主界面一致；③ 「封面毛玻璃」开启时，详情页主封面与样品图像
+    也要一起打码；④ 详情页标签按服务端分色（固有刮削标签橘色、自定义标签
+    蓝绿色），并在封面左下角番号正上方堆叠显示自定义标签（一行一个、左对齐、
+    多个从下到上）。
+  - 女优排序：新增 `FavIdolSortBase` / `FavIdolSortRules`（默认顺序 + 作品数量、
+    加入时间、年龄、身高、胸围、臀围、腰围、罩杯，文案与方向对齐 Web 端 `Pe`），
+    `FavGroupUiState` 按 `kind` 分派作品 / 女优两套排序，排序状态与作品收藏夹
+    分开持久化（`fav_idol_sort` / `fav_idol_sort_asc`）。年龄维度按生日反向比较
+    （生日越晚年龄越小）。
+  - 女优信息栏：收藏夹 items 只给名字 / 作品数，新增
+    `/jav/idols?favorite_group_id=`（`ApiClient` / `VideoRepository` 补参数）拉完整
+    `IdolDto` 按 id 建索引，女优卡改用与主界面同源的 `idolInfoRows()` 固定两行
+    （生日+年龄 / 身高·三围·罩杯），封面裁剪 `cover_crop_left` 也一并补齐；
+    同一份索引供 8 个排序维度取值。
+  - 详情页毛玻璃：新增 `coverImageModelMasked()` 公共入口（不暴露 private 的
+    `coverBlurSupported`），主封面与样品图像接上 `LocalCoverMask` +
+    `coverFrost(masked)`，与列表卡片同源；视频截图与大图查看器保持原样。
+  - 标签配色：`TagDto` 补 `provider`（`isCustom = provider == 3`，Web 端 `tt(e)`），
+    纯规则 `TagColorRules` 判定自定义标签；详情页 `AssistChip` 用
+    `assistChipColors` 分蓝绿 / 橘色，`WorkCard` 新增 `customTags` 参数在番号条
+    正上方渲染蓝绿色胶囊列（`asReversed` 实现从下往上堆叠），作品墙 / 过滤列表 /
+    收藏夹条目三处都接上数据源。
+  - 单测：新增 `FavIdolSortTest` 7 例、`TagColorRulesTest` 5 例；
+    全量单测 154 例 / 20 suites。
+
 </details>
 
 <details>
@@ -687,8 +715,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **47 个提交**，**66 个文件 / +11,119 / −778 行**
-（新增 33 个文件，其中 18 个是新的 JVM 单测文件，合计 18 suites / 142 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **48 个提交**，**71 个文件 / +11,628 / −783 行**
+（新增 37 个文件，其中 20 个是新的 JVM 单测文件，合计 20 suites / 154 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -696,11 +724,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.60-modified / versionCode 64 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.61-modified / versionCode 65 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **142 例 / 18 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置等纯规则都有回归测试 |
+| 单测 | 无 | **154 例 / 20 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

@@ -153,6 +153,8 @@ interface JavBossApi {
         @Query("offset") offset: Int = 0,
         @Query("search") search: String = "",
         @Query("sort") sort: String = "",
+        /** 只看某个女优收藏夹里的女优（Web 端同一个参数），返回的是完整 IdolDto */
+        @Query("favorite_group_id") favoriteGroupId: Long? = null,
     ): IdolListResponse
 
     @GET("jav/studios")

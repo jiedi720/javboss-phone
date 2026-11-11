@@ -8,9 +8,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.FavoriteRepository
+import com.javboss.phone.data.TagColorRules
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
+import com.javboss.phone.data.api.dto.IdolDto
 import kotlinx.coroutines.launch
 
 data class FavoritesUiState(
@@ -117,6 +119,8 @@ data class FavRating(
     val durationMin: Int = 0,
     /** 发行时间（unix 秒），对应 JavDto.release_unix */
     val releaseUnix: Long = 0,
+    /** 该作品的自定义标签名（provider=3），给封面左下角番号上方堆叠显示用 */
+    val customTags: List<String> = emptyList(),
 )
 
 /**
@@ -146,10 +150,17 @@ data class FavGroupUiState(
     val loading: Boolean = false,
     /** 番号（大写）→ 该作品的 jav id 与喜爱度，来自 /jav?favorite_group_id= */
     val ratings: Map<String, FavRating> = emptyMap(),
+    /** 女优收藏夹：id → 完整 IdolDto，来自 /jav/idols?favorite_group_id=，补信息栏与排序元数据 */
+    val idolMeta: Map<Long, IdolDto> = emptyMap(),
+    /** 当前收藏夹实体类型：决定用作品还是女优的排序维度 */
+    val kind: String = FavoriteRepository.KIND_JAV,
     /** 搜索关键词，按番号 / 标题过滤 */
     val search: String = "",
     val sort: FavItemSortBase = FavItemSortBase.DEFAULT,
     val sortAsc: Boolean = true,
+    /** 女优收藏夹内页排序（v0.3.61，与作品收藏夹分开） */
+    val idolSort: FavIdolSortBase = FavIdolSortBase.DEFAULT,
+    val idolSortAsc: Boolean = true,
     val error: String? = null,
     val notice: String? = null,
     val sessionExpired: Boolean = false,
@@ -166,6 +177,11 @@ data class FavGroupUiState(
                         it.title.contains(keyword, ignoreCase = true) ||
                         it.name.contains(keyword, ignoreCase = true)
                 }
+            }
+            // 女优收藏夹改用女优维度排序（作品数量 / 年龄 / 身高三围 / 罩杯…），
+            // 不再错用「番号 / 时长 / 发行时间」这些作品维度
+            if (kind == FavoriteRepository.KIND_IDOL) {
+                return FavIdolSortRules.sort(filtered, idolMeta, idolSort, idolSortAsc)
             }
             val metaOf = { item: FavoriteItemDto -> ratings[item.code.uppercase()] }
             val sorted = when (sort) {
@@ -196,6 +212,10 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                 ?.let { runCatching { FavItemSortBase.valueOf(it) }.getOrNull() }
                 ?: FavItemSortBase.DEFAULT,
             sortAsc = container.settings.favItemSortAsc,
+            idolSort = container.settings.favIdolSortName
+                ?.let { runCatching { FavIdolSortBase.valueOf(it) }.getOrNull() }
+                ?: FavIdolSortBase.DEFAULT,
+            idolSortAsc = container.settings.favIdolSortAsc,
         ),
     )
         private set
@@ -215,15 +235,38 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { container.settings.saveFavItemSort(s.sort.name, s.sortAsc) }
     }
 
+    /** 女优收藏夹内页排序：换维度用默认方向，点同一个维度切升降序（与主界面女优页一致） */
+    fun onIdolSortClick(base: FavIdolSortBase) {
+        uiState = if (uiState.idolSort == base) {
+            uiState.copy(idolSortAsc = !uiState.idolSortAsc)
+        } else {
+            uiState.copy(idolSort = base, idolSortAsc = base.defaultAsc)
+        }
+        val s = uiState
+        viewModelScope.launch { container.settings.saveFavIdolSort(s.idolSort.name, s.idolSortAsc) }
+    }
+
     fun load(groupId: Long, kind: String = FavoriteRepository.KIND_JAV) {
         viewModelScope.launch {
-            uiState = uiState.copy(loading = true, error = null)
+            uiState = uiState.copy(loading = true, error = null, kind = kind)
             try {
                 val items = container.favoriteRepository.listItems(groupId, kind)
-                // 作品收藏夹条目只有番号，星级得另外拿：用 favorite_group_id 过滤条件
-                // 拉一份完整 JavDto 按番号建索引；女优收藏夹不需要这份数据
-                val ratings = if (kind == FavoriteRepository.KIND_IDOL) {
-                    emptyMap<String, FavRating>()
+                // 作品收藏夹条目只有番号，星级 / 时长 / 发行时间 / 自定义标签得另外拿：
+                // 用 favorite_group_id 过滤拉一份完整 JavDto 按番号建索引。
+                // 女优收藏夹条目缺年龄 / 身高 / 三围 / 罩杯，同样拉一份完整 IdolDto 建索引，
+                // 供信息栏两行数据与女优维度排序使用。
+                val idolMeta: Map<Long, IdolDto> = if (kind == FavoriteRepository.KIND_IDOL) {
+                    runCatching {
+                        container.videoRepository
+                            .listJavIdols(limit = 500, offset = 0, favoriteGroupId = groupId)
+                            .items
+                            .associateBy { it.id }
+                    }.getOrDefault(emptyMap())
+                } else {
+                    emptyMap()
+                }
+                val ratings: Map<String, FavRating> = if (kind == FavoriteRepository.KIND_IDOL) {
+                    emptyMap()
                 } else {
                     runCatching {
                         container.videoRepository
@@ -236,11 +279,17 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                                     watchedMs = it.watchedMs,
                                     durationMin = it.durationMin,
                                     releaseUnix = it.releaseUnix,
+                                    customTags = TagColorRules.customTagNames(it.tags),
                                 )
                             }
                     }.getOrDefault(emptyMap())
                 }
-                uiState = uiState.copy(items = items, ratings = ratings, loading = false)
+                uiState = uiState.copy(
+                    items = items,
+                    ratings = ratings,
+                    idolMeta = idolMeta,
+                    loading = false,
+                )
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
             } catch (e: Exception) {
@@ -253,6 +302,10 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 服务端统计的累计观看时长，给封面右上角的「已观看」图标用 */
     fun watchedMsOf(code: String): Long = uiState.ratings[code.uppercase()]?.watchedMs ?: 0L
+
+    /** 封面左下角番号正上方要堆叠显示的自定义标签（作品收藏夹条目） */
+    fun customTagsOf(code: String): List<String> =
+        uiState.ratings[code.uppercase()]?.customTags.orEmpty()
 
     /** 改喜爱度：写回服务端后同步本地映射（收藏夹卡片左上角那颗星） */
     fun updateRating(code: String, rating: Double) {
