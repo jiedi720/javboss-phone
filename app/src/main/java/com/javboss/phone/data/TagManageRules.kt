@@ -25,6 +25,12 @@ object TagManageRules {
 
     fun itemPath(scope: TagScope, id: Long): String = "${listPath(scope)}/$id"
 
+    /** 分类列表端点（Web 端 `cn()` / `Br()` 各自 GET，返回分类数组） */
+    fun categoryListPath(scope: TagScope): String = when (scope) {
+        TagScope.JAV -> "jav/tag-categories"
+        TagScope.VIDEO -> "tags/categories"
+    }
+
     /** 详情页点击标签同款标题：`标签：XXX` */
     fun filterTitle(name: String): String = "标签：${name.trim()}"
 

@@ -40,13 +40,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.TagGroupRules
 import com.javboss.phone.data.TagManageRules
 import com.javboss.phone.data.TagScope
+import com.javboss.phone.data.api.dto.TagCategoryDto
 import com.javboss.phone.data.api.dto.TagDto
 import kotlinx.coroutines.launch
 
 /**
- * 服务端标签管理弹层（v0.3.62）。
+ * 服务端标签管理弹层（v0.3.62，v0.3.63 按服务端分类分组显示）。
  *
  * Web 端 JAV 侧 / 视频侧各有一个「标签」按钮，打开的都是标签管理：
  *  - JAV  ：GET/POST `jav/tags`、PATCH/DELETE `jav/tags/{id}`（[TagScope.JAV]）
@@ -54,8 +56,12 @@ import kotlinx.coroutines.launch
  * 两套数据是独立的两张表，不能混用，所以端点全部按 [scope] 分派。
  *
  * 提供「新建 / 重命名 / 删除」三项编辑能力（对齐 Web 端标签管理面板 `mq`），
- * 点标签本身则回调 [onApplyFilter] 按标签筛选。分类 / 自动整理属于 Web 端的额外能力，
- * 本轮不实现（不要过度发挥）。
+ * 点标签本身则回调 [onApplyFilter] 按标签筛选。
+ *
+ * v0.3.63：按服务端的标签分类分组显示（[TagGroupRules] 对齐 Web 端 `Ge` / `Ze`）：
+ * 分类列表 GET `/jav/tag-categories` 或 `/tags/categories`，按分类 sort_order 排序，
+ * 无分类的标签归「默认分类」。分类的增删改、批量调整标签分类属于 Web 端额外能力，
+ * 本轮只做分组显示，不实现（不要过度发挥）。
  */
 @Composable
 fun TagManageDialog(
@@ -69,6 +75,7 @@ fun TagManageDialog(
     val coroutineScope = rememberCoroutineScope()
 
     var tags by remember { mutableStateOf<List<TagDto>>(emptyList()) }
+    var categories by remember { mutableStateOf<List<TagCategoryDto>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -84,7 +91,13 @@ fun TagManageDialog(
             tags = when (scope) {
                 TagScope.JAV -> repository.listJavTags()
                 TagScope.VIDEO -> repository.listVideoTags()
-            }.sortedByDescending { it.count }
+            }
+            // 分类列表失败不阻断标签：降级为「默认分类」+ 按标签自带分类名分组
+            categories = try {
+                repository.listTagCategories(scope)
+            } catch (e: Exception) {
+                emptyList()
+            }
         } catch (e: Exception) {
             error = e.message ?: "加载标签失败"
         } finally {
@@ -92,6 +105,8 @@ fun TagManageDialog(
         }
     }
     LaunchedEffect(scope) { reload() }
+
+    val groups = remember(tags, categories) { TagGroupRules.groupTags(tags, categories) }
 
     val create: () -> Unit = {
         val name = newName.trim()
@@ -161,6 +176,60 @@ fun TagManageDialog(
         }
     }
 
+    // 单个标签行的三种状态（普通 / 行内重命名 / 删除确认）在各分组内复用
+    val tagEntry: @Composable (TagDto) -> Unit = { tag ->
+        when {
+            renameTarget?.id == tag.id -> {
+                // 行内重命名，不用嵌套 Dialog（避免两个弹层叠在一起）
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it; error = null },
+                        singleLine = true,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { renameTarget = null; renameDraft = "" }) {
+                        Text("取消")
+                    }
+                    TextButton(
+                        onClick = rename,
+                        enabled = TagManageRules.validName(renameDraft) && !busy,
+                    ) { Text("保存") }
+                }
+            }
+            deleteTarget?.id == tag.id -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "确定删除「${tag.name}」？",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+                    TextButton(onClick = delete, enabled = !busy) { Text("删除") }
+                }
+            }
+            else -> {
+                TagManageRow(
+                    tag = tag,
+                    enabled = !busy,
+                    onFilter = { onApplyFilter(tag); onDismiss() },
+                    onRename = {
+                        deleteTarget = null
+                        renameTarget = tag
+                        renameDraft = tag.name
+                        error = null
+                    },
+                    onDelete = {
+                        renameTarget = null
+                        deleteTarget = tag
+                        error = null
+                    },
+                )
+            }
+        }
+    }
+
     AlertDialog(
         modifier = Modifier.adaptiveDialogWidth(),
         onDismissRequest = onDismiss,
@@ -174,9 +243,9 @@ fun TagManageDialog(
             ) {
                 Text(
                     if (scope == TagScope.JAV) {
-                        "管理 JAV 标签：点击标签按该标签筛选作品；可新建、重命名、删除。"
+                        "管理 JAV 标签：按服务端分类分组显示；点击标签按该标签筛选作品；可新建、重命名、删除。"
                     } else {
-                        "管理视频标签：点击标签按该标签筛选视频；可新建、重命名、删除。"
+                        "管理视频标签：按服务端分类分组显示；点击标签按该标签筛选视频；可新建、重命名、删除。"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -217,57 +286,17 @@ fun TagManageDialog(
                 } else if (tags.isEmpty()) {
                     Text("暂无标签", style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        tags.forEach { tag ->
-                            when {
-                                renameTarget?.id == tag.id -> {
-                                    // 行内重命名，不用嵌套 Dialog（避免两个弹层叠在一起）
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        OutlinedTextField(
-                                            value = renameDraft,
-                                            onValueChange = { renameDraft = it; error = null },
-                                            singleLine = true,
-                                            enabled = !busy,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        TextButton(onClick = { renameTarget = null; renameDraft = "" }) {
-                                            Text("取消")
-                                        }
-                                        TextButton(
-                                            onClick = rename,
-                                            enabled = TagManageRules.validName(renameDraft) && !busy,
-                                        ) { Text("保存") }
-                                    }
-                                }
-                                deleteTarget?.id == tag.id -> {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            "确定删除「${tag.name}」？",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        TextButton(onClick = { deleteTarget = null }) { Text("取消") }
-                                        TextButton(onClick = delete, enabled = !busy) { Text("删除") }
-                                    }
-                                }
-                                else -> {
-                                    TagManageRow(
-                                        tag = tag,
-                                        enabled = !busy,
-                                        onFilter = { onApplyFilter(tag); onDismiss() },
-                                        onRename = {
-                                            deleteTarget = null
-                                            renameTarget = tag
-                                            renameDraft = tag.name
-                                            error = null
-                                        },
-                                        onDelete = {
-                                            renameTarget = null
-                                            deleteTarget = tag
-                                            error = null
-                                        },
-                                    )
-                                }
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        groups.forEach { group ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                // 分组标题：与 Web 端一致，空分类显示「默认分类」
+                                Text(
+                                    text = group.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 2.dp, top = 2.dp),
+                                )
+                                group.tags.forEach { tag -> tagEntry(tag) }
                             }
                         }
                     }

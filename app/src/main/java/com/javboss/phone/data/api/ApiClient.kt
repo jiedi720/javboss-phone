@@ -30,6 +30,7 @@ import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
 import com.javboss.phone.data.api.dto.StreamsResponse
 import com.javboss.phone.data.api.dto.StudioListResponse
+import com.javboss.phone.data.api.dto.TagCategoryDto
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
@@ -190,12 +191,20 @@ interface JavBossApi {
     @GET("jav/tags")
     suspend fun listJavTags(): List<TagDto>
 
+    /** 标签分类（服务端分组）：JAV 侧 `/jav/tag-categories`，返回分类数组 */
+    @GET("jav/tag-categories")
+    suspend fun listJavTagCategories(): List<TagCategoryDto>
+
     /**
      * 视频标签（与 /jav/tags 是两套独立数据）：GET /tags 列出可勾选标签，
      * POST /tags 新建，POST /videos/tags/replace 全量替换某个视频的标签。
      */
     @GET("tags")
     suspend fun listVideoTags(@Query("hide_jav") hideJav: Int? = null): List<TagDto>
+
+    /** 视频标签分类：GET `/tags/categories`，返回分类数组 */
+    @GET("tags/categories")
+    suspend fun listVideoTagCategories(): List<TagCategoryDto>
 
     @POST("tags")
     suspend fun createVideoTag(@Body body: TagNameRequest): TagDto

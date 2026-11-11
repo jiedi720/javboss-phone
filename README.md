@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.62--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.63--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.62-modified**（versionCode 66） |
+| 当前版本 | **v0.3.63-modified**（versionCode 67） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -736,6 +736,28 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 单测：新增 `TagManageRulesTest` 7 例（两套端点不混用、标题、tags 查询拼装、
     空名校验、`customTags` 保留 id / 去重）；全量单测 161 例 / 21 suites。
 
+- **标签编辑界面按服务端分类分组显示（v0.3.63）**：
+  - 用户反馈 1 项：标签的编辑界面要按照服务端的分组显示。
+  - 反查 Web bundle 确认服务端分组契约：`GET /jav/tag-categories`（JAV）与
+    `GET /tags/categories`（视频）各自返回**分类数组**，分类对象含
+    `id / name / sort_order / is_default`；标签对象含 `category`（分类名字符串）
+    与 `category_id`。Web 端按 `String(t?.category||"").trim()` 分组，空分类
+    显示「默认分类」，分组顺序按分类的 `sort_order`。
+  - `TagDto` 补 `category` / `category_id`，新增 `TagCategoryDto`；`ApiClient`
+    补两套分类列表端点，`VideoRepository.listTagCategories(scope)` 按 scope 分派，
+    `TagManageRules.categoryListPath()` 保证两张表不混用。
+  - 新增纯规则 `TagGroupRules`（对齐 Web 端 `Xe` / `Ge` / `Ze` 三个 useMemo）：
+    `sortTags()` count 降序 → 名字 → id；`orderedCategories()` 按
+    `sort_order` / `id` 排序并补一个合成「默认分类」（`sort_order` 取未占用的
+    最小非负整数）；`groupTags()` 按分类名分组、按服务端顺序排列、未知分类排最后。
+  - `TagManageDialog` 改为分组标题 + 组内标签行的两级列表；分类列表请求失败时
+    降级为「默认分类」+ 标签自带分类名分组，不阻断标签编辑。新建 / 重命名 /
+    删除 / 点击筛选全部保留；分类增删改与批量调整标签分类属于 Web 端额外能力，
+    本轮只做分组显示。
+  - 单测：新增 `TagGroupRulesTest` 9 例（分类端点分流、标签排序、合成默认分类
+    sort_order、同序按 id、空分类归默认、服务端顺序、未知分类排最后、默认分类
+    占位、组内标签顺序）；全量单测 170 例 / 22 suites。
+
 </details>
 
 <details>
@@ -744,8 +766,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **49 个提交**，**74 个文件 / +12,344 / −783 行**
-（新增 40 个文件，其中 21 个是新的 JVM 单测文件，合计 21 suites / 161 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **50 个提交**，**76 个文件 / +12,632 / −782 行**
+（新增 42 个文件，其中 21 个是新的 JVM 单测文件，合计 22 suites / 170 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -753,11 +775,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.62-modified / versionCode 66 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.63-modified / versionCode 67 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **161 例 / 21 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选等纯规则都有回归测试 |
+| 单测 | 无 | **170 例 / 22 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

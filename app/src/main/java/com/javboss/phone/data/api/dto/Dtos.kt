@@ -256,9 +256,22 @@ data class TagDto(
      * （Web 标签 chip 的 key 里就有 `e.provider||0`）。缺省 0 兼容老服务端。
      */
     val provider: Int = 0,
+    /** 服务端标签分类名：Web 端按 `String(t?.category||"").trim()` 分组，空串＝默认分类 */
+    val category: String = "",
+    /** 服务端标签分类 id；0 / 缺失表示默认分类 */
+    @SerialName("category_id") val categoryId: Long = 0,
 ) {
     val isCustom: Boolean get() = provider == 3
 }
+
+/** 标签分类：GET `/jav/tag-categories` 与 GET `/tags/categories` 都返回分类数组。 */
+@Serializable
+data class TagCategoryDto(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("sort_order") val sortOrder: Int = 0,
+    @SerialName("is_default") val isDefault: Boolean = false,
+)
 
 @Serializable
 data class StreamsResponse(

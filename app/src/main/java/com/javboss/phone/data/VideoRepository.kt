@@ -13,6 +13,7 @@ import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
 import com.javboss.phone.data.api.dto.StreamsResponse
 import com.javboss.phone.data.api.dto.StudioListResponse
+import com.javboss.phone.data.api.dto.TagCategoryDto
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.TagNameRequest
 import com.javboss.phone.data.api.dto.VideoDto
@@ -184,6 +185,13 @@ class VideoRepository(private val apiClient: ApiClient) {
 
     suspend fun listJavTags(): List<TagDto> =
         apiClient.api().listJavTags()
+
+    /** 标签管理弹层按服务端分类分组显示时加载分类列表；两套表各自独立 */
+    suspend fun listTagCategories(scope: TagScope): List<TagCategoryDto> =
+        when (scope) {
+            TagScope.JAV -> apiClient.api().listJavTagCategories()
+            TagScope.VIDEO -> apiClient.api().listVideoTagCategories()
+        }
 
     suspend fun listJavIdols(
         limit: Int,
