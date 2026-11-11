@@ -1061,8 +1061,9 @@ fun WorkCard(
                 // 已观看徽标移到收藏星标的竖直正下方（top = 6 + 24 + 6 = 36dp，end 同为 6dp）
                 WatchedBadge(watchedMs, belowFavorite = true)
                 if (code.isNotBlank()) {
-                    // v0.3.68：番号加半透明黑底胶囊（背景图案复杂时也能看清），字号由
-                    // labelSmall(11sp) 提到 labelMedium(12sp)，底部渐变保留给上方标签用
+                    // v0.3.69：番号黑底胶囊**贴封面左下角**（左 / 底都不留空，也不与上方标签
+                    // 的左缩进对齐），只留右上圆角；上方 8dp 仍是渐变过渡区，不与标签贴死。
+                    // 字号 labelSmall(11sp) → labelMedium(12sp)。
                     Box(
                         Modifier
                             .align(Alignment.BottomStart)
@@ -1079,9 +1080,12 @@ fun WorkCard(
                             color = Color.White,
                             maxLines = 1,
                             modifier = Modifier
-                                .padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 3.dp)
-                                .background(Color(0xB3000000), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                                .padding(top = 8.dp)
+                                .background(
+                                    Color(0xB3000000),
+                                    RoundedCornerShape(topEnd = 4.dp),
+                                )
+                                .padding(horizontal = 6.dp, vertical = 1.dp),
                         )
                     }
                 }

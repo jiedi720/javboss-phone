@@ -23,11 +23,14 @@ object ImagePagerRules {
     /** 阈值上限：宽窗口 / 横屏不允许因为容器变宽而要拖更远 */
     const val MAX_SWIPE_DP = 84f
 
-    /** 翻出动画时长（当前图滑出屏幕） */
-    const val PAGE_OUT_MS = 180
+    /**
+     * 翻出动画时长（当前图滑出屏幕）。
+     * v0.3.69 从 180ms 收到 110ms：拖动本身已经跟手，松手后再慢悠悠滑出会显得拖沓。
+     */
+    const val PAGE_OUT_MS = 110
 
-    /** 翻入动画时长（新图从反方向滑到正中） */
-    const val PAGE_IN_MS = 220
+    /** 翻入动画时长（新图从反方向滑到正中）。v0.3.69 从 220ms 收到 140ms */
+    const val PAGE_IN_MS = 140
 
     /**
      * 翻页所需的最小横向拖动距离（dp）。

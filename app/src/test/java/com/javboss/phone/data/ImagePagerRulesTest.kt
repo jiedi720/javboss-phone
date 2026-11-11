@@ -64,10 +64,16 @@ class ImagePagerRulesTest {
     }
 
     @Test
-    fun `page animation durations are positive and short`() {
-        assertTrue(ImagePagerRules.PAGE_OUT_MS > 0)
-        assertTrue(ImagePagerRules.PAGE_IN_MS > 0)
-        assertTrue(ImagePagerRules.PAGE_OUT_MS + ImagePagerRules.PAGE_IN_MS <= 600)
+    fun `page animation stays snappy`() {
+        // v0.3.69：用户要求翻页更快，两段动画合计不得超过 300ms
+        assertTrue(ImagePagerRules.PAGE_OUT_MS >= 80)
+        assertTrue(ImagePagerRules.PAGE_IN_MS >= 80)
+        assertTrue(ImagePagerRules.PAGE_OUT_MS <= 180)
+        assertTrue(ImagePagerRules.PAGE_IN_MS <= 200)
+        assertTrue(
+            "两段动画合计 ${ImagePagerRules.PAGE_OUT_MS + ImagePagerRules.PAGE_IN_MS}ms 太慢",
+            ImagePagerRules.PAGE_OUT_MS + ImagePagerRules.PAGE_IN_MS <= 300,
+        )
     }
 
     // ---------- 松手判定 ----------

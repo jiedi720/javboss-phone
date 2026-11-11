@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.68--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.69--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.68-modified**（versionCode 72） |
+| 当前版本 | **v0.3.69-modified**（versionCode 73） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -872,6 +872,15 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 单测新增 `ImagePagerRulesTest` 15 例 + `WindowSizeRulesTest` 4 例（左栏宽度下限 / 上限 /
     单调性、横版判定）；全量单测 **209 例 / 25 suites**。
 
+- **翻页动画提速 + 封面番号贴角（v0.3.69）**：
+  - 用户反馈 2 项：① 样品图翻页动画速度再快一点；② 番号半透明黑底要**贴封面左下角**，
+    不必与上方标签左对齐、也不必与封面边缘留空。
+  - 翻页动画 `PAGE_OUT_MS` 180 → **110ms**、`PAGE_IN_MS` 220 → **140ms**（两段合计 250ms）；
+    单测从「合计 ≤ 600ms」收紧为「合计 ≤ 300ms」，防止以后又被调慢。
+  - 番号黑底去掉左 / 下内边距，改为**贴死封面左边与下边**（只留右上 4dp 圆角），
+    与标签的 6dp 左缩进错开；上方仍留 8dp 渐变过渡，不与标签贴死。
+  - 全量单测 **209 例 / 25 suites**。
+
 </details>
 
 <details>
@@ -880,7 +889,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **56 个提交**，**82 个文件 / +14,369 / −782 行**
+本仓库从 `b812953`（2026-11-05）起增加 **57 个提交**，**82 个文件 / +14,391 / −782 行**
 （新增 48 个文件，其中 24 个是新的 JVM 单测文件，合计 25 suites / 209 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
@@ -889,7 +898,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.68-modified / versionCode 72 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.69-modified / versionCode 73 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
