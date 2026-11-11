@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -30,6 +31,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.FavoriteRepository
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
@@ -60,6 +63,8 @@ import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
+import com.javboss.phone.ui.components.FavoriteTarget
+import com.javboss.phone.ui.components.IdolCard
 import com.javboss.phone.ui.components.WorkCard
 import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.ui.components.adaptiveSearchWidth
@@ -69,11 +74,11 @@ import com.javboss.phone.ui.components.rememberGridColumns
 import com.javboss.phone.ui.components.rememberGridSpacing
 import com.javboss.phone.ui.components.rememberWindowWidthDp
 
-/** 收藏夹 tab：作品收藏夹列表，支持新建/重命名/删除 */
+/** 收藏夹 tab：作品 / 女优收藏夹列表，支持切换、新建/重命名/删除 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FavoritesScreen(
-    onGroupClick: (groupId: Long, name: String) -> Unit,
+    onGroupClick: (groupId: Long, name: String, kind: String) -> Unit,
     onSessionExpired: () -> Unit,
     viewModel: FavoritesViewModel = viewModel(),
 ) {
@@ -100,69 +105,97 @@ fun FavoritesScreen(
             }
         },
     ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = state.loading,
-            onRefresh = viewModel::refresh,
-            modifier = Modifier
+        Column(
+            Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when {
-                state.groups.isEmpty() && state.loading -> CenterMessage("加载中…")
-                state.groups.isEmpty() && state.error != null -> CenterMessage(state.error)
-                state.groups.isEmpty() -> CenterMessage("还没有收藏夹\n点右下角新建一个")
-                else -> LazyVerticalGrid(
-                    // 宽窗口把「收藏夹」文件夹卡排成两列，窄窗口仍是原来的单列
-                    columns = GridCells.Fixed(
-                        WindowSizeRules.settingsColumns(rememberWindowWidthDp())
-                    ),
-                    contentPadding = PaddingValues(rememberAdaptivePadding()),
-                    horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
-                    verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(state.groups, key = { it.id }) { group ->
-                        var menuOpen by remember { mutableStateOf(false) }
-                        Box {
-                            Card(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = { onGroupClick(group.id, group.name) },
-                                        onLongClick = { menuOpen = true },
-                                    ),
-                            ) {
-                                Row(
-                                    Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
+            // 服务端按实体类型分端点：作品 / 女优收藏夹
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                FilterChip(
+                    selected = state.kind == FavoriteRepository.KIND_JAV,
+                    onClick = { viewModel.setKind(FavoriteRepository.KIND_JAV) },
+                    label = { Text("作品收藏夹") },
+                )
+                Spacer(Modifier.width(8.dp))
+                FilterChip(
+                    selected = state.kind == FavoriteRepository.KIND_IDOL,
+                    onClick = { viewModel.setKind(FavoriteRepository.KIND_IDOL) },
+                    label = { Text("女优收藏夹") },
+                )
+            }
+            PullToRefreshBox(
+                isRefreshing = state.loading,
+                onRefresh = viewModel::refresh,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
+            ) {
+                when {
+                    state.groups.isEmpty() && state.loading -> CenterMessage("加载中…")
+                    state.groups.isEmpty() && state.error != null -> CenterMessage(state.error)
+                    state.groups.isEmpty() -> CenterMessage("还没有收藏夹\n点右下角新建一个")
+                    else -> LazyVerticalGrid(
+                        // 宽窗口把「收藏夹」文件夹卡排成两列，窄窗口仍是原来的单列
+                        columns = GridCells.Fixed(
+                            WindowSizeRules.settingsColumns(rememberWindowWidthDp())
+                        ),
+                        contentPadding = PaddingValues(rememberAdaptivePadding()),
+                        horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                        verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        items(state.groups, key = { it.id }) { group ->
+                            var menuOpen by remember { mutableStateOf(false) }
+                            Box {
+                                Card(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = { onGroupClick(group.id, group.name, state.kind) },
+                                            onLongClick = { menuOpen = true },
+                                        ),
                                 ) {
-                                    Icon(Icons.Filled.Folder, contentDescription = null)
-                                    Spacer(Modifier.padding(horizontal = 8.dp))
-                                    Column {
-                                        Text(group.name, style = MaterialTheme.typography.titleSmall)
-                                        Text(
-                                            "${group.count} 部作品",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                    Row(
+                                        Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Filled.Folder, contentDescription = null)
+                                        Spacer(Modifier.padding(horizontal = 8.dp))
+                                        Column {
+                                            Text(group.name, style = MaterialTheme.typography.titleSmall)
+                                            Text(
+                                                if (state.kind == FavoriteRepository.KIND_IDOL) {
+                                                    "${group.count} 位女优"
+                                                } else {
+                                                    "${group.count} 部作品"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("重命名") },
-                                    onClick = {
-                                        menuOpen = false
-                                        renameTarget = group
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("删除") },
-                                    onClick = {
-                                        menuOpen = false
-                                        deleteTarget = group
-                                    },
-                                )
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("重命名") },
+                                        onClick = {
+                                            menuOpen = false
+                                            renameTarget = group
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("删除") },
+                                        onClick = {
+                                            menuOpen = false
+                                            deleteTarget = group
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -198,7 +231,15 @@ fun FavoritesScreen(
             modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { deleteTarget = null },
             title = { Text("删除收藏夹") },
-            text = { Text("确定删除「${group.name}」吗？收藏的作品不会被删除。") },
+            text = {
+                Text(
+                    if (state.kind == FavoriteRepository.KIND_IDOL) {
+                        "确定删除「${group.name}」吗？收藏的女优不会被删除。"
+                    } else {
+                        "确定删除「${group.name}」吗？收藏的作品不会被删除。"
+                    }
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     deleteTarget = null
@@ -254,6 +295,9 @@ fun FavGroupScreen(
     onPlay: (videoId: Long, code: String?) -> Unit,
     onBack: () -> Unit,
     onSessionExpired: () -> Unit,
+    /** 收藏夹实体类型：jav（作品网格）/ idol（女优网格） */
+    kind: String = FavoriteRepository.KIND_JAV,
+    onOpenIdol: (idolId: Long, name: String) -> Unit = { _, _ -> },
     viewModel: FavGroupViewModel = viewModel(),
 ) {
     val state = viewModel.uiState
@@ -263,7 +307,7 @@ fun FavGroupScreen(
     var showSort by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(groupId) { viewModel.load(groupId) }
+    LaunchedEffect(groupId, kind) { viewModel.load(groupId, kind) }
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) onSessionExpired()
     }
@@ -304,7 +348,11 @@ fun FavGroupScreen(
                     OutlinedTextField(
                         value = state.search,
                         onValueChange = viewModel::onSearchChange,
-                        placeholder = { Text("搜索番号 / 标题") },
+                        placeholder = {
+                            Text(
+                                if (kind == FavoriteRepository.KIND_IDOL) "搜索女优" else "搜索番号 / 标题"
+                            )
+                        },
                         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier
@@ -326,7 +374,13 @@ fun FavGroupScreen(
             when {
                 state.items.isEmpty() && state.loading -> CenterMessage("加载中…")
                 state.items.isEmpty() && state.error != null -> CenterMessage(state.error)
-                state.noMatch -> CenterMessage("没有匹配「${state.search.trim()}」的作品")
+                state.noMatch -> CenterMessage(
+                    if (kind == FavoriteRepository.KIND_IDOL) {
+                        "没有匹配「${state.search.trim()}」的女优"
+                    } else {
+                        "没有匹配「${state.search.trim()}」的作品"
+                    }
+                )
                 state.items.isEmpty() -> CenterMessage("收藏夹是空的")
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(rememberGridColumns()),
@@ -336,23 +390,45 @@ fun FavGroupScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(shown, key = { it.id }) { item ->
-                        WorkCard(
-                            coverUrl = viewModel.coverUrl(item.code),
-                            code = item.code,
-                            title = item.title,
-                            onClick = {
-                                viewModel.openItem(item) { videoId, code ->
-                                    onOpenDetail(videoId, code)
-                                }
-                            },
-                            onLongClick = { removeTarget = item },
-                            rating = viewModel.ratingOf(item.code),
-                            onRatingClick = { ratingTarget = item },
-                            watchedMs = viewModel.watchedMsOf(item.code),
-                            onPlay = {
-                                viewModel.playItem(item) { videoId -> onPlay(videoId, item.code) }
-                            },
-                        )
+                        if (kind == FavoriteRepository.KIND_IDOL) {
+                            IdolCard(
+                                // 女优卡封面用 cover_code（与 Web 端女优卡一致）；
+                                // 服务端没给时退回 sample_code 的作品封面，避免整张空白
+                                coverUrl = viewModel.coverUrl(item.coverCode.ifBlank { item.sampleCode }),
+                                name = item.name,
+                                secondaryName = item.japaneseName.ifBlank { item.romanName },
+                                workCount = item.workCount.toInt(),
+                                infoRows = listOf("作品 ${item.workCount}"),
+                                onClick = { onOpenIdol(item.id, item.name) },
+                                onLongClick = { removeTarget = item },
+                                favoriteCount = 1,
+                                favoriteTarget = FavoriteTarget.idol(item.id),
+                            )
+                        } else {
+                            WorkCard(
+                                coverUrl = viewModel.coverUrl(item.code),
+                                code = item.code,
+                                title = item.title,
+                                onClick = {
+                                    viewModel.openItem(item) { videoId, code ->
+                                        onOpenDetail(videoId, code)
+                                    }
+                                },
+                                onLongClick = { removeTarget = item },
+                                rating = viewModel.ratingOf(item.code),
+                                onRatingClick = { ratingTarget = item },
+                                watchedMs = viewModel.watchedMsOf(item.code),
+                                favoriteCount = 1,
+                                // 收藏夹条目只有番号，星级映射里的 javId 才是 /jav/items/{id} 需要的 id
+                                favoriteTarget = state.ratings[item.code.uppercase()]
+                                    ?.javId
+                                    ?.takeIf { it > 0 }
+                                    ?.let { FavoriteTarget.jav(it) },
+                                onPlay = {
+                                    viewModel.playItem(item) { videoId -> onPlay(videoId, item.code) }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -376,11 +452,15 @@ fun FavGroupScreen(
             modifier = Modifier.adaptiveDialogWidth(),
             onDismissRequest = { removeTarget = null },
             title = { Text("移出收藏夹") },
-            text = { Text("将「${item.code}」从本收藏夹移除？") },
+            text = {
+                Text(
+                    "将「${if (kind == FavoriteRepository.KIND_IDOL) item.name else item.code}」从本收藏夹移除？"
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     removeTarget = null
-                    viewModel.removeItem(groupId, item)
+                    viewModel.removeItem(groupId, item, kind)
                 }) { Text("移除", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {

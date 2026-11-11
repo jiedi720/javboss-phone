@@ -359,6 +359,8 @@ data class FavoriteItemDto(
     val title: String = "",
     @SerialName("title_en") val titleEn: String = "",
     @SerialName("work_count") val workCount: Long = 0,
+    /** 女优封面番号：Web 端女优卡用 cover_code 拼 `/jav/{cover_code}/cover` */
+    @SerialName("cover_code") val coverCode: String = "",
     @SerialName("sample_code") val sampleCode: String = "",
 )
 

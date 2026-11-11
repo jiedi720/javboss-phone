@@ -32,6 +32,7 @@ import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoPickDialog
+import com.javboss.phone.ui.components.FavoriteTarget
 import com.javboss.phone.ui.components.WorkCard
 import com.javboss.phone.ui.components.rememberAdaptivePadding
 import com.javboss.phone.ui.components.rememberGridColumns
@@ -126,6 +127,7 @@ fun JavListScreen(
                             onClick = { onWorkClick(jav) },
                             cropPosition = jav.coverCropPosition,
                             favoriteCount = jav.favoriteCount,
+                            favoriteTarget = FavoriteTarget.jav(jav.id),
                             watchedMs = jav.watchedMs,
                             onPlay = playAction,
                         )

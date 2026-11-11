@@ -225,6 +225,57 @@ interface JavBossApi {
     @PUT("jav/items/{id}/favorite-groups")
     suspend fun replaceFavoriteGroups(@Path("id") id: Long, @Body body: ReplaceFavoriteGroupsRequest)
 
+    // ---------- 收藏夹（按实体类型通用） ----------
+    // Web 端契约（/tmp/wb.js 反查）：
+    //   /jav/{kind}-favorite-groups          kind = jav | idol | studio | series
+    //   /jav/{entity}/{id}/favorite-groups  entity = items | idols | studios | series
+    // 女优收藏夹走 kind=idol、entity=idols；作品走 kind=jav、entity=items。
+
+    @GET("jav/{kind}-favorite-groups")
+    suspend fun listFavoriteGroupsOf(@Path("kind") kind: String): FavoriteGroupListResponse
+
+    @POST("jav/{kind}-favorite-groups")
+    suspend fun createFavoriteGroupOf(
+        @Path("kind") kind: String,
+        @Body body: FavoriteGroupNameRequest,
+    ): FavoriteGroupDto
+
+    @PATCH("jav/{kind}-favorite-groups/{id}")
+    suspend fun renameFavoriteGroupOf(
+        @Path("kind") kind: String,
+        @Path("id") id: Long,
+        @Body body: FavoriteGroupNameRequest,
+    )
+
+    @DELETE("jav/{kind}-favorite-groups/{id}")
+    suspend fun deleteFavoriteGroupOf(@Path("kind") kind: String, @Path("id") id: Long)
+
+    @GET("jav/{kind}-favorite-groups/{id}/items")
+    suspend fun listFavoriteGroupItemsOf(
+        @Path("kind") kind: String,
+        @Path("id") id: Long,
+    ): FavoriteItemListResponse
+
+    @POST("jav/{kind}-favorite-groups/{id}/items/remove")
+    suspend fun removeFavoriteGroupItemsOf(
+        @Path("kind") kind: String,
+        @Path("id") id: Long,
+        @Body body: RemoveFavoriteItemsRequest,
+    )
+
+    @GET("jav/{entity}/{id}/favorite-groups")
+    suspend fun listSelectedGroupsOf(
+        @Path("entity") entity: String,
+        @Path("id") id: Long,
+    ): SelectedFavoriteGroupsResponse
+
+    @PUT("jav/{entity}/{id}/favorite-groups")
+    suspend fun replaceGroupsOf(
+        @Path("entity") entity: String,
+        @Path("id") id: Long,
+        @Body body: ReplaceFavoriteGroupsRequest,
+    )
+
     // ---------- 标签管理 / 作品编辑 / 外部链接 ----------
 
     @POST("jav/tags")

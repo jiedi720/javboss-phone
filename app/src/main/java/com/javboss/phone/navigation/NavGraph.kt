@@ -73,7 +73,7 @@ object Routes {
     const val PLAYER = "player/{videoId}?code={code}"
     const val JAVLIST =
         "javlist?title={title}&idolIds={idolIds}&tagIds={tagIds}&studioId={studioId}&seriesId={seriesId}"
-    const val FAVGROUP = "favgroup/{groupId}?name={name}"
+    const val FAVGROUP = "favgroup/{groupId}?name={name}&kind={kind}"
 
     /** videoId <= 0 表示纯元数据详情（作品没有关联视频），此时必须带 code */
     fun detail(videoId: Long, code: String? = null) =
@@ -94,8 +94,8 @@ object Routes {
     ) = "javlist?title=${android.net.Uri.encode(title)}" +
         "&idolIds=$idolIds&tagIds=$tagIds&studioId=$studioId&seriesId=$seriesId"
 
-    fun favGroup(groupId: Long, name: String) =
-        "favgroup/$groupId?name=${android.net.Uri.encode(name)}"
+    fun favGroup(groupId: Long, name: String, kind: String = "jav") =
+        "favgroup/$groupId?name=${android.net.Uri.encode(name)}&kind=$kind"
 }
 
 @Composable
@@ -166,7 +166,9 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 onOpenJavList = { title, idolIds, tagIds, studioId, seriesId ->
                     navController.navigate(Routes.javList(title, idolIds, tagIds, studioId, seriesId))
                 },
-                onFavGroupClick = { id, name -> navController.navigate(Routes.favGroup(id, name)) },
+                onFavGroupClick = { id, name, kind ->
+                    navController.navigate(Routes.favGroup(id, name, kind))
+                },
                 onSessionExpired = goLogin,
                 onLogout = doLogout,
             )
@@ -223,6 +225,7 @@ fun JavBossNavGraph(startWithSession: Boolean) {
             arguments = listOf(
                 navArgument("groupId") { type = NavType.LongType },
                 navArgument("name") { type = NavType.StringType; defaultValue = "" },
+                navArgument("kind") { type = NavType.StringType; defaultValue = "jav" },
             ),
         ) { entry ->
             val groupId = entry.arguments?.getLong("groupId") ?: return@composable
@@ -233,6 +236,10 @@ fun JavBossNavGraph(startWithSession: Boolean) {
                 onPlay = { videoId, code -> navController.navigate(Routes.player(videoId, code)) },
                 onBack = { navController.popBackStack() },
                 onSessionExpired = goLogin,
+                kind = entry.arguments?.getString("kind").orEmpty().ifBlank { "jav" },
+                onOpenIdol = { idolId, name ->
+                    navController.navigate(Routes.javList("演员：$name", idolIds = idolId.toString()))
+                },
             )
         }
         composable(

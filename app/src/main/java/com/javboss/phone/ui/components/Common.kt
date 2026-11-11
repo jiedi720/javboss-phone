@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -592,14 +594,22 @@ fun IdolCard(
     workCount: Int,
     infoRows: List<String>,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     cropLeft: Double? = 0.47,
-    /** 服务端收藏次数（jav_idol.favorite_count）；> 0 才在封面右上角显示实心收藏爱心 */
+    /** 服务端收藏次数（jav_idol.favorite_count）；> 0 显示黄底黑色实心五角星 */
     favoriteCount: Int = 0,
+    /** 非 null 时右上角星标可点击，弹出悬浮窗修改女优收藏夹 */
+    favoriteTarget: FavoriteTarget? = null,
 ) {
     var imageSize by remember(coverUrl) { mutableStateOf<Pair<Int, Int>?>(null) }
     val masked = LocalCoverMask.current.masked
-    Card(modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onClick)) {
+    Card(
+        modifier = modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick ?: onClick,
+        ),
+    ) {
         Column {
             BoxWithConstraints(
                 Modifier
@@ -639,8 +649,8 @@ fun IdolCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
-                // 服务端收藏状态：女优卡封面右上角，与 Web 端「加入女优收藏夹」同源
-                FavoriteBadge(favoriteCount)
+                // 服务端收藏状态：位置固定右上角，点击弹出悬浮窗修改女优收藏夹
+                FavoriteBadge(favoriteCount, favoriteTarget)
             }
             Column(Modifier.padding(8.dp)) {
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -749,37 +759,50 @@ private fun CoverPlayButton(onClick: () -> Unit) {
 }
 
 /**
- * 封面右上角的「服务端收藏状态」徽标：对齐 Web 端 JAV / 女优 / 片商 / 系列四类卡
- * 右上角那颗圆形爱心（title「加入作品收藏夹 / 加入女优收藏夹」）。
+ * 封面右上角的「服务端收藏状态」星标：对齐 Web 端 JAV / 女优 / 片商 / 系列四类卡。
  *
- * 服务端 `favorite_count > 0` 才显示：实心爱心 + 琥珀色（Web 端
- * `bg-amber-400 / text-amber-950`）；为 0 时整块不画——Web 端未收藏时靠
- * `group-hover` 才显形，手机没有 hover，客户端也没有「加入收藏夹」入口，
- * 画一颗空心图标只会是视觉噪音。
+ * 服务端图标经 /tmp/wb.js 反查为 `Qw = StarRounded` / `Zw = StarBorderRounded`：
+ * 已收藏是 `bg-amber-400 text-amber-950` → **黄底 + 黑色实心五角星**；
+ * 未收藏是半透明黑底 + 白色描边五角星。Web 端未收藏靠 `group-hover` 显形，
+ * 手机没有 hover，这里常显作为「加入收藏夹」的点击入口。
  *
- * [endPadding]：与同样挂在右上角的「已观看」徽标错开，避免两颗圆钮重叠。
+ * 位置**固定右上角** `end = 6.dp`，绝不因「已观看」徽标而左移；
+ * 已观看徽标改挂在星标的竖直正下方（见 [WatchedBadge]）。
  */
 @Composable
 private fun BoxScope.FavoriteBadge(
     favoriteCount: Int,
-    endPadding: Dp = 6.dp,
+    target: FavoriteTarget? = null,
 ) {
-    if (!CardBadgeRules.showFavoriteBadge(favoriteCount)) return
+    var localCount by remember(favoriteCount) { mutableStateOf(favoriteCount) }
+    var showPicker by remember { mutableStateOf(false) }
+    val collected = CardBadgeRules.showFavoriteBadge(localCount)
     Box(
         Modifier
             .align(Alignment.TopEnd)
-            .padding(top = 6.dp, end = endPadding)
-            .size(24.dp)
+            .padding(
+                top = CardBadgeRules.BADGE_EDGE_PADDING_DP.dp,
+                end = CardBadgeRules.BADGE_EDGE_PADDING_DP.dp,
+            )
+            .size(CardBadgeRules.FAVORITE_BADGE_SIZE_DP.dp)
             .clip(CircleShape)
-            .background(Color(0xFFFBBF24)),
+            .background(if (collected) Color(0xFFFBBF24) else Color(0xB3000000))
+            .clickable(enabled = target != null) { showPicker = true },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            Icons.Filled.Favorite,
-            contentDescription = "已收藏 $favoriteCount 次",
-            tint = Color(0xFF78350F),
+            if (collected) Icons.Filled.Star else Icons.Filled.StarBorder,
+            contentDescription = if (collected) "已收藏 $localCount 次" else "加入收藏夹",
+            tint = if (collected) Color.Black else Color.White,
             modifier = Modifier.size(15.dp),
         )
+        if (showPicker && target != null) {
+            FavoritePickerPopup(
+                target = target,
+                onDismiss = { showPicker = false },
+                onSaved = { localCount = it },
+            )
+        }
     }
 }
 
@@ -796,9 +819,11 @@ fun WorkCard(
     cropPosition: Double? = null,
     rating: Double = 0.0,
     onRatingClick: (() -> Unit)? = null,
-    /** 服务端收藏次数（jav.favorite_count）；> 0 才在封面右上角显示实心收藏爱心 */
+    /** 服务端收藏次数（jav.favorite_count）；> 0 显示黄底黑色实心五角星 */
     favoriteCount: Int = 0,
-    /** 服务端统计的该作品累计观看时长（jav.watched_ms）；> 0 才在封面右上角显示已观看图标 */
+    /** 非 null 时右上角星标可点击，弹出悬浮窗修改作品收藏夹 */
+    favoriteTarget: FavoriteTarget? = null,
+    /** 服务端统计的该作品累计观看时长（jav.watched_ms）；> 0 才显示已观看图标 */
     watchedMs: Long = 0,
     /** 非 null 时在封面右下角显示播放钮；点击不进入详情，直接起播 */
     onPlay: (() -> Unit)? = null,
@@ -834,13 +859,10 @@ fun WorkCard(
                         RatingBadge(rating, onRatingClick)
                     }
                 }
-                // 服务端收藏状态：与「已观看」同挂右上角，已观看存在时向左错开 30dp
-                FavoriteBadge(
-                    favoriteCount = favoriteCount,
-                    endPadding = if (watchedMs > 0) 36.dp else 6.dp,
-                )
-                // 服务端已有观看记录才显示（对齐 Web 端的 watch-time-icons / 「已观看：…」）
-                WatchedBadge(watchedMs)
+                // 服务端收藏状态：位置固定右上角，不再因已观看徽标左移
+                FavoriteBadge(favoriteCount = favoriteCount, target = favoriteTarget)
+                // 已观看徽标移到收藏星标的竖直正下方（top = 6 + 24 + 6 = 36dp，end 同为 6dp）
+                WatchedBadge(watchedMs, belowFavorite = true)
                 if (code.isNotBlank()) {
                     Text(
                         text = code,
@@ -885,7 +907,7 @@ fun WorkCard(
  * 文案与 Web 端 `已观看：x 小时 y 分钟 z 秒` 一致。
  */
 @Composable
-private fun BoxScope.WatchedBadge(watchedMs: Long) {
+private fun BoxScope.WatchedBadge(watchedMs: Long, belowFavorite: Boolean = false) {
     if (watchedMs <= 0) return
     var showWatched by remember { mutableStateOf(false) }
     val text = "已观看：${formatWatchedTime(watchedMs).ifEmpty { "不足 1 秒" }}"
@@ -900,8 +922,11 @@ private fun BoxScope.WatchedBadge(watchedMs: Long) {
     Box(
         Modifier
             .align(Alignment.TopEnd)
-            .padding(6.dp)
-            .size(24.dp)
+            .padding(
+                top = CardBadgeRules.watchedBadgeTopDp(belowFavorite).dp,
+                end = CardBadgeRules.BADGE_EDGE_PADDING_DP.dp,
+            )
+            .size(CardBadgeRules.FAVORITE_BADGE_SIZE_DP.dp)
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.55f))
             .clickable { showWatched = !showWatched },

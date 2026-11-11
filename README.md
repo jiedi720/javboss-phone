@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.59--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.60--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.59-modified**（versionCode 63） |
+| 当前版本 | **v0.3.60-modified**（versionCode 64） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -641,6 +641,43 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     两颗圆钮不重叠。判定抽成纯规则 `CardBadgeRules.showFavoriteBadge()`，可 JVM 单测。
   - 单测：新增 `FavoriteBadgeTest` 3 例（正数显示 / 0 隐藏 / 负值当未收藏）；
     全量单测 137 例 / 17 suites。
+  - 注：v0.3.59 把图标理解成「圆形爱心」、靠 `favorite_count > 0` 决定画不画、
+    并用「左移 30dp」避让已观看徽标，这三点在 **v0.3.60** 按用户纠正全部改掉
+    （五角星 / 常显 / 已观看徽标下移）。
+
+- **收藏星标可改收藏夹 + 女优收藏夹 + 角标位置修正（v0.3.60）**：
+  - 用户反馈 4 项，逐条登记销项：① 女优 / 作品封面右上角的收藏图标点击时
+    要弹悬浮窗修改收藏夹（服务端已有「选择收藏夹」）；② 收藏夹页除作品外
+    还要显示女优收藏夹；③ 收藏星标固定在右上角，已观看图标改挂到它的**竖直正下方**，
+    避免两颗图标位置冲突；④ 纠正 v0.3.59 的样式：服务端是**黑色黄底五角星**
+    （`StarRounded`），不是褐色黄底爱心。
+  - 服务端契约（`/tmp/wb.js` 反查）：`fr(e)` 把 `jav / idol / studio / series`
+    映射成同名 kind → 端点 `/jav/{kind}-favorite-groups`；实体归属端点
+    `/jav/{entity}/{id}/favorite-groups`（`jav→items`、`idol→idols`），
+    `PUT` body `{ group_ids }`，`GET` 返回 `{ selected_group_ids }`。
+    `ApiClient` 新增 8 个按 kind / entity 参数化的端点；`FavoriteRepository`
+    改为通用（默认 `jav` / `items`，旧调用全部不用改）；新增 `FavoriteTarget`
+    把「这张卡片要改哪个实体的收藏夹」显式化。
+  - 星标：`FavoriteBadge` 改为**常显**（手机没有 hover，空心星就是「加入收藏夹」入口），
+    `favorite_count > 0` 画黄底黑色实心五角星，否则半透明黑底白色描边五角星；
+    位置固定 `TopEnd + 6dp`，不再因已观看徽标左移。点击弹 `FavoritePickerPopup`
+    （居中 `Popup`，避免窄窗口里锚定右上角向左溢出）：`GET` 全部收藏夹 +
+    `GET` 当前已选 → checkbox 勾选 → `PUT` 全量替换，支持直接新建收藏夹；
+    保存成功后用 `onSaved(selected.size)` 即时刷新星标，不必等列表重拉。
+    作品卡（作品墙 / 过滤列表 / 收藏夹条目）与女优卡（女优列表 / 收藏夹条目）
+    都接上了 `favoriteTarget`。
+  - 观看图标：`WatchedBadge(belowFavorite = true)` 下移到
+    `6 + 24 + 6 = 36dp`，与星标同轴、两颗圆钮不重叠；视频卡没有星标仍用 6dp。
+    几何规则抽成 `CardBadgeRules.watchedBadgeTopDp()`，可 JVM 单测。
+  - 收藏夹页：`FavoritesUiState` 增加 `kind`（作品 / 女优），顶部两个 `FilterChip`
+    切换，`FavoritesViewModel` 的增删改查全部带 kind；路由
+    `favgroup/{id}?name=&kind=` 透传到 `FavGroupScreen`，女优收藏夹用 `IdolCard`
+    渲染、点进去按 `idolIds` 打开该女优的作品列表，作品收藏夹仍用 `WorkCard`。
+    `FavoriteItemDto` 补 `cover_code`，女优卡封面优先用它（对齐 Web 端女优卡），
+    服务端没给时退回 `sample_code` 的作品封面。
+  - 单测：新增 `FavoriteTargetTest` 3 例（jav / idol 的 kind、entity 映射与 id 透传），
+    `FavoriteBadgeTest` 补 2 例（星标常显语义、观看徽标下移 36dp 几何规则）；
+    全量单测 142 例 / 18 suites。
 
 </details>
 
@@ -650,8 +687,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **46 个提交**，**64 个文件 / +10,449 / −682 行**
-（新增 31 个文件，其中 16 个是新的 JVM 单测文件，合计 17 suites / 137 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **47 个提交**，**66 个文件 / +11,119 / −778 行**
+（新增 33 个文件，其中 18 个是新的 JVM 单测文件，合计 18 suites / 142 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -659,11 +696,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.59-modified / versionCode 63 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.60-modified / versionCode 64 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **137 例 / 17 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标等纯规则都有回归测试 |
+| 单测 | 无 | **142 例 / 18 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

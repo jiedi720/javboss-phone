@@ -110,7 +110,7 @@ fun MainScreen(
     onOpenDetail: (videoId: Long, code: String?) -> Unit,
     onPlay: (videoId: Long, code: String?) -> Unit,
     onOpenJavList: (title: String, idolIds: String, tagIds: String, studioId: Long, seriesId: Long) -> Unit,
-    onFavGroupClick: (groupId: Long, name: String) -> Unit,
+    onFavGroupClick: (groupId: Long, name: String, kind: String) -> Unit,
     onSessionExpired: () -> Unit,
     onLogout: () -> Unit,
 ) {

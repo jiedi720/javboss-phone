@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.FavoriteRepository
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
@@ -14,6 +15,8 @@ import kotlinx.coroutines.launch
 
 data class FavoritesUiState(
     val groups: List<FavoriteGroupDto> = emptyList(),
+    /** 当前展示的收藏夹实体类型：jav（作品）/ idol（女优） */
+    val kind: String = FavoriteRepository.KIND_JAV,
     val loading: Boolean = false,
     val error: String? = null,
     /** 操作失败（创建/重命名/删除）的提示信息，UI 用 Toast 展示 */
@@ -35,7 +38,7 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             uiState = uiState.copy(loading = true, error = null)
             try {
-                val groups = container.favoriteRepository.listGroups()
+                val groups = container.favoriteRepository.listGroups(uiState.kind)
                 uiState = uiState.copy(groups = groups, loading = false)
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
@@ -45,11 +48,18 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 切换「作品 / 女优」收藏夹：清空旧列表后按新类型重新拉取 */
+    fun setKind(kind: String) {
+        if (kind == uiState.kind) return
+        uiState = uiState.copy(kind = kind, groups = emptyList(), error = null)
+        refresh()
+    }
+
     fun createGroup(name: String) {
         if (name.isBlank()) return
         viewModelScope.launch {
             try {
-                container.favoriteRepository.createGroup(name.trim())
+                container.favoriteRepository.createGroup(name.trim(), uiState.kind)
                 refresh()
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(sessionExpired = true)
@@ -63,7 +73,7 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
         if (name.isBlank()) return
         viewModelScope.launch {
             try {
-                container.favoriteRepository.renameGroup(id, name.trim())
+                container.favoriteRepository.renameGroup(id, name.trim(), uiState.kind)
                 refresh()
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(sessionExpired = true)
@@ -76,7 +86,7 @@ class FavoritesViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteGroup(id: Long) {
         viewModelScope.launch {
             try {
-                container.favoriteRepository.deleteGroup(id)
+                container.favoriteRepository.deleteGroup(id, uiState.kind)
                 refresh()
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(sessionExpired = true)
@@ -205,27 +215,31 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { container.settings.saveFavItemSort(s.sort.name, s.sortAsc) }
     }
 
-    fun load(groupId: Long) {
+    fun load(groupId: Long, kind: String = FavoriteRepository.KIND_JAV) {
         viewModelScope.launch {
             uiState = uiState.copy(loading = true, error = null)
             try {
-                val items = container.favoriteRepository.listItems(groupId)
-                // 收藏夹条目只有番号，星级得另外拿：直接用服务端的 favorite_group_id 过滤条件
-                // 拉一份完整 JavDto，按番号建索引（一个请求，不用逐条查）
-                val ratings = runCatching {
-                    container.videoRepository
-                        .searchJavs(limit = 500, offset = 0, favoriteGroupId = groupId)
-                        .items
-                        .associate {
-                            it.code.uppercase() to FavRating(
-                                javId = it.id,
-                                rating = it.favoriteRating,
-                                watchedMs = it.watchedMs,
-                                durationMin = it.durationMin,
-                                releaseUnix = it.releaseUnix,
-                            )
-                        }
-                }.getOrDefault(emptyMap())
+                val items = container.favoriteRepository.listItems(groupId, kind)
+                // 作品收藏夹条目只有番号，星级得另外拿：用 favorite_group_id 过滤条件
+                // 拉一份完整 JavDto 按番号建索引；女优收藏夹不需要这份数据
+                val ratings = if (kind == FavoriteRepository.KIND_IDOL) {
+                    emptyMap<String, FavRating>()
+                } else {
+                    runCatching {
+                        container.videoRepository
+                            .searchJavs(limit = 500, offset = 0, favoriteGroupId = groupId)
+                            .items
+                            .associate {
+                                it.code.uppercase() to FavRating(
+                                    javId = it.id,
+                                    rating = it.favoriteRating,
+                                    watchedMs = it.watchedMs,
+                                    durationMin = it.durationMin,
+                                    releaseUnix = it.releaseUnix,
+                                )
+                            }
+                    }.getOrDefault(emptyMap())
+                }
                 uiState = uiState.copy(items = items, ratings = ratings, loading = false)
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(loading = false, sessionExpired = true)
@@ -262,10 +276,10 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun removeItem(groupId: Long, item: FavoriteItemDto) {
+    fun removeItem(groupId: Long, item: FavoriteItemDto, kind: String = FavoriteRepository.KIND_JAV) {
         viewModelScope.launch {
             try {
-                container.favoriteRepository.removeItems(groupId, listOf(item.id))
+                container.favoriteRepository.removeItems(groupId, listOf(item.id), kind)
                 uiState = uiState.copy(items = uiState.items.filterNot { it.id == item.id })
             } catch (e: AuthExpiredException) {
                 uiState = uiState.copy(sessionExpired = true)

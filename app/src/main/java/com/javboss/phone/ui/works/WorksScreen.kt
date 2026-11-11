@@ -64,6 +64,7 @@ import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
 import com.javboss.phone.ui.components.VideoPickDialog
+import com.javboss.phone.ui.components.FavoriteTarget
 import com.javboss.phone.ui.components.WorkCard
 import com.javboss.phone.ui.components.adaptiveSearchWidth
 import com.javboss.phone.ui.components.adaptiveSheetWidth
@@ -243,6 +244,7 @@ fun WorksScreen(
                                 rating = jav.favoriteRating,
                                 onRatingClick = { ratingTarget = jav },
                                 favoriteCount = jav.favoriteCount,
+                                favoriteTarget = FavoriteTarget.jav(jav.id),
                                 watchedMs = jav.watchedMs,
                                 onPlay = playAction,
                             )
@@ -274,6 +276,7 @@ fun WorksScreen(
                                 },
                                 cropLeft = idol.coverCropLeft ?: 0.47,
                                 favoriteCount = idol.favoriteCount,
+                                favoriteTarget = FavoriteTarget.idol(idol.id),
                             )
                         }
                         item(span = { GridItemSpan(maxLineSpan) }) {
