@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.66--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.67--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.66-modified**（versionCode 70） |
+| 当前版本 | **v0.3.67-modified**（versionCode 71） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -837,6 +837,14 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     32→36dp、图标 15→17dp。
   - 单测：`CoverTagFoldRulesTest` 7 → 8 例；全量单测 **190 例 / 24 suites**。
 
+- **详情页标签行间隙（v0.3.67）**：
+  - 用户反馈：详情页标签 `FlowRow` 只有水平间距、没有垂直间距，换行后上下两行标签
+    边缘贴在一起。给标签 `FlowRow` 加 `verticalArrangement = Arrangement.spacedBy(8.dp)`
+    （与水平间距一致），换行后行与行之间留出 8dp 行间隙。
+  - 演员 / 片商·系列两处 `FlowRow` 使用同一模式，本次按用户点名的「标签」只改这一处；
+    若需统一可一并加垂直间距。
+  - 无新增逻辑，单测沿用 190 例 / 24 suites；构建通过。
+
 </details>
 
 <details>
@@ -854,7 +862,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.66-modified / versionCode 70 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.67-modified / versionCode 71 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |

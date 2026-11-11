@@ -1081,7 +1081,10 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 tags.forEach { tag ->
                     // v0.3.65：与标签菜单 / 封面角标统一为实心彩底白字胶囊
                     TagChip(
