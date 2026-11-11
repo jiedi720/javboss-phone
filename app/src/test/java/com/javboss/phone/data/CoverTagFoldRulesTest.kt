@@ -99,12 +99,29 @@ class CoverTagFoldRulesTest {
                 custom(5, "奶子", "身材", 5),
             ),
         )
-        assertEquals(listOf("出勤", "体位", "身材"), items.map { it.label })
+        // v0.3.66：只有「体位」折叠（背面座位并入体位），「身材」多个标签照常逐个显示
+        assertEquals(listOf("出勤", "体位", "笑顔", "奶子"), items.map { it.label })
         assertEquals(listOf(2L, 4L), items[1].children.map { it.id })
-        assertEquals(listOf(3L, 5L), items[2].children.map { it.id })
         assertFalse(items[0].isGroup)
         assertTrue(items[1].isGroup)
-        assertTrue(items[2].isGroup)
+        assertTrue(items.drop(2).none { it.isGroup })
+        assertTrue(items.drop(2).all { it.custom })
+    }
+
+    @Test
+    fun `only the position category folds other categories stay expanded`() {
+        // v0.3.66 用户纠正：分类不需要全部折叠，只有「体位」折叠
+        val items = CoverTagFoldRules.fold(
+            listOf(
+                custom(1, "笑顔", "身材", 6),
+                custom(2, "奶子", "身材", 5),
+                custom(3, "出勤", "主题", 70),
+                custom(4, "花癖", "主题", 53),
+            ),
+        )
+        assertEquals(listOf("笑顔", "奶子", "出勤", "花癖"), items.map { it.label })
+        assertTrue(items.none { it.isGroup })
+        assertEquals(listOf(1L, 2L, 3L, 4L), items.map { it.tag?.id })
     }
 
     @Test

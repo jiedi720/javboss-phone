@@ -2,6 +2,7 @@ package com.javboss.phone.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,12 +20,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -48,10 +49,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.TagCategoryRules
 import com.javboss.phone.data.TagGroupRules
@@ -102,6 +107,7 @@ fun TagManageDialog(
     var editMode by remember { mutableStateOf(false) }
     var multiSelect by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
+    var newTagOpen by remember { mutableStateOf(false) }
     var categoryManagerOpen by remember { mutableStateOf(false) }
     var assignCategoryOpen by remember { mutableStateOf(false) }
 
@@ -232,11 +238,12 @@ fun TagManageDialog(
                     .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                // 服务端同款工具条：分类管理 / 编辑 / 多选查找
-                Row(
+                // 服务端同款工具条：分类管理 / 编辑 / 多选查找 / 新建标签
+                // v0.3.66：FlowRow 防窄屏溢出；新建标签改按钮点击才展开输入框
+                FlowRow(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     ToolButton("分类管理", Icons.Filled.Folder, active = false) {
                         categoryManagerOpen = true
@@ -258,6 +265,10 @@ fun TagManageDialog(
                         selectedIds = emptySet()
                         renameTarget = null
                         deleteTarget = null
+                    }
+                    ToolButton("新建标签", Icons.Filled.Add, active = newTagOpen) {
+                        newTagOpen = !newTagOpen
+                        error = null
                     }
                 }
 
@@ -285,21 +296,23 @@ fun TagManageDialog(
                 }
 
                 Spacer(Modifier.height(8.dp))
-                // 新建标签
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it; error = null },
-                        label = { Text("新建标签") },
-                        singleLine = true,
-                        enabled = !busy,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    TextButton(
-                        onClick = create,
-                        enabled = TagManageRules.validName(newName) && !busy,
-                    ) { Text("新建") }
+                // 新建标签：v0.3.66 改为点工具条按钮才显示输入框，不再常驻占一行
+                if (newTagOpen) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it; error = null },
+                            label = { Text("新建标签") },
+                            singleLine = true,
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(
+                            onClick = create,
+                            enabled = TagManageRules.validName(newName) && !busy,
+                        ) { Text("新建") }
+                    }
                 }
 
                 // 重命名 / 删除确认条放在内容区顶部，不嵌套弹层、不破坏流式布局
@@ -452,16 +465,17 @@ private fun ToolButton(
     }
     Row(
         modifier = Modifier
-            .height(32.dp)
+            .height(36.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(label, color = foreground, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(5.dp))
+        // v0.3.66：字号加大到与分组标题（labelLarge）相近
+        Text(label, color = foreground, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -598,13 +612,13 @@ private fun CategoryManageDialog(
         }
     }
 
-    val move: (Int, Int) -> Unit = { from, to ->
-        val next = TagCategoryRules.moveCategory(order, from, to)
-        if (next != order) runOp {
-            repository.reorderTagCategories(scope, next)
-            order = next
-        }
-    }
+    // v0.3.66：服务端同款拖拽排序（三横线把手），替代「上移/下移」箭头逐个移动。
+    // 拖动过程只改本地 order 视觉顺序，松手才 PUT .../categories/order 提交一次。
+    val rowHeight = 46.dp
+    val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
+    var draggingId by remember { mutableStateOf<Long?>(null) }
+    var dragDelta by remember { mutableStateOf(0f) }
+    var dragStartOrder by remember { mutableStateOf<List<Long>?>(null) }
 
     AlertDialog(
         modifier = Modifier.adaptiveTagDialogWidth(),
@@ -687,23 +701,76 @@ private fun CategoryManageDialog(
                 if (order.isEmpty()) {
                     Text("暂无分类", style = MaterialTheme.typography.bodySmall)
                 } else {
-                    order.forEachIndexed { index, id ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    order.forEachIndexed { _, id ->
+                        val isDragging = draggingId == id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(rowHeight)
+                                .zIndex(if (isDragging) 1f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (isDragging) dragDelta else 0f
+                                }
+                                .background(
+                                    if (isDragging) {
+                                        MaterialTheme.colorScheme.surfaceVariant
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // 三横线拖拽把手（和 Web 端一致）；拖动越过半行就换位
+                            Icon(
+                                Icons.Filled.Menu,
+                                contentDescription = "拖动排序",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .pointerInput(id) {
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                draggingId = id
+                                                dragDelta = 0f
+                                                dragStartOrder = order
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                dragDelta += dragAmount.y
+                                                val cur = order.indexOf(id)
+                                                if (dragDelta > rowHeightPx / 2 && cur < order.lastIndex) {
+                                                    order = TagCategoryRules.moveCategory(order, cur, cur + 1)
+                                                    dragDelta -= rowHeightPx
+                                                } else if (dragDelta < -rowHeightPx / 2 && cur > 0) {
+                                                    order = TagCategoryRules.moveCategory(order, cur, cur - 1)
+                                                    dragDelta += rowHeightPx
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                val start = dragStartOrder
+                                                val next = order
+                                                draggingId = null
+                                                dragDelta = 0f
+                                                dragStartOrder = null
+                                                if (start != null && next != start) runOp {
+                                                    repository.reorderTagCategories(scope, next)
+                                                }
+                                            },
+                                            onDragCancel = {
+                                                draggingId = null
+                                                dragDelta = 0f
+                                                dragStartOrder = null
+                                            },
+                                        )
+                                    },
+                            )
+                            Spacer(Modifier.width(4.dp))
                             Text(
                                 names[id].orEmpty().ifBlank { "分类 $id" },
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
                             )
-                            IconButton(onClick = { move(index, index - 1) }, enabled = index > 0 && !busy) {
-                                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "上移")
-                            }
-                            IconButton(
-                                onClick = { move(index, index + 1) },
-                                enabled = index < order.lastIndex && !busy,
-                            ) {
-                                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "下移")
-                            }
                             IconButton(
                                 onClick = {
                                     deleteTarget = null

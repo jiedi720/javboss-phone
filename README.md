@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.65--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.66--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.65-modified**（versionCode 69） |
+| 当前版本 | **v0.3.66-modified**（versionCode 70） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -817,6 +817,26 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     这条断链回归）、`TagManageRulesTest` +3 例（分类端点分流、多选标题、tag_ids 查询）、
     `WindowSizeRulesTest` +1 例（标签弹层加宽）；全量单测 **189 例 / 24 suites**。
 
+- **封面折叠收窄为只折叠「体位」+ 分类拖拽排序 + 工具条交互细化（v0.3.66）**：
+  - 用户反馈 4 项：① 标签分类**不需要全部折叠**，只有「体位」分类折叠显示；
+    ② 分类管理移动位置不要用上移/下移箭头一个个挪，要和服务端一样**拖拽**；
+    ③ 新建标签输入框不要一直显示，改成和「分类管理 / 编辑 / 多选查找」一样的
+    按钮，点击才展开；④ 工具条按钮字号加大到与分组标题差不多大。
+  - `CoverTagFoldRules` 增加 `FOLD_CATEGORY = "体位"`：只折叠「体位」下的自定义
+    标签（>=2 折成分类胶囊、1 个退化具体标签）；**其他分类（身材 / 主题等）与
+    空分类、刮削标签一律不折叠**，各自逐个显示。单测改写混合顺序用例并新增
+    「只有体位折叠、其他分类保持展开」显式回归（`CoverTagFoldRulesTest` 8 例）。
+  - 分类管理改拖拽排序：每行左侧加三横线把手（`Icons.Filled.Menu`，与 Web 端
+    截图一致），`detectDragGestures` 拖动、越过半行即换位（复用纯规则
+    `TagCategoryRules.moveCategory`），拖动中仅本地视觉换位（`graphicsLayer`
+    translationY + zIndex 置顶），**松手才提交一次** `PUT .../categories/order`；
+    删除「上移 / 下移」两个箭头按钮。
+  - 「新建标签」改为工具条按钮（`Icons.Filled.Add`），点击才展开输入框 + 新建，
+    不再常驻占一行；工具条由 `Row` 改 `FlowRow`，4 个按钮在窄屏自动换行不溢出。
+  - 工具条按钮字号 `labelSmall` → `labelLarge`（与分组标题同级），按钮高度
+    32→36dp、图标 15→17dp。
+  - 单测：`CoverTagFoldRulesTest` 7 → 8 例；全量单测 **190 例 / 24 suites**。
+
 </details>
 
 <details>
@@ -826,7 +846,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
 本仓库从 `b812953`（2026-11-05）起增加 **51 个提交**，**78 个文件 / +12,907 / −782 行**
-（新增 44 个文件，其中 22 个是新的 JVM 单测文件，合计 24 suites / 189 例）。
+（新增 44 个文件，其中 22 个是新的 JVM 单测文件，合计 24 suites / 190 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -834,11 +854,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.65-modified / versionCode 69 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.66-modified / versionCode 70 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **189 例 / 24 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
+| 单测 | 无 | **190 例 / 24 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 
