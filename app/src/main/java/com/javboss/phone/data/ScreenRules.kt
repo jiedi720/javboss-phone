@@ -236,6 +236,27 @@ object WindowSizeRules {
     /** 详情 / 设置是否采用左右双栏 */
     fun useTwoPane(widthDp: Int): Boolean = widthDp >= TWO_PANE_MIN_DP
 
+    /**
+     * v0.3.68：详情页双栏左栏宽度。
+     *
+     * 原来固定 300dp（来自 v0.3.59 的三颗等宽按钮排版），横屏平板上左栏偏窄、
+     * 右侧留白过多。改为按窗口宽度取 [DETAIL_LEFT_PANE_RATIO]（34%），
+     * 并钳制在 [DETAIL_LEFT_PANE_MIN_DP]..[DETAIL_LEFT_PANE_MAX_DP]：
+     * - 900dp（双栏下限）→ 340dp（比原来宽 40dp）
+     * - 1067dp（平板横屏）→ 363dp
+     * - 1348dp 及以上 → 上限 460dp
+     * 右栏是 weight(1f)，左栏变宽后右栏自然收窄，不需要另设规则。
+     */
+    const val DETAIL_LEFT_PANE_RATIO = 0.34f
+    const val DETAIL_LEFT_PANE_MIN_DP = 340
+    const val DETAIL_LEFT_PANE_MAX_DP = 460
+
+    fun detailLeftPaneWidthDp(widthDp: Int): Int {
+        if (!useTwoPane(widthDp)) return DETAIL_LEFT_PANE_MIN_DP
+        val ratio = (widthDp * DETAIL_LEFT_PANE_RATIO + 0.5f).toInt()
+        return ratio.coerceIn(DETAIL_LEFT_PANE_MIN_DP, DETAIL_LEFT_PANE_MAX_DP)
+    }
+
     /** 页面左右边距：窗口越宽留白越多，避免内容顶到屏幕边 */
     fun horizontalPadding(widthDp: Int): Int = when (classify(widthDp)) {
         WindowClass.COMPACT -> 8

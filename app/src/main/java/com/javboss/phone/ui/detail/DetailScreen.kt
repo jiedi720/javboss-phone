@@ -2,6 +2,10 @@ package com.javboss.phone.ui.detail
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -82,6 +86,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -91,6 +96,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.javboss.phone.data.ImagePagerRules
+import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.ui.components.CenterMessage
@@ -106,12 +113,15 @@ import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.ui.components.adaptiveImageViewerWidth
 import com.javboss.phone.ui.components.formatWatchedTime
 import com.javboss.phone.ui.components.rememberUseTwoPane
+import com.javboss.phone.ui.components.rememberWindowWidthDp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
@@ -204,6 +214,11 @@ fun DetailScreen(
                     onFileMenu = { fileMenuTarget = it },
                 )
                 if (rememberUseTwoPane()) {
+                    // v0.3.68：左栏不再固定 300dp，按窗口宽度取 34%（340..460dp），
+                    // 横屏平板上封面 / 文件路径这一侧更宽敞；右栏 weight(1f) 相应收窄。
+                    val leftPaneWidth = WindowSizeRules
+                        .detailLeftPaneWidthDp(rememberWindowWidthDp())
+                        .dp
                     Row(
                         Modifier
                             .fillMaxSize()
@@ -212,11 +227,11 @@ fun DetailScreen(
                     ) {
                         Column(
                             Modifier
-                                .width(300.dp)
+                                .width(leftPaneWidth)
                                 .fillMaxHeight()
                                 .verticalScroll(rememberScrollState()),
                         ) {
-                            // v0.3.59：双栏左栏只有 300dp，操作栏要按等宽按钮排布，
+                            // v0.3.59：双栏左栏只有几百 dp，操作栏要按等宽按钮排布，
                             // 否则三颗按钮会互相挤压（见 DetailHeader 的 compactActions）。
                             DetailHeader(body, compactActions = true)
                         }
@@ -369,14 +384,64 @@ private fun ImageViewerDialog(
     // 缩放与平移状态：换图时复位
     var scale by remember(state) { mutableFloatStateOf(1f) }
     var offset by remember(state) { mutableStateOf(Offset.Zero) }
-    // 横向滑动切图时的实时位移（松手才真正换图）
+    // 横向滑动切图时的实时位移：拖动时直接跟手，松手后由页面作用域跑一段滑出 / 滑入动画。
+    // 注意 `awaitEachGesture` 是受限挂起作用域，不能直接在这里调外部 Animatable 的
+    // suspend 方法（编译报 Restricted suspending functions），所以位移用普通 Float 状态，
+    // 动画一律丢到 pageScope 里跑。
     var slideX by remember(state) { mutableFloatStateOf(0f) }
+    var pageJob by remember(state) { mutableStateOf<Job?>(null) }
     var imageBoxSize by remember(state) { mutableStateOf(IntSize.Zero) }
     // 长按后先弹保存菜单，确认了才真正下载（非 null = 菜单打开，值为待保存的图片 URL）
     var saveMenuUrl by remember { mutableStateOf<String?>(null) }
     // pointerInput 的 key 只有图片数量，块里的 url / 回调要用最新值就得走 rememberUpdatedState
     val currentUrl by rememberUpdatedState(items[index].url)
     val saveAction by rememberUpdatedState(onSave)
+    val pageScope = rememberCoroutineScope()
+    // 翻页阈值是 dp 规则，运行时再换算成 px（容器尺寸是 px）
+    val density = LocalDensity.current
+
+    /**
+     * 翻页动画：当前图按 [forward] 方向滑出 → 换图 → 新图从反方向滑入到正中。
+     * [target] 为 null 表示拖动没越过阈值，弹回原位。
+     * 连续操作时先取消上一段动画，避免位移叠加成错位。
+     */
+    fun settlePage(target: Int?, forward: Boolean) {
+        pageJob?.cancel()
+        val distance = imageBoxSize.width.toFloat().coerceAtLeast(1f)
+        pageJob = pageScope.launch {
+            if (target == null) {
+                animate(
+                    initialValue = slideX,
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        ImagePagerRules.PAGE_OUT_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { value, _ -> slideX = value }
+                return@launch
+            }
+            animate(
+                initialValue = slideX,
+                targetValue = if (forward) -distance else distance,
+                animationSpec = tween(
+                    ImagePagerRules.PAGE_OUT_MS,
+                    easing = FastOutLinearInEasing,
+                ),
+            ) { value, _ -> slideX = value }
+            index = target
+            scale = 1f
+            offset = Offset.Zero
+            slideX = if (forward) distance else -distance
+            animate(
+                initialValue = slideX,
+                targetValue = 0f,
+                animationSpec = tween(
+                    ImagePagerRules.PAGE_IN_MS,
+                    easing = FastOutSlowInEasing,
+                ),
+            ) { value, _ -> slideX = value }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -402,12 +467,21 @@ private fun ImageViewerDialog(
                         indication = null,
                     ) { }
                     .graphicsLayer {
+                        // 翻页位移 + 轻微淡出/缩小：拖动时跟手，动画时像一页纸滑走
+                        val boxWidth = imageBoxSize.width.toFloat().coerceAtLeast(1f)
+                        val progress = (abs(slideX) / boxWidth).coerceIn(0f, 1f)
                         translationX = slideX
+                        alpha = 1f - progress * 0.5f
+                        scaleX = 1f - progress * 0.08f
+                        scaleY = 1f - progress * 0.08f
                     }
                     .pointerInput(items.size) {
                         coroutineScope {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                // 上一段翻页动画还没跑完就又按下：直接取消并把画面拉回正中
+                                pageJob?.cancel()
+                                slideX = 0f
                                 var totalDx = 0f
                                 var multiTouch = false
                                 // 长按：到期只弹出保存菜单，由用户确认后才存图；一旦移动就取消
@@ -447,7 +521,7 @@ private fun ImageViewerDialog(
                                             )
                                             event.changes.forEach { it.consume() }
                                         } else {
-                                            // 未放大：单指横向拖动 → 切换上一张 / 下一张
+                                            // 未放大：单指横向拖动 → 跟手位移，松手后决定是否翻页
                                             totalDx += panChange.x
                                             slideX = totalDx
                                         }
@@ -460,18 +534,28 @@ private fun ImageViewerDialog(
                                 longPressJob.cancel()
 
                                 if (!multiTouch && scale <= 1f && items.size > 1) {
-                                    // 未放大时的单指横向拖动 → 切上一张 / 下一张
-                                    val threshold = imageBoxSize.width * 0.18f
-                                    if (kotlin.math.abs(totalDx) > threshold) {
-                                        val target = if (totalDx < 0) index + 1 else index - 1
-                                        if (target in items.indices) {
-                                            index = target
-                                            scale = 1f
-                                            offset = Offset.Zero
-                                        }
+                                    // 未放大时的单指横向拖动 → 切上一张 / 下一张。
+                                    // v0.3.68：阈值按容器短边算（上限 84dp），横版不再需要比竖版
+                                    // 拖得远；越过阈值就播一段滑出 / 滑入动画，没过就弹回原位。
+                                    val threshold = with(density) {
+                                        ImagePagerRules.swipeThresholdDp(
+                                            imageBoxSize.width.toDp().value,
+                                            imageBoxSize.height.toDp().value,
+                                        ).dp.toPx()
                                     }
+                                    val target = when {
+                                        totalDx <= -threshold -> index + 1
+                                        totalDx >= threshold -> index - 1
+                                        else -> index
+                                    }
+                                    if (target != index && target in items.indices) {
+                                        settlePage(target, forward = target > index)
+                                    } else {
+                                        settlePage(target = null, forward = false)
+                                    }
+                                } else {
+                                    slideX = 0f
                                 }
-                                slideX = 0f
                             }
                         }
                     },
@@ -518,9 +602,7 @@ private fun ImageViewerDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = {
-                                index = (index - 1 + items.size) % items.size
-                                scale = 1f
-                                offset = Offset.Zero
+                                settlePage((index - 1 + items.size) % items.size, forward = false)
                             },
                         ) {
                             Icon(
@@ -536,9 +618,7 @@ private fun ImageViewerDialog(
                         )
                         IconButton(
                             onClick = {
-                                index = (index + 1) % items.size
-                                scale = 1f
-                                offset = Offset.Zero
+                                settlePage((index + 1) % items.size, forward = true)
                             },
                         ) {
                             Icon(
@@ -801,8 +881,8 @@ private class DetailBodyParams(
 /**
  * 左栏（双栏）/ 顶部（单栏）：封面 + 基本信息 + 播放 / 收藏 / 编辑 + 文件版本与完整路径
  *
- * [compactActions]：横屏双栏左栏固定 300dp 时，三颗按钮按自然宽度（M3 Button 默认
- * 左右各 24dp 内边距 + 24dp 图标 + 文字）总宽会超出，Row 会把最后一颗挤扁，
+ * [compactActions]：横屏双栏左栏（v0.3.68 起 340..460dp）比单栏窄，三颗按钮按自然宽度
+ * （M3 Button 默认左右各 24dp 内边距 + 24dp 图标 + 文字）总宽会超出，Row 会把最后一颗挤扁，
  * 造成「编辑」文字看不见、图标被压缩得和前两颗不一样。开启后改为三颗等宽
  * （weight）、收窄内边距、统一图标尺寸；竖屏单栏沿用原来的自然宽度排版不变。
  */

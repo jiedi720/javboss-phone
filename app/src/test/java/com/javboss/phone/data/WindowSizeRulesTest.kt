@@ -318,6 +318,46 @@ class WindowSizeRulesTest {
         )
     }
 
+    // ---------- v0.3.68：详情双栏左栏宽度 ----------
+
+    @Test
+    fun `detail left pane is wider than the old fixed 300dp`() {
+        // 900dp（双栏下限）→ 34% = 306dp，被下限抬到 340dp，比原来固定 300dp 更宽
+        assertEquals(340, WindowSizeRules.detailLeftPaneWidthDp(900))
+        // 平板横屏 1067dp → 363dp
+        assertEquals(363, WindowSizeRules.detailLeftPaneWidthDp(1067))
+        assertTrue(WindowSizeRules.detailLeftPaneWidthDp(900) > 300)
+        assertTrue(WindowSizeRules.detailLeftPaneWidthDp(1067) > 300)
+    }
+
+    @Test
+    fun `detail left pane is capped so the right pane keeps most of the width`() {
+        assertEquals(
+            WindowSizeRules.DETAIL_LEFT_PANE_MAX_DP,
+            WindowSizeRules.detailLeftPaneWidthDp(1600),
+        )
+        assertEquals(
+            WindowSizeRules.DETAIL_LEFT_PANE_MAX_DP,
+            WindowSizeRules.detailLeftPaneWidthDp(2400),
+        )
+        // 任何双栏宽度下左栏都要明显窄于右栏
+        for (width in 900..2400 step 50) {
+            val left = WindowSizeRules.detailLeftPaneWidthDp(width)
+            assertTrue("左栏过宽: width=$width left=$left", left < width / 2)
+        }
+    }
+
+    @Test
+    fun `detail left pane grows monotonically and never goes below the minimum`() {
+        var previous = 0
+        for (width in 0..2400 step 20) {
+            val left = WindowSizeRules.detailLeftPaneWidthDp(width)
+            assertTrue("左栏不低于下限: width=$width left=$left", left >= WindowSizeRules.DETAIL_LEFT_PANE_MIN_DP)
+            assertTrue("左栏随窗口宽度单调不减: width=$width $left < $previous", left >= previous)
+            previous = left
+        }
+    }
+
     // ---------- 旧规则保持兼容 ----------
 
     @Test
