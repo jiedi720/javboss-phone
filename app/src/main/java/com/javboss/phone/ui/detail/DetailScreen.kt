@@ -97,12 +97,16 @@ import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.javboss.phone.data.ImagePagerRules
+import com.javboss.phone.data.TagOrderRules
 import com.javboss.phone.data.WindowSizeRules
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
+import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.data.api.dto.VideoDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.InlineRatingBar
 import com.javboss.phone.ui.components.LabeledValue
 import com.javboss.phone.ui.components.LocalCoverMask
+import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.TagChip
 import com.javboss.phone.ui.components.coverCropAlignment
 import com.javboss.phone.ui.components.coverFrost
@@ -923,6 +927,8 @@ private fun ColumnScope.DetailHeader(
     val video = state.video
     val files = state.files
     val title = p.title
+    // 点番号上方的星级时弹出评分弹窗（保存走 PUT /jav/items/{id}，只改 favorite_rating）
+    var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
     // 封面毛玻璃与列表卡片同源：设置常开 / 锁屏自动打码时，详情页主封面也一起糊
@@ -953,6 +959,12 @@ private fun ColumnScope.DetailHeader(
         Spacer(Modifier.width(16.dp))
         Column {
             jav?.let {
+                // v0.3.70：番号上方显示当前星级，点一下打开评分弹窗调整（与封面左上角同一份数据）
+                InlineRatingBar(
+                    rating = it.favoriteRating,
+                    onEdit = { ratingTarget = it },
+                )
+                Spacer(Modifier.height(2.dp))
                 Text(it.code, style = MaterialTheme.typography.titleMedium)
                 if (it.title.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
@@ -1093,6 +1105,18 @@ private fun ColumnScope.DetailHeader(
         }
     }
 
+    // 评分弹窗：点番号上方的星级打开，保存只改 favorite_rating
+    ratingTarget?.let { target ->
+        RatingDialog(
+            code = target.code,
+            current = target.favoriteRating,
+            onDismiss = { ratingTarget = null },
+            onSave = { value ->
+                viewModel.updateRating(target.id, value)
+                ratingTarget = null
+            },
+        )
+    }
 }
 
 /** 右栏（双栏）/ 下方（单栏）：演员、片商系列、标签、外链、样品图、截图 */
@@ -1158,8 +1182,11 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
     // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签。
     // 编辑入口按两套互不相通的标签体系分流：JAV 详情「编辑标签」走 /jav/tags，
     // 普通视频详情「编辑视频标签」走 /tags；空标签时也能新增。
-    val tags = (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
-        .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" }
+    // v0.3.70：服务端把用户自定义标签排在最前，展示时改为刮削标签在前、自定义在后
+    val tags = TagOrderRules.scrapedFirst(
+        (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
+            .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" },
+    )
     if (video != null) {
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

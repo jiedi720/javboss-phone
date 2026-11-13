@@ -296,6 +296,28 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { container.videoRepository.listJavTags() }.getOrDefault(emptyList())
 
     /**
+     * 改喜爱度评分（0..5、步长 0.5）：PUT /jav/items/{id}，与封面左上角 / 收藏夹同一份数据。
+     * 成功后把返回对象写回 javMeta，详情页番号上方的星级立即刷新。
+     */
+    fun updateRating(javId: Long, rating: Double) {
+        if (javId <= 0) return
+        val normalized = (Math.round(rating * 2) / 2.0).coerceIn(0.0, 5.0)
+        viewModelScope.launch {
+            try {
+                val updated = container.videoRepository.updateJavItem(
+                    javId,
+                    JavItemUpdateRequest(favoriteRating = normalized),
+                )
+                uiState = uiState.copy(javMeta = updated)
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (_: Exception) {
+                uiState = uiState.copy(notice = "评分保存失败")
+            }
+        }
+    }
+
+    /**
      * 保存 JAV 自定义标签：只传 tag_ids，走 PUT /jav/items/{id}
      * （Web 端 JAV 详情「编辑自定义标签」同款），不会碰到视频标签。
      */

@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.javboss.phone.data.TagOrderRules
 import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.data.api.dto.IdolDto
 import com.javboss.phone.data.api.dto.JavDto
@@ -75,7 +76,11 @@ fun EditDialog(
     var studioId by remember { mutableStateOf(jav.studio?.id) }
     var seriesId by remember { mutableStateOf(jav.seriesId) }
     var selectedIdols by remember { mutableStateOf(jav.idols) }
-    var selectedTagIds by remember { mutableStateOf(jav.tags.map { it.id }.toSet()) }
+    // v0.3.70：PUT /jav/items/{id} 的 tag_ids 只接受 is_user=true 的标签，
+    // 混入刮削标签会被服务端判为 invalid tag_id 整单失败 → 只取用户标签参与勾选与提交
+    var selectedTagIds by remember {
+        mutableStateOf(TagOrderRules.userTags(jav.tags).map { it.id }.toSet())
+    }
 
     var options by remember { mutableStateOf<DetailViewModel.EditOptions?>(null) }
     var allTags by remember { mutableStateOf<List<TagDto>>(emptyList()) }
@@ -88,7 +93,7 @@ fun EditDialog(
     LaunchedEffect(Unit) {
         val loaded = viewModel.loadEditOptions()
         options = loaded
-        allTags = loaded.tags
+        allTags = TagOrderRules.userTags(loaded.tags)
     }
     // 演员搜索防抖
     LaunchedEffect(idolQuery) {

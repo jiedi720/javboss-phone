@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.javboss.phone.ui.components.adaptiveDialogWidth
+import com.javboss.phone.data.TagOrderRules
 import com.javboss.phone.data.api.dto.TagDto
 import kotlinx.coroutines.launch
 
@@ -51,7 +52,13 @@ fun TagPickerDialog(
 ) {
     val isJav = mode == TagPickerMode.JAV
     var allTags by remember { mutableStateOf<List<TagDto>>(emptyList()) }
-    var selected by remember { mutableStateOf(currentTags.map { it.id }.toSet()) }
+    // v0.3.70：只把**用户自定义标签**（provider=3）纳入选择。
+    // 之前把作品现有的刮削标签一并放进 selected，保存时混进 tag_ids，
+    // 服务端 PUT /jav/items/{id} 要求 tag_ids 全部 is_user=true，
+    // 否则整单被判 invalid tag_id 失败（表现为保存报错）。
+    var selected by remember {
+        mutableStateOf(TagOrderRules.userTags(currentTags).map { it.id }.toSet())
+    }
     var newName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -61,7 +68,8 @@ fun TagPickerDialog(
         val loaded = if (isJav) viewModel.loadJavTagOptions() else viewModel.loadVideoTagOptions()
         // 当前已打上的标签若不在可选列表里（例如被服务端按 hide_jav 过滤掉），
         // 也补进来，避免一打开就因为列表缺项而把已有标签误删
-        allTags = (loaded + currentTags).distinctBy { it.id }
+        val merged = (loaded + currentTags).distinctBy { it.id }
+        allTags = if (isJav) TagOrderRules.userTags(merged) else merged
     }
 
     AlertDialog(

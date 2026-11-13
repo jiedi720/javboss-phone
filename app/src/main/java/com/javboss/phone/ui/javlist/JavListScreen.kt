@@ -37,6 +37,7 @@ import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.FavoriteTarget
 import com.javboss.phone.ui.components.WorkCard
+import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.rememberAdaptivePadding
 import com.javboss.phone.ui.components.rememberGridColumns
 import com.javboss.phone.ui.components.rememberGridSpacing
@@ -62,6 +63,8 @@ fun JavListScreen(
     val state = viewModel.uiState
     val gridState = rememberLazyGridState()
     var playPickerTarget by remember { mutableStateOf<JavDto?>(null) }
+    // v0.3.70：女优 / 标签 / 片商 / 系列点进来的也是作品封面，左上角同样要有评分按钮
+    var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
 
     LaunchedEffect(Unit) { viewModel.start(idolIds, tagIds, studioId, seriesId) }
     LaunchedEffect(state.sessionExpired) {
@@ -135,6 +138,8 @@ fun JavListScreen(
                             favoriteTarget = FavoriteTarget.jav(jav.id),
                             watchedMs = jav.watchedMs,
                             onPlay = playAction,
+                            rating = jav.favoriteRating,
+                            onRatingClick = { ratingTarget = jav },
                             customTags = TagColorRules.customTags(jav.tags),
                             onCustomTagClick = { tag: TagDto ->
                                 onOpenJavList(
@@ -153,6 +158,18 @@ fun JavListScreen(
                 }
             }
         }
+    }
+
+    ratingTarget?.let { jav ->
+        RatingDialog(
+            code = jav.code,
+            current = jav.favoriteRating,
+            onDismiss = { ratingTarget = null },
+            onSave = { value ->
+                viewModel.updateRating(jav.id, value)
+                ratingTarget = null
+            },
+        )
     }
 
     playPickerTarget?.let { jav ->

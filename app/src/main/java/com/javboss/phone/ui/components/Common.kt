@@ -1384,9 +1384,8 @@ fun RatingDialog(
  * 左半实心与右半空心严丝合缝，不会出现半心错位或方块感。
  */
 @Composable
-private fun RatingHeart(fill: Float) {
+private fun RatingHeart(fill: Float, iconSize: Dp = 40.dp) {
     val gold = Color(0xFFFBBF24)
-    val iconSize = 40.dp
     Box(Modifier.size(iconSize)) {
         Icon(
             imageVector = Icons.Filled.FavoriteBorder,
@@ -1408,6 +1407,44 @@ private fun RatingHeart(fill: Float) {
                     },
             )
         }
+    }
+}
+
+/**
+ * 内联星级（v0.3.70）：详情页番号上方那排小爱心，显示当前喜爱度、点一下打开 [RatingDialog] 调整。
+ * 与封面左上角 [RatingBadge] / 编辑弹窗共用同一份数据与同一套爱心绘制（0.5 分一档）。
+ */
+@Composable
+fun InlineRatingBar(
+    rating: Double,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 18.dp,
+) {
+    val value = rating.coerceIn(0.0, 5.0)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onEdit)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) {
+        for (index in 0 until 5) {
+            RatingHeart(
+                fill = when {
+                    value >= index + 1.0 -> 1f
+                    value >= index + 0.5 -> 0.5f
+                    else -> 0f
+                },
+                iconSize = iconSize,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (value <= 0.0) "未评分" else "%.1f".format(value),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

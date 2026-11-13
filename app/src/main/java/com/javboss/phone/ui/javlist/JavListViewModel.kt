@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.JavDto
+import com.javboss.phone.data.api.dto.JavItemUpdateRequest
 import kotlinx.coroutines.launch
 
 data class JavListUiState(
@@ -93,6 +94,32 @@ class JavListViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(loadingMore = false, sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(loadingMore = false, error = e.message ?: "加载失败")
+            }
+        }
+    }
+
+    /**
+     * 改喜爱度评分（0..5、步长 0.5）：PUT /jav/items/{id}，与作品页 / 收藏夹同一接口。
+     * 女优 / 标签 / 片商 / 系列点进来的是同一个列表，封面左上角的星级也要能改。
+     */
+    fun updateRating(javId: Long, rating: Double) {
+        if (javId <= 0) return
+        val normalized = (Math.round(rating * 2) / 2.0).coerceIn(0.0, 5.0)
+        viewModelScope.launch {
+            try {
+                val updated = container.videoRepository.updateJavItem(
+                    javId,
+                    JavItemUpdateRequest(favoriteRating = normalized),
+                )
+                uiState = uiState.copy(
+                    items = uiState.items.map {
+                        if (it.id == javId) it.copy(favoriteRating = updated.favoriteRating) else it
+                    },
+                )
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(sessionExpired = true)
+            } catch (_: Exception) {
+                // 失败保持原样，下次刷新以服务端为准
             }
         }
     }
