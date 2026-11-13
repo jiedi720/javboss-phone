@@ -28,6 +28,7 @@ import com.javboss.phone.data.api.dto.ScreenshotListResponse
 import com.javboss.phone.data.api.dto.SelectedFavoriteGroupsResponse
 import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
+import com.javboss.phone.data.api.dto.StudioDetailDto
 import com.javboss.phone.data.api.dto.StreamsResponse
 import com.javboss.phone.data.api.dto.StudioListResponse
 import com.javboss.phone.data.api.dto.TagCategoryAssignRequest
@@ -169,6 +170,10 @@ interface JavBossApi {
         @Query("offset") offset: Int = 0,
         @Query("search") search: String = "",
     ): StudioListResponse
+
+    /** 片商详情：code_prefixes 是「番号 (N)」分组的来源（Web 端同一端点） */
+    @GET("jav/studios/{id}")
+    suspend fun getJavStudio(@Path("id") id: Long): StudioDetailDto
 
     @GET("jav/series")
     suspend fun listJavSeries(

@@ -12,6 +12,7 @@ import com.javboss.phone.data.api.dto.PlaybackSessionRequest
 import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
 import com.javboss.phone.data.api.dto.StreamsResponse
+import com.javboss.phone.data.api.dto.StudioDetailDto
 import com.javboss.phone.data.api.dto.StudioListResponse
 import com.javboss.phone.data.api.dto.TagCategoryAssignRequest
 import com.javboss.phone.data.api.dto.TagCategoryDto
@@ -231,6 +232,10 @@ class VideoRepository(private val apiClient: ApiClient) {
 
     suspend fun listJavPrefixes(): List<PrefixDto> =
         apiClient.api().listJavPrefixes()
+
+    /** 片商详情的番号分组（Web 端「番号 (N)」）；异常交给 ViewModel 区分 401 / 普通失败 */
+    suspend fun getJavStudio(id: Long): StudioDetailDto =
+        apiClient.api().getJavStudio(id)
 
     suspend fun listJavTags(): List<TagDto> =
         apiClient.api().listJavTags()

@@ -180,6 +180,28 @@ data class StudioDto(
     @SerialName("sample_code") val sampleCode: String = "",
 )
 
+/**
+ * GET /jav/studios/{id} 片商详情（Web 端片商详情弹窗 `Ak` 的数据源）。
+ * v0.3.75：只用 code_prefixes —— 服务端按番号前缀聚合该片商作品数，
+ * 对应 Web 端「番号 (N)」分组胶囊；前缀取自番号第一个 `-` / `_` 之前并转大写。
+ */
+@Serializable
+data class StudioDetailDto(
+    val id: Long = 0,
+    val name: String = "",
+    @SerialName("work_count") val workCount: Int = 0,
+    /** 片商别名，Web 详情弹窗副标题用；客户端暂不展示，保留以免 DTO 铁律丢字段 */
+    val aliases: List<String> = emptyList(),
+    @SerialName("code_prefixes") val codePrefixes: List<StudioCodePrefixDto> = emptyList(),
+)
+
+/** 片商下某个番号前缀的作品数（服务端 JavStudioCodePrefixSummary） */
+@Serializable
+data class StudioCodePrefixDto(
+    val prefix: String = "",
+    @SerialName("work_count") val workCount: Int = 0,
+)
+
 @Serializable
 data class IdolDto(
     val id: Long = 0,

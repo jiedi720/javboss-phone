@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.74--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.75--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.74-modified**（versionCode 78） |
+| 当前版本 | **v0.3.75-modified**（versionCode 79） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -951,6 +951,26 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     （它同样可用右上角星标改收藏夹）。`groupId` 仍用于 `load()`。
   - 未点名 MuMu，按默认规则跳过真机实测；全量单测沿用 **229 例 / 27 suites**。
 
+- **片商落地页加服务端同款「番号」筛选（v0.3.75）**：
+  - 用户反馈：片商点开后要显示服务端已有的「番号」筛选功能（截图：标题「番号 (6)」、
+    「≡ 名称」排序小胶囊、`AVOP 1 / SNIS 33 / SNOS 9 / SONE 5 / SSIS 14 / SSNI 15` 前缀胶囊）。
+  - 反查 Web bundle 的片商详情弹窗 `Ak` / `jk` / `Mk` / `NE`：数据来自
+    `GET /jav/studios/{id}` 的 `code_prefixes`（`[{prefix, work_count}]`），服务端
+    `internal/db/jav.go: attachJavStudioCodePrefixes` 按番号第一个 `-`/`_` 之前的部分大写后
+    `GROUP BY studio_id, prefix` 聚合；`jk` 标题「番号 (N)」+ 排序按钮两态
+    `name_asc` / `work_count_desc`，`Mk` 名称用 `localeCompare(numeric:true)`、作品数降序（相等按名称）；
+    点胶囊走 JAV 查询并带 `prefix` + `studio_id`（`include_studio_filter:true`）。
+  - 客户端新增 `StudioDetailDto` / `StudioCodePrefixDto`、`ApiClient.getJavStudio()`、
+    `VideoRepository.getJavStudio()`；`JavPrefixRules`（normalize / sort / naturalCompare /
+    sortLabel / toggle）抽成纯规则类，`JavPrefixRulesTest` 10 例锁住截图那 6 个的顺序与两种排序。
+  - `JavListViewModel`：`code_prefixes` 载入 state，`onPrefixChange()` 归一化后
+    `refresh()` 把 `prefix` 与 `studioId` 一起传给 `searchJavs`；`onPrefixSortToggle()` 切换排序；
+    只在 `studioId > 0` 时请求，女优 / 标签 / 系列落地页不受影响。
+  - `JavListScreen` 网格顶部（整行 span）渲染「番号 (N)」+ 排序胶囊 + `FlowRow` 前缀胶囊
+    （前缀粗体 + 作品数次要色），含「全部」清除项；再次点已选中胶囊也清除；
+    切换前缀后滚回列表顶部；加载中 / 失败给轻提示，不阻断作品列表。
+  - 全量单测 **239 例 / 28 suites**；未点名 MuMu，跳过真机实测。
+
 </details>
 
 <details>
@@ -959,8 +979,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **64 个提交**，**88 个文件 / +15,375 / −804 行**
-（新增 53 个文件，其中 26 个是新的 JVM 单测文件，合计 27 suites / 229 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **65 个提交**，**90 个文件 / +15,787 / −800 行**
+（新增 55 个文件，其中 27 个是新的 JVM 单测文件，合计 28 suites / 239 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
