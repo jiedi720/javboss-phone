@@ -61,6 +61,7 @@ import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.ui.components.CenterMessage
 import com.javboss.phone.ui.components.PageToolsState
 import com.javboss.phone.ui.components.CompactIconButton
+import com.javboss.phone.ui.components.CoverAdjustDialog
 import com.javboss.phone.ui.components.EntityCard
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.IdolCard
@@ -106,6 +107,8 @@ fun WorksScreen(
     val showSortFilter = tools.worksSortOpen
     // 正在改评分的作品
     var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
+    // v0.3.73：长按作品封面 = 服务端「调整封面」（原来长按与点击一样进详情）
+    var coverAdjustTarget by remember { mutableStateOf<JavDto?>(null) }
     // 一部作品有多个视频文件时，只在点播放钮时弹选择框
     var playPickerTarget by remember { mutableStateOf<JavDto?>(null) }
 
@@ -254,6 +257,7 @@ fun WorksScreen(
                                 code = jav.code,
                                 title = jav.title,
                                 onClick = { onWorkClick(jav) },
+                                onLongClick = { coverAdjustTarget = jav },
                                 cropPosition = jav.coverCropPosition,
                                 rating = jav.favoriteRating,
                                 onRatingClick = { ratingTarget = jav },
@@ -366,6 +370,18 @@ fun WorksScreen(
                 viewModel.updateRating(jav.id, value)
                 ratingTarget = null
             },
+        )
+    }
+
+    // v0.3.73：主页 JAV 作品墙长按封面 → 服务端「调整封面」弹窗。
+    // 保存成功后 ViewModel 只把 coverCropPosition 写回该条作品，卡片立刻按新位置重新裁切。
+    coverAdjustTarget?.let { jav ->
+        CoverAdjustDialog(
+            code = jav.code,
+            coverUrl = viewModel.coverUrl(jav.code),
+            initialPosition = jav.coverCropPosition,
+            onDismiss = { coverAdjustTarget = null },
+            onSave = { position -> viewModel.updateCoverCropPosition(jav.id, position) },
         )
     }
 

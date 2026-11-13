@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.72--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.73--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.72-modified**（versionCode 76） |
+| 当前版本 | **v0.3.73-modified**（versionCode 77） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -917,6 +917,23 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 弹层内两段都用彩底胶囊（自定义绿 / 刮削橙），选中带白描边；自定义仍排最前。
   - 单测沿用 216 例 / 26 suites。
 
+- **主页长按封面 → 服务端「调整封面」（v0.3.73）**：
+  - 原来主页 JAV 作品墙长按封面与短按一样是进详情（`WorkCard` 的 `onLongClick ?: onClick`）。
+    本版把长按改为打开与 Web 端 `KE` 组件同款的「调整封面」弹窗：显示宽幅封面原图，
+    白色裁切框标出竖版封面的可视区域，可在图上按位置拖动或用滑块调整
+    `cover_crop_position`（0..1，默认 1＝靠右），带「重置 / 取消 / 保存」。
+  - 契约：`PUT /jav/items/{id}` body `{cover_crop_position: r}`（与 Web 端同一接口）；
+    `JavItemUpdateRequest` 新增该字段。保存成功后只把该字段写回本地列表，
+    卡片立刻按新锚点重新裁切，失败则在弹窗内显示错误并允许重试。
+  - 裁切框几何 / 拖动反解 / 百分比抽成 `CoverCropRules`，对齐 Web 端 `aT` / `oT`：
+    `iT = 800*0.47/538`，`a = min(1, iT/i)`、`o = min(1, i/iT)`，
+    `t = (x - a/2)/(1-a)`；原图横向没有裁切余地（`a >= 1`）时按 Web 端一样禁用调整。
+  - 编辑预览用清晰原图（与「查看完整封面」大图一致），不套浏览态毛玻璃打码，
+    否则开了打码就看不清要裁哪一块；图片加载失败时禁用保存并给出提示。
+  - 作用范围是**主页 JAV 作品墙**：女优 / 标签 / 片商 / 系列点进去的列表与收藏夹
+    仍保持原来的长按行为。
+  - 单测新增 `CoverCropRulesTest` 13 例；全量单测 **229 例 / 27 suites**。
+
 </details>
 
 <details>
@@ -925,8 +942,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **62 个提交**，**85 个文件 / +14,760 / −789 行**
-（新增 50 个文件，其中 25 个是新的 JVM 单测文件，合计 26 suites / 216 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **63 个提交**，**88 个文件 / +15,282 / −789 行**
+（新增 53 个文件，其中 26 个是新的 JVM 单测文件，合计 27 suites / 229 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 

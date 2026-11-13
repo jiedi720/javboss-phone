@@ -467,6 +467,11 @@ data class JavItemUpdateRequest(
     @SerialName("duration_min") val durationMin: Int? = null,
     /** 喜爱度 0..5（0.5 步长），null 表示不改；传 0 即清空 */
     @SerialName("favorite_rating") val favoriteRating: Double? = null,
+    /**
+     * 封面横向裁切位置 0..1（服务端「调整封面」弹窗，Web 端 `cover_crop_position`）。
+     * null 表示不改；服务端默认 1＝靠右。v0.3.73 主页长按封面时提交。
+     */
+    @SerialName("cover_crop_position") val coverCropPosition: Double? = null,
 )
 
 // ---------- 外部链接（/jav/javdb-url） ----------
