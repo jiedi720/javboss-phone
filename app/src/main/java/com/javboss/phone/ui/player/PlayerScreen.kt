@@ -54,7 +54,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -102,6 +101,7 @@ import com.javboss.phone.ui.components.coverImageModel
 import com.javboss.phone.ui.components.formatDuration
 import com.javboss.phone.ui.components.rememberWindowHeightDp
 import com.javboss.phone.ui.components.rememberWindowWidthDp
+import com.javboss.phone.ui.components.WebSlider
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -795,7 +795,7 @@ private fun PlaybackControls(
                 MaterialTheme.typography.labelSmall
             }
             Text(formatDuration(positionMs / 1000).ifEmpty { "0:00" }, color = Color.White, style = timeStyle, maxLines = 1)
-            Slider(
+            WebSlider(
                 value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
                 onValueChange = { if (durationMs > 0) onSeek((it * durationMs).toLong()) },
                 modifier = Modifier

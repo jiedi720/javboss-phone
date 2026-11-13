@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -202,7 +201,7 @@ fun CoverAdjustDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("位置", style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.width(8.dp))
-                    Slider(
+                    WebSlider(
                         value = position.toFloat(),
                         onValueChange = {
                             if (canAdjust) position = CoverCropRules.normalize(it.toDouble())

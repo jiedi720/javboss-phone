@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.75--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.76--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.75-modified**（versionCode 79） |
+| 当前版本 | **v0.3.76-modified**（versionCode 80） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -971,6 +971,23 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     切换前缀后滚回列表顶部；加载中 / 失败给轻提示，不阻断作品列表。
   - 全量单测 **239 例 / 28 suites**；未点名 MuMu，跳过真机实测。
 
+- **进度条 / 滑块改为服务端 Web 样式（v0.3.76）**：
+  - 用户反馈：播放进度条、调整封面等进度条都要改成 Web 端那样的
+    **细线轨道 + 橙色圆形滑块**，不要现在 M3 默认的那根竖条 thumb。
+  - 反查 Web bundle：服务端用原生 `input[type=range]` + `accent-*` 主色
+    （细线轨道、圆形 thumb、已过部分与 thumb 同为主色橙、未过部分灰色）。
+    客户端 Compose BOM `2024.12.01` 的 M3 Slider 默认 thumb 正是新版竖条 handle。
+  - 新增共用组件 `WebSlider`（`ui/components/WebSlider.kt`）：4dp 细线轨道，
+    主色 `MaterialTheme.colorScheme.primary`（`#FF9000`）为已过部分与 16dp 圆形滑块，
+    `#6B7280` 灰为未过部分；轨道两端各内缩半个滑块半径，滑块中心与轨道端点重合；
+    按下即定位、拖动跟随、越界钳到 0..1、`enabled=false` 不响应且整体置灰。
+  - 全项目仅 2 处 `Slider(`：`PlayerScreen.PlaybackControls`（播放进度条）与
+    `CoverAdjustDialog`（调整封面位置），均替换为 `WebSlider`；其余页面无滑块，
+    后续新增滑块直接复用同一组件即可保持统一。
+  - 数值映射抽成 `WebSliderRules`（`fraction` / `valueFromPointer`），
+    `WebSliderRulesTest` 10 例锁住比例、越界钳制、退化区间与窄宽度不崩；
+    全量单测 **249 例 / 29 suites**。未点名 MuMu，跳过真机实测。
+
 </details>
 
 <details>
@@ -979,8 +996,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **65 个提交**，**90 个文件 / +15,787 / −800 行**
-（新增 55 个文件，其中 27 个是新的 JVM 单测文件，合计 28 suites / 239 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **66 个提交**，**93 个文件 / +16,024 / −808 行**
+（新增 58 个文件，其中 28 个是新的 JVM 单测文件，合计 29 suites / 249 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
