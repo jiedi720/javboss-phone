@@ -62,6 +62,7 @@ import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.CoverAdjustDialog
 import com.javboss.phone.ui.components.RatingDialog
 import com.javboss.phone.ui.components.SortEntry
 import com.javboss.phone.ui.components.SortList
@@ -287,7 +288,7 @@ private fun NameInputDialog(
     )
 }
 
-/** 收藏夹详情：条目网格，长按移除 */
+/** 收藏夹详情：条目网格，长按 JAV 封面调整裁切位置（移出收藏夹走右上角星标） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FavGroupScreen(
@@ -307,8 +308,10 @@ fun FavGroupScreen(
 ) {
     val state = viewModel.uiState
     val context = LocalContext.current
-    var removeTarget by remember { mutableStateOf<FavoriteItemDto?>(null) }
     var ratingTarget by remember { mutableStateOf<FavoriteItemDto?>(null) }
+    // v0.3.74：收藏夹里的封面同样是 JAV 封面，长按一律「调整封面」；
+    // 原来的「长按＝移出收藏夹」弹窗去掉，移出走封面右上角的星标（选/取消收藏夹）
+    var coverAdjustTarget by remember { mutableStateOf<FavoriteItemDto?>(null) }
     var showSort by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -416,7 +419,6 @@ fun FavGroupScreen(
                                     )
                                 } ?: idolInfoRows("", 0, 0, 0, 0, 0),
                                 onClick = { onOpenIdol(item.id, item.name) },
-                                onLongClick = { removeTarget = item },
                                 cropLeft = idol?.coverCropLeft ?: 0.47,
                                 favoriteCount = 1,
                                 favoriteTarget = FavoriteTarget.idol(item.id),
@@ -431,7 +433,8 @@ fun FavGroupScreen(
                                         onOpenDetail(videoId, code)
                                     }
                                 },
-                                onLongClick = { removeTarget = item },
+                                onLongClick = { coverAdjustTarget = item },
+                                cropPosition = viewModel.coverCropPositionOf(item.code),
                                 rating = viewModel.ratingOf(item.code),
                                 onRatingClick = { ratingTarget = item },
                                 watchedMs = viewModel.watchedMsOf(item.code),
@@ -476,25 +479,15 @@ fun FavGroupScreen(
         )
     }
 
-    removeTarget?.let { item ->
-        AlertDialog(
-            modifier = Modifier.adaptiveDialogWidth(),
-            onDismissRequest = { removeTarget = null },
-            title = { Text("移出收藏夹") },
-            text = {
-                Text(
-                    "将「${if (kind == FavoriteRepository.KIND_IDOL) item.name else item.code}」从本收藏夹移除？"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    removeTarget = null
-                    viewModel.removeItem(groupId, item, kind)
-                }) { Text("移除", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { removeTarget = null }) { Text("取消") }
-            },
+    // v0.3.74：收藏夹长按 JAV 封面 → 服务端「调整封面」弹窗，与主页面同一套规则。
+    // 收藏夹条目没有 cover_crop_position，javId / 初值 / 保存都走 ViewModel 的完整 JavDto 映射。
+    coverAdjustTarget?.let { item ->
+        CoverAdjustDialog(
+            code = item.code,
+            coverUrl = viewModel.coverUrl(item.code).orEmpty(),
+            initialPosition = viewModel.coverCropPositionOf(item.code),
+            onDismiss = { coverAdjustTarget = null },
+            onSave = { position -> viewModel.updateCoverCropPosition(item.code, position) },
         )
     }
 

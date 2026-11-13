@@ -33,6 +33,7 @@ import com.javboss.phone.data.TagManageRules
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.ui.components.CenterMessage
+import com.javboss.phone.ui.components.CoverAdjustDialog
 import com.javboss.phone.ui.components.GridFooter
 import com.javboss.phone.ui.components.VideoPickDialog
 import com.javboss.phone.ui.components.FavoriteTarget
@@ -65,6 +66,8 @@ fun JavListScreen(
     var playPickerTarget by remember { mutableStateOf<JavDto?>(null) }
     // v0.3.70：女优 / 标签 / 片商 / 系列点进来的也是作品封面，左上角同样要有评分按钮
     var ratingTarget by remember { mutableStateOf<JavDto?>(null) }
+    // v0.3.74：这里也是 JAV 封面，长按同样打开服务端「调整封面」弹窗
+    var coverAdjustTarget by remember { mutableStateOf<JavDto?>(null) }
 
     LaunchedEffect(Unit) { viewModel.start(idolIds, tagIds, studioId, seriesId) }
     LaunchedEffect(state.sessionExpired) {
@@ -133,6 +136,7 @@ fun JavListScreen(
                             code = jav.code,
                             title = jav.title,
                             onClick = { onWorkClick(jav) },
+                            onLongClick = { coverAdjustTarget = jav },
                             cropPosition = jav.coverCropPosition,
                             favoriteCount = jav.favoriteCount,
                             favoriteTarget = FavoriteTarget.jav(jav.id),
@@ -169,6 +173,17 @@ fun JavListScreen(
                 viewModel.updateRating(jav.id, value)
                 ratingTarget = null
             },
+        )
+    }
+
+    // v0.3.74：女优 / 标签 / 片商 / 系列点开的列表，长按封面也是「调整封面」
+    coverAdjustTarget?.let { jav ->
+        CoverAdjustDialog(
+            code = jav.code,
+            coverUrl = viewModel.coverUrl(jav.code),
+            initialPosition = jav.coverCropPosition,
+            onDismiss = { coverAdjustTarget = null },
+            onSave = { position -> viewModel.updateCoverCropPosition(jav.id, position) },
         )
     }
 

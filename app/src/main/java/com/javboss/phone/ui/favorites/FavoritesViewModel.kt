@@ -7,12 +7,14 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.CoverCropRules
 import com.javboss.phone.data.FavoriteRepository
 import com.javboss.phone.data.TagColorRules
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.FavoriteGroupDto
 import com.javboss.phone.data.api.dto.FavoriteItemDto
 import com.javboss.phone.data.api.dto.IdolDto
+import com.javboss.phone.data.api.dto.JavItemUpdateRequest
 import com.javboss.phone.data.api.dto.TagDto
 import kotlinx.coroutines.launch
 
@@ -122,6 +124,8 @@ data class FavRating(
     val releaseUnix: Long = 0,
     /** 该作品的自定义标签（provider=3），保留 TagDto 以便点击角标按 tag.id 筛选作品 */
     val customTags: List<TagDto> = emptyList(),
+    /** v0.3.74：封面横向裁切位置（服务端「调整封面」），收藏夹条目本身不带，从完整 JavDto 补回来 */
+    val coverCropPosition: Double? = null,
 )
 
 /**
@@ -281,6 +285,7 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                                     durationMin = it.durationMin,
                                     releaseUnix = it.releaseUnix,
                                     customTags = TagColorRules.customTags(it.tags),
+                                    coverCropPosition = it.coverCropPosition,
                                 )
                             }
                     }.getOrDefault(emptyMap())
@@ -308,6 +313,38 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
     fun customTagsOf(code: String): List<TagDto> =
         uiState.ratings[code.uppercase()]?.customTags.orEmpty()
 
+    /** v0.3.74：收藏夹封面也按服务端 cover_crop_position 裁切，并作为「调整封面」弹窗初值 */
+    fun coverCropPositionOf(code: String): Double? =
+        uiState.ratings[code.uppercase()]?.coverCropPosition
+
+    /**
+     * v0.3.74：收藏夹长按封面 → 服务端「调整封面」。
+     * 收藏夹条目只有番号，javId 从 load() 拉回的完整 JavDto 映射里取；没拉到就提示刷新重试。
+     * 返回 null＝成功，非 null＝错误文案（弹窗内提示并允许重试）。
+     */
+    suspend fun updateCoverCropPosition(code: String, position: Double): String? {
+        val key = code.uppercase()
+        val entry = uiState.ratings[key]
+            ?: return "未找到该作品信息，请刷新收藏夹后重试"
+        val normalized = CoverCropRules.normalize(position)
+        return try {
+            val updated = container.videoRepository.updateJavItem(
+                entry.javId,
+                JavItemUpdateRequest(coverCropPosition = normalized),
+            )
+            val applied = CoverCropRules.normalize(updated.coverCropPosition ?: normalized)
+            uiState = uiState.copy(
+                ratings = uiState.ratings + (key to entry.copy(coverCropPosition = applied)),
+            )
+            null
+        } catch (e: AuthExpiredException) {
+            uiState = uiState.copy(sessionExpired = true)
+            "登录已过期"
+        } catch (e: Exception) {
+            e.message?.takeIf { it.isNotBlank() } ?: "保存失败"
+        }
+    }
+
     /** 改喜爱度：写回服务端后同步本地映射（收藏夹卡片左上角那颗星） */
     fun updateRating(code: String, rating: Double) {
         val entry = uiState.ratings[code.uppercase()] ?: return
@@ -326,19 +363,6 @@ class FavGroupViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(notice = "评分保存失败")
-            }
-        }
-    }
-
-    fun removeItem(groupId: Long, item: FavoriteItemDto, kind: String = FavoriteRepository.KIND_JAV) {
-        viewModelScope.launch {
-            try {
-                container.favoriteRepository.removeItems(groupId, listOf(item.id), kind)
-                uiState = uiState.copy(items = uiState.items.filterNot { it.id == item.id })
-            } catch (e: AuthExpiredException) {
-                uiState = uiState.copy(sessionExpired = true)
-            } catch (e: Exception) {
-                uiState = uiState.copy(notice = "移除失败")
             }
         }
     }

@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.73--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.74--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.73-modified**（versionCode 77） |
+| 当前版本 | **v0.3.74-modified**（versionCode 78） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -934,6 +934,23 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     仍保持原来的长按行为。
   - 单测新增 `CoverCropRulesTest` 13 例；全量单测 **229 例 / 27 suites**。
 
+- **全场景长按封面 → 调整封面；收藏夹去掉长按移出（v0.3.74）**：
+  - 用户反馈 2 项：① 不只是主页，**女优 / 系列 / 厂商（含标签）点开显示的作品封面**，
+    长按也要弹出「调整封面」；② **收藏夹**里长按也要「调整封面」，
+    原来的「长按＝移出收藏夹」弹窗不需要，移出走封面**右上角的星标**（选/取消收藏夹）。
+  - 客户端一共只有 3 处 `WorkCard` 作品封面网格：主页 `WorksScreen`（v0.3.73 已做）、
+    `JavListScreen`（女优 / 标签 / 片商 / 系列落地页）、`FavGroupScreen`（作品收藏夹内页）。
+    本版给后两处的 `WorkCard` 传 `onLongClick` 打开同一个 `CoverAdjustDialog`。
+  - `JavListViewModel.updateCoverCropPosition()` 直接按 `JavDto.coverCropPosition` 写回列表；
+    `FavGroupViewModel` 因收藏夹条目只有番号，把 `cover_crop_position` 一并放进
+    `FavRating`（来自 `load()` 拉回的完整 JavDto），提供 `coverCropPositionOf()` 作弹窗初值、
+    `updateCoverCropPosition(code, …)` 按番号反查 `javId` 后调 `PUT /jav/items/{id}` 并局部写回。
+    收藏夹卡片同时补传 `cropPosition`，保存后按新锚点即时重裁。
+  - 收藏夹**移除**流程：`removeTarget` 状态、「移出收藏夹」`AlertDialog` 与
+    `FavGroupViewModel.removeItem()` 一并删除；女优收藏夹的 `IdolCard` 也不再长按弹移出
+    （它同样可用右上角星标改收藏夹）。`groupId` 仍用于 `load()`。
+  - 未点名 MuMu，按默认规则跳过真机实测；全量单测沿用 **229 例 / 27 suites**。
+
 </details>
 
 <details>
@@ -942,7 +959,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **63 个提交**，**88 个文件 / +15,282 / −789 行**
+本仓库从 `b812953`（2026-11-05）起增加 **64 个提交**，**88 个文件 / +15,375 / −804 行**
 （新增 53 个文件，其中 26 个是新的 JVM 单测文件，合计 27 suites / 229 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。

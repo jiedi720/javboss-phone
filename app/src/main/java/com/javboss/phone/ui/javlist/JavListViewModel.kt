@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
+import com.javboss.phone.data.CoverCropRules
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.JavDto
 import com.javboss.phone.data.api.dto.JavItemUpdateRequest
@@ -121,6 +122,34 @@ class JavListViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 // 失败保持原样，下次刷新以服务端为准
             }
+        }
+    }
+
+    /**
+     * v0.3.74：列表页长按封面 → 服务端「调整封面」，与主页 / 收藏夹同一接口。
+     * 保存成功后只把 cover_crop_position 写回该条作品，卡片立刻按新锚点重新裁切。
+     * 返回 null＝成功，非 null＝错误文案（弹窗内提示并允许重试）。
+     */
+    suspend fun updateCoverCropPosition(javId: Long, position: Double): String? {
+        if (javId <= 0L) return "作品 id 无效"
+        val normalized = CoverCropRules.normalize(position)
+        return try {
+            val updated = container.videoRepository.updateJavItem(
+                javId,
+                JavItemUpdateRequest(coverCropPosition = normalized),
+            )
+            val applied = CoverCropRules.normalize(updated.coverCropPosition ?: normalized)
+            uiState = uiState.copy(
+                items = uiState.items.map {
+                    if (it.id == javId) it.copy(coverCropPosition = applied) else it
+                },
+            )
+            null
+        } catch (e: AuthExpiredException) {
+            uiState = uiState.copy(sessionExpired = true)
+            "登录已过期"
+        } catch (e: Exception) {
+            e.message?.takeIf { it.isNotBlank() } ?: "保存失败"
         }
     }
 
