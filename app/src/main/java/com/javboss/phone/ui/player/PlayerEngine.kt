@@ -15,6 +15,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import com.javboss.phone.data.PlaybackChapter
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -34,6 +35,13 @@ interface PlayerEngine {
     val decoderStatus: String
     val subtitlesAvailable: Boolean
     val subtitlesEnabled: Boolean
+
+    /**
+     * 视频源文件内嵌章节（v0.3.77 需求①）。
+     * libVLC 能读 MKV/MP4 chapters；Media3 1.5.1 不向应用层暴露容器章节，
+     * 因此 ExoPlayer 引擎返回空列表（播放设置里切到 libVLC 即可看到章节标记）。
+     */
+    val chapters: List<PlaybackChapter>
 
     /** 渲染表面（ExoPlayer 用 PlayerView 关控制条，libVLC 用 VLCVideoLayout） */
     fun createView(context: Context): View
@@ -96,6 +104,10 @@ class ExoPlayerEngine(context: Context, cookieHeader: String) : PlayerEngine {
         get() = player.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
     override val subtitlesEnabled: Boolean get() = subtitleEnabled
 
+    // Media3 1.5.1 的 Matroska/MP4 extractor 不把容器 chapters 暴露给应用层，
+    // 保持空列表；进度条章节标记只在 libVLC 引擎下出现。
+    override val chapters: List<PlaybackChapter> get() = emptyList()
+
     override fun createView(context: Context): View =
         PlayerView(context).apply {
             useController = false // 控制条由播放页统一绘制
@@ -135,6 +147,11 @@ class ExoPlayerEngine(context: Context, cookieHeader: String) : PlayerEngine {
  */
 class VlcPlayerEngine(context: Context) : PlayerEngine {
 
+    private companion object {
+        /** 章节解析可能晚于起播：未读到前最多重试次数（TimeChanged 约每 250ms 一次） */
+        const val MAX_CHAPTER_ATTEMPTS = 20
+    }
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val libVlc = LibVLC(context, arrayListOf("--no-stats"))
     private val mediaPlayer = MediaPlayer(libVlc)
@@ -147,17 +164,60 @@ class VlcPlayerEngine(context: Context) : PlayerEngine {
     @Volatile
     private var buffering = false
 
+    // v0.3.77 需求①：视频源文件内嵌章节（MKV/MP4 chapters）。
+    // 事件从 native 线程回调，章节元数据在起播后一小段时间才解析完，
+    // 故 Playing 读一次、TimeChanged 里未读到前有限次重试，读到后停止。
+    @Volatile
+    private var cachedChapters: List<PlaybackChapter> = emptyList()
+    private var chaptersLoaded = false
+    private var chapterAttempts = 0
+
     init {
         mediaPlayer.setEventListener { event ->
             when (event.type) {
-                MediaPlayer.Event.Playing -> if (pendingSeekMs > 0) {
-                    mediaPlayer.time = pendingSeekMs
-                    pendingSeekMs = -1L
+                MediaPlayer.Event.Playing -> {
+                    if (pendingSeekMs > 0) {
+                        mediaPlayer.time = pendingSeekMs
+                        pendingSeekMs = -1L
+                    }
+                    tryReadChapters()
                 }
+                MediaPlayer.Event.TimeChanged -> tryReadChapters()
                 MediaPlayer.Event.Buffering -> buffering = event.buffering < 100f
                 MediaPlayer.Event.EncounteredError -> mainHandler.post { onError() }
                 else -> {}
             }
+        }
+    }
+
+    /**
+     * 读取容器章节：titles 存在时按 title 下标逐个读；多数 MKV 没有 title，
+     * 退化为 -1（当前 title）与 0 两种下标，结果按 timeOffset 去重排序。
+     * 全部 native 调用都 runCatching 兜底：读不到章节绝不影响播放。
+     */
+    private fun tryReadChapters() {
+        if (chaptersLoaded) return
+        val found = mutableListOf<PlaybackChapter>()
+        runCatching {
+            val titles = mediaPlayer.titles
+            val indices = if (titles.isNullOrEmpty()) {
+                intArrayOf(-1, 0)
+            } else {
+                IntArray(titles.size) { it }
+            }
+            for (index in indices) {
+                val chapters = runCatching { mediaPlayer.getChapters(index) }.getOrNull() ?: continue
+                for (chapter in chapters) {
+                    if (chapter != null && chapter.timeOffset > 0L) {
+                        found += PlaybackChapter(chapter.timeOffset, chapter.name ?: "")
+                    }
+                }
+            }
+        }
+        cachedChapters = found.distinctBy { it.timeMs }.sortedBy { it.timeMs }
+        chapterAttempts += 1
+        if (cachedChapters.isNotEmpty() || chapterAttempts >= MAX_CHAPTER_ATTEMPTS) {
+            chaptersLoaded = true
         }
     }
 
@@ -168,12 +228,16 @@ class VlcPlayerEngine(context: Context) : PlayerEngine {
     override val decoderStatus: String get() = "自动（MediaCodec 硬解优先）"
     override val subtitlesAvailable: Boolean get() = mediaPlayer.spuTracksCount > 0
     override val subtitlesEnabled: Boolean get() = mediaPlayer.spuTrack >= 0
+    override val chapters: List<PlaybackChapter> get() = cachedChapters
 
     override fun createView(context: Context): View =
         VLCVideoLayout(context).also { mediaPlayer.attachViews(it, null, false, false) }
 
     override fun play(url: String, startPositionMs: Long) {
         pendingSeekMs = startPositionMs
+        cachedChapters = emptyList()
+        chaptersLoaded = false
+        chapterAttempts = 0
         val media = Media(libVlc, Uri.parse(url))
         mediaPlayer.media = media
         media.release()

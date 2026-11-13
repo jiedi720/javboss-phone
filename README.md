@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.76--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.77--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.76-modified**（versionCode 80） |
+| 当前版本 | **v0.3.77-modified**（versionCode 81） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -988,6 +988,33 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     `WebSliderRulesTest` 10 例锁住比例、越界钳制、退化区间与窄宽度不崩；
     全量单测 **249 例 / 29 suites**。未点名 MuMu，跳过真机实测。
 
+- **进度条显示视频内嵌章节 + 拖动预览缩略图（v0.3.77）**：
+  - 用户反馈：①进度条上要显示视频源文件自带的章节（截图为 `[00:00:00.000] Chapter 1` …
+    `[00:32:49.123] Chapter 4` 的 MKV 章节列表，以及进度条上方 3 个白色倒水滴标记）；
+    ②「移动进度条的时候在进度条上方显示略缩图」。
+  - 反查服务端 / Web bundle：服务端**既没有书签 API，也没有按时间点的预览图接口**
+    （`storyboard` / `trickplay` / `sprite` / `seekPreview` 计数全 0；`/videos/{id}/thumbnail`
+    只有单张封面且无时间参数；README 的「播放进度条预览」是 Client 模式本机 MPV +
+    `thumbfast.lua` 本地取帧，网页 / Android 用不上）。→ 章节只能读视频容器元数据，
+    预览只能由客户端本地取帧。
+  - ①章节标记：`PlayerEngine` 增加 `chapters: List<PlaybackChapter>`；`VlcPlayerEngine` 在
+    `Playing` / `TimeChanged` 回调里用 `getTitles()` / `getChapters(int)` 读 `timeOffset`
+    （章节可能晚于起播解析完，未读到前最多重试 20 次，读不到绝不影响播放），
+    `ExoPlayerEngine` 因 Media3 1.5.1 不向应用层暴露容器章节而返回空列表。
+    `PlaybackBookmarkRules`（去重 / 排序 / 过滤首尾与越界 / 转 fraction）+
+    `PlaybackBookmarkRulesTest` 8 例。
+  - `WebSlider` 增加 `markerFractions`：在 4dp 轨道上方画 7×9dp 白色倒水滴
+    （上宽下尖、尖端贴住轨道上沿），触摸区从 20dp 抬到 24dp 腾出绘制空间；
+    调整封面滑块不传该参数，样式保持原样。
+  - ②拖动预览：`WebSlider` 增加 `onScrubFraction`（按下 / 拖动传比例、抬手传 null）；
+    `PlayerScreen` 用 `SeekPreviewRules`（比例→时间点、秒级分桶、debounce 150ms）+
+    `SeekThumbnailLoader`（`MediaMetadataRetriever` 带会话 Cookie 在 IO 线程取最近关键帧，
+    失败返回 null 优雅降级）在进度条上方浮出 128×84dp 预览卡片（视频帧 + 目标时间，
+    跟随拖动点水平定位并钳制在可视范围）。`SeekPreviewRulesTest` 9 例。
+  - 全量单测 **266 例 / 31 suites**；未点名 MuMu，跳过真机实测。
+  - 已知边界：ExoPlayer 引擎下章节标记为空（播放设置切到 libVLC 即可看到）；
+    预览帧为客户端本地取帧，受容器格式 / 网络 seek 影响可能延迟或取不到（此时只显示占位）。
+
 </details>
 
 <details>
@@ -996,8 +1023,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **66 个提交**，**93 个文件 / +16,024 / −808 行**
-（新增 58 个文件，其中 28 个是新的 JVM 单测文件，合计 29 suites / 249 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **67 个提交**，**98 个文件 / +16,620 / −883 行**
+（新增 63 个文件，其中 30 个是新的 JVM 单测文件，合计 31 suites / 266 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 

@@ -3,6 +3,7 @@
 package com.javboss.phone.ui.player
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
@@ -19,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -77,8 +79,11 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -92,6 +97,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.javboss.phone.data.EngineMode
+import com.javboss.phone.data.PlaybackBookmarkRules
+import com.javboss.phone.data.PlaybackChapter
+import com.javboss.phone.data.SeekPreviewRules
 import com.javboss.phone.data.PlayerOrientation
 import com.javboss.phone.data.SeekSensitivity
 import com.javboss.phone.data.WindowSizeRules
@@ -398,6 +406,10 @@ private fun UnifiedPlayerStage(
     var durationMs by remember { mutableLongStateOf(0L) }
     var subtitlesAvailable by remember { mutableStateOf(false) }
     var subtitlesEnabled by remember { mutableStateOf(false) }
+    // v0.3.77：视频内嵌章节（仅 libVLC 引擎可读）、拖动进度条的预览帧
+    var chapters by remember(activeEngine) { mutableStateOf(emptyList<PlaybackChapter>()) }
+    var scrubFraction by remember { mutableStateOf<Float?>(null) }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var gestureHint by remember { mutableStateOf<String?>(null) }
     var gestureSeekTarget by remember { mutableLongStateOf(0L) }
     var speedBoost by remember { mutableStateOf(false) }
@@ -461,10 +473,31 @@ private fun UnifiedPlayerStage(
             durationMs = engine.durationMs
             subtitlesAvailable = engine.subtitlesAvailable
             subtitlesEnabled = engine.subtitlesEnabled
+            chapters = engine.chapters
             onPlaybackState(isPlaying)   // 只有真正在播的时间才计入服务端观看时长
             if (isPlaying && positionMs > 0) resumePositionMs = positionMs
             delay(500)
         }
+    }
+
+    // v0.3.77 需求②：拖动进度条时，在进度条上方预览对应时间点的视频帧。
+    // 服务端没有按时间点的预览图接口，客户端用 MediaMetadataRetriever 本地取帧；
+    // debounce 150ms + 秒级分桶，避免拖动过程中每个像素都重新 setDataSource / seek。
+    val previewUrl = remember(urls, sourceIndex) { urls.getOrNull(sourceIndex) }
+    val thumbnailLoader = remember(previewUrl) {
+        previewUrl?.let { SeekThumbnailLoader(it, cookieHeader) }
+    }
+    LaunchedEffect(scrubFraction, durationMs, thumbnailLoader) {
+        val f = scrubFraction
+        if (f == null || thumbnailLoader == null) {
+            previewBitmap = null
+            return@LaunchedEffect
+        }
+        delay(150)
+        val timeMs = SeekPreviewRules.timeMs(f, durationMs)
+        if (timeMs <= 0L) return@LaunchedEffect
+        val bucket = SeekPreviewRules.bucket(timeMs)
+        previewBitmap = thumbnailLoader.load(bucket * SeekPreviewRules.THROTTLE_MS)
     }
 
     LaunchedEffect(gestureHint) {
@@ -693,6 +726,11 @@ private fun UnifiedPlayerStage(
                 durationMs = durationMs,
                 activeEngine = activeEngine,
                 fullscreen = fullscreen,
+                chapterFractions = PlaybackBookmarkRules.fractions(chapters, durationMs),
+                previewBitmap = previewBitmap,
+                scrubFraction = scrubFraction,
+                scrubTimeMs = scrubFraction?.let { SeekPreviewRules.timeMs(it, durationMs) } ?: 0L,
+                onScrubFraction = { scrubFraction = it },
                 onPlayingChange = engine::setPlaying,
                 onSeek = engine::seekTo,
                 onToggleFullscreen = onToggleFullscreen,
@@ -759,72 +797,156 @@ private fun PlaybackControls(
     durationMs: Long,
     activeEngine: EngineMode,
     fullscreen: Boolean,
+    chapterFractions: List<Float>,
+    previewBitmap: Bitmap?,
+    scrubFraction: Float?,
+    scrubTimeMs: Long,
+    onScrubFraction: (Float?) -> Unit,
     onPlayingChange: (Boolean) -> Unit,
     onSeek: (Long) -> Unit,
     onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(color = Color.Black.copy(alpha = 0.65f), modifier = modifier.fillMaxWidth()) {
-        // 控制条保持紧凑按钮（34dp / 20dp）只在 Compact 竖屏小窗；
-        // 全屏或宽窗口一律用 48dp / 24dp 标准触控目标
-        val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
-        val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
-        val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = if (fullscreen) 8.dp else 2.dp),
-        ) {
-            Box(
-                Modifier
-                    .size(buttonSize)
-                    .clip(CircleShape)
-                    .clickable { onPlayingChange(!isPlaying) },
-                contentAlignment = Alignment.Center,
+    // 外层用 BoxWithConstraints（不 clip），让预览卡片能浮出控制条上方盖在画面上
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        var sliderLeftPx by remember { mutableFloatStateOf(0f) }
+        var sliderWidthPx by remember { mutableFloatStateOf(0f) }
+        val density = LocalDensity.current
+        Surface(color = Color.Black.copy(alpha = 0.65f), modifier = Modifier.fillMaxWidth()) {
+            // 控制条保持紧凑按钮（34dp / 20dp）只在 Compact 竖屏小窗；
+            // 全屏或宽窗口一律用 48dp / 24dp 标准触控目标
+            val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
+            val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
+            val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = if (fullscreen) 8.dp else 2.dp),
             ) {
-                Icon(
-                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    if (isPlaying) "暂停" else "播放",
-                    tint = Color.White,
-                    modifier = Modifier.size(iconSize),
+                Box(
+                    Modifier
+                        .size(buttonSize)
+                        .clip(CircleShape)
+                        .clickable { onPlayingChange(!isPlaying) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (isPlaying) "暂停" else "播放",
+                        tint = Color.White,
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
+                // 竖屏时间用更小字号、更紧间距，并把「当前引擎」让到全屏再显示（设置浮层里也有）
+                val timeStyle = if (fullscreen) {
+                    MaterialTheme.typography.labelMedium
+                } else {
+                    MaterialTheme.typography.labelSmall
+                }
+                Text(formatDuration(positionMs / 1000).ifEmpty { "0:00" }, color = Color.White, style = timeStyle, maxLines = 1)
+                WebSlider(
+                    value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
+                    onValueChange = { if (durationMs > 0) onSeek((it * durationMs).toLong()) },
+                    markerFractions = chapterFractions,
+                    onScrubFraction = onScrubFraction,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = if (fullscreen) 8.dp else 4.dp)
+                        .onGloballyPositioned { coords ->
+                            sliderLeftPx = coords.positionInParent().x
+                            sliderWidthPx = coords.size.width.toFloat()
+                        },
                 )
+                Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
+                Box(
+                    Modifier
+                        .size(buttonSize)
+                        .clip(CircleShape)
+                        .clickable(onClick = onToggleFullscreen),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                        contentDescription = if (fullscreen) "退出全屏" else "全屏",
+                        tint = Color.White,
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
+                if (fullscreen) {
+                    Text(
+                        if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer",
+                        color = Color.White.copy(alpha = 0.6f),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(start = 8.dp, end = 4.dp),
+                    )
+                }
             }
-            // 竖屏时间用更小字号、更紧间距，并把「当前引擎」让到全屏再显示（设置浮层里也有）
-            val timeStyle = if (fullscreen) {
-                MaterialTheme.typography.labelMedium
-            } else {
-                MaterialTheme.typography.labelSmall
+        }
+
+        // v0.3.77 需求②：拖动进度条时把对应时间点的预览帧浮在进度条上方
+        val f = scrubFraction
+        if (f != null) {
+            val cardWidth = 128.dp
+            val cardHeight = 84.dp
+            val centerX = with(density) {
+                (sliderLeftPx + sliderWidthPx * f).toDp()
             }
-            Text(formatDuration(positionMs / 1000).ifEmpty { "0:00" }, color = Color.White, style = timeStyle, maxLines = 1)
-            WebSlider(
-                value = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f,
-                onValueChange = { if (durationMs > 0) onSeek((it * durationMs).toLong()) },
+            val maxX = (maxWidth - cardWidth).coerceAtLeast(0.dp)
+            SeekPreviewCard(
+                bitmap = previewBitmap,
+                timeMs = scrubTimeMs,
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = if (fullscreen) 8.dp else 4.dp),
+                    .offset(x = (centerX - cardWidth / 2).coerceIn(0.dp, maxX), y = -(cardHeight + 6.dp))
+                    .size(cardWidth, cardHeight),
             )
-            Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
-            Box(
-                Modifier
-                    .size(buttonSize)
-                    .clip(CircleShape)
-                    .clickable(onClick = onToggleFullscreen),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                    contentDescription = if (fullscreen) "退出全屏" else "全屏",
-                    tint = Color.White,
-                    modifier = Modifier.size(iconSize),
+        }
+    }
+}
+
+/** 拖动预览卡片：视频帧 + 目标时间点；取帧失败/未完成时显示占位，不影响播放。 */
+@Composable
+private fun SeekPreviewCard(bitmap: Bitmap?, timeMs: Long, modifier: Modifier = Modifier) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.85f),
+        shape = RoundedCornerShape(6.dp),
+        modifier = modifier,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(4.dp),
+        ) {
+            if (bitmap != null && !bitmap.isRecycled) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(4.dp)),
                 )
+            } else {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.DarkGray.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "预览加载中…",
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
             }
-            if (fullscreen) {
-                Text(
-                    if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer",
-                    color = Color.White.copy(alpha = 0.6f),
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(start = 8.dp, end = 4.dp),
-                )
-            }
+            Text(
+                formatDuration(timeMs / 1000).ifEmpty { "0:00" },
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
