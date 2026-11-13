@@ -318,15 +318,21 @@ class DetailViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 保存 JAV 自定义标签：只传 tag_ids，走 PUT /jav/items/{id}
-     * （Web 端 JAV 详情「编辑自定义标签」同款），不会碰到视频标签。
+     * 保存作品标签，走 PUT /jav/items/{id}：
+     * - [tagIds] → `tag_ids`（用户自定义标签，服务端要求全部 is_user=true）
+     * - [scrapedTagIds] → `scraped_tag_ids`（刮削标签，服务端要求全部 is_user=false）
+     * 两者分开提交、互不覆盖；只有真正改动的那一类才会被传非 null。
      */
-    fun saveJavTags(javId: Long, tagIds: List<Long>) {
+    fun saveJavTags(
+        javId: Long,
+        tagIds: List<Long>,
+        scrapedTagIds: List<Long>? = null,
+    ) {
         viewModelScope.launch {
             try {
                 val updated = container.videoRepository.updateJavItem(
                     javId,
-                    JavItemUpdateRequest(tagIds = tagIds),
+                    JavItemUpdateRequest(tagIds = tagIds, scrapedTagIds = scrapedTagIds),
                 )
                 uiState = uiState.copy(javMeta = updated, notice = "标签已保存")
                 VideoTagEvents.notifyChanged()

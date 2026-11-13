@@ -27,22 +27,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.javboss.phone.data.TagOrderRules
 import com.javboss.phone.data.api.dto.TagDto
 import com.javboss.phone.ui.components.TagChip
-import com.javboss.phone.ui.components.adaptiveDialogWidth
+import com.javboss.phone.ui.components.adaptiveTagDialogWidth
 import kotlinx.coroutines.launch
 
 /**
- * 服务端「视频标签」与「JAV 自定义标签」是两套互不相通的数据，
- * 这里按 mode 分别走各自的读取 / 新建 / 保存接口：
+ * 服务端「视频标签」与「JAV 标签」是两套互不相通的数据，这里按 mode 分别走各自的
+ * 读取 / 新建 / 保存接口：
  *  - VIDEO：GET /tags、POST /tags、POST /videos/tags/replace
- *  - JAV  ：GET /jav/tags、POST /jav/tags、PUT /jav/items/{id}（只传 tag_ids）
+ *  - JAV  ：GET /jav/tags、POST /jav/tags、PUT /jav/items/{id}
  *
- * v0.3.71：
- * - 标签用彩底白字胶囊（[TagChip]）展示，与标签菜单 / 封面角标一致（自定义绿色、刮削橙色）；
- * - **自定义标签排在最前**并可勾选；刮削标签排在后面、只读展示（服务端 tag_ids 不接受它们）；
- * - 保存时只提交 provider=3 且 id>0 的标签，避免 `invalid tag_id` 导致整单失败。
+ * v0.3.72：
+ * - 标签一律用彩底白字胶囊（[TagChip]），与标签菜单 / 封面角标一致（自定义绿、刮削橙）；
+ * - **自定义标签排最前**、刮削标签紧随其后，**两段都可以勾选 / 取消**：
+ *   自定义提交到 `tag_ids`（服务端要求 is_user=true），刮削提交到 `scraped_tag_ids`
+ *   （要求 is_user=false），两者分开提交、互不覆盖——所以不再有「刮削只能看不能改」的限制；
+ * - 弹层宽度改用 [adaptiveTagDialogWidth]，与主页「标签管理」弹层同宽。
  */
 enum class TagPickerMode { VIDEO, JAV }
 
@@ -57,13 +60,12 @@ fun TagPickerDialog(
 ) {
     val isJav = mode == TagPickerMode.JAV
     var allTags by remember { mutableStateOf<List<TagDto>>(emptyList()) }
-    // 只有用户自定义标签（provider=3）能提交：PUT /jav/items/{id} 的 tag_ids 要求全部
-    // is_user=true，混入刮削标签会被判 invalid tag_id 整单失败。
-    var selected by remember {
-        mutableStateOf(
-            if (isJav) TagOrderRules.userTags(currentTags).map { it.id }.toSet()
-            else currentTags.map { it.id }.toSet(),
-        )
+    // 两套勾选集合：自定义标签与刮削标签分别提交到不同字段，不能混
+    var selectedCustom by remember {
+        mutableStateOf(TagOrderRules.userTags(currentTags).map { it.id }.toSet())
+    }
+    var selectedScraped by remember {
+        mutableStateOf(TagOrderRules.scrapedTags(currentTags).map { it.id }.toSet())
     }
     var newName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -79,23 +81,23 @@ fun TagPickerDialog(
         allTags = if (isJav) TagOrderRules.customFirst(merged) else merged
     }
 
-    // JAV：可勾选的只有自定义标签；刮削标签在下半区只读展示，让用户能看到全貌
-    val editableTags = if (isJav) TagOrderRules.userTags(allTags) else allTags
-    val readOnlyTags = if (isJav) TagOrderRules.scrapedTags(allTags) else emptyList()
+    val customTags = if (isJav) TagOrderRules.userTags(allTags) else allTags
+    val scrapedTags = if (isJav) TagOrderRules.scrapedTags(allTags) else emptyList()
 
     AlertDialog(
-        modifier = Modifier.adaptiveDialogWidth(),
+        modifier = Modifier.adaptiveTagDialogWidth(),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         onDismissRequest = onDismiss,
         title = { Text(if (isJav) "编辑标签" else "编辑视频标签") },
         text = {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 460.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    if (isJav) "编辑该作品的 JAV 自定义标签；与视频标签是两套互不相通的数据。"
+                    if (isJav) "点击胶囊增删标签：自定义标签与刮削标签分开保存，互不覆盖。"
                     else "只修改这个视频文件的标签；作品标签请在操作栏「编辑」里修改。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -104,52 +106,19 @@ fun TagPickerDialog(
                 if (allTags.isEmpty()) {
                     Text("加载标签中…", style = MaterialTheme.typography.bodySmall)
                 } else {
-                    if (isJav && editableTags.isNotEmpty()) {
-                        Text(
-                            "自定义标签",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                    }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        editableTags.forEach { tag ->
-                            TagChip(
-                                label = tag.name,
-                                custom = tag.isCustom,
-                                count = tag.count.takeIf { it > 0 },
-                                selected = tag.id in selected,
-                                onClick = {
-                                    selected = if (tag.id in selected) selected - tag.id
-                                    else selected + tag.id
-                                },
-                            )
+                    if (customTags.isNotEmpty()) {
+                        SectionTitle(if (isJav) "自定义标签" else "标签")
+                        TagChipFlow(customTags, selectedCustom) { id ->
+                            selectedCustom = if (id in selectedCustom) selectedCustom - id
+                            else selectedCustom + id
                         }
-                    }
-                    if (readOnlyTags.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "刮削标签（只读，不在此处编辑）",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            readOnlyTags.forEach { tag ->
-                                TagChip(
-                                    label = tag.name,
-                                    custom = false,
-                                    count = tag.count.takeIf { it > 0 },
-                                    enabled = false,
-                                    onClick = {},
-                                )
-                            }
+                    }
+                    if (scrapedTags.isNotEmpty()) {
+                        SectionTitle("刮削标签")
+                        TagChipFlow(scrapedTags, selectedScraped) { id ->
+                            selectedScraped = if (id in selectedScraped) selectedScraped - id
+                            else selectedScraped + id
                         }
                     }
                 }
@@ -172,7 +141,7 @@ fun TagPickerDialog(
                                     else viewModel.createVideoTag(name)
                                     allTags = if (isJav) TagOrderRules.customFirst(allTags + tag)
                                     else allTags + tag
-                                    selected = selected + tag.id
+                                    selectedCustom = selectedCustom + tag.id
                                     newName = ""
                                     error = null
                                 } catch (e: Exception) {
@@ -196,22 +165,56 @@ fun TagPickerDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (saving) return@TextButton
+                    if (saving || allTags.isEmpty()) return@TextButton
                     saving = true
                     if (isJav) {
-                        // 只提交 provider=3 且 id>0 的标签，避免服务端整单拒绝
-                        val ids = TagOrderRules.userTags(allTags)
-                            .filter { it.id in selected }
-                            .map { it.id }
-                        viewModel.saveJavTags(entityId, ids)
+                        // 自定义 → tag_ids（is_user=true）；刮削 → scraped_tag_ids（is_user=false）
+                        val customIds = customTags.filter { it.id in selectedCustom }.map { it.id }
+                        val scrapedIds = scrapedTags.filter { it.id in selectedScraped }.map { it.id }
+                        viewModel.saveJavTags(entityId, customIds, scrapedIds)
                     } else {
-                        viewModel.saveVideoTags(entityId, selected.toList())
+                        viewModel.saveVideoTags(entityId, selectedCustom.toList())
                     }
                     onDismiss()
                 },
-                enabled = !saving,
+                enabled = !saving && allTags.isNotEmpty(),
             ) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+/** 小节标题（自定义 / 刮削） */
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(6.dp))
+}
+
+/** 彩底胶囊流式排布；选中项带 2dp 白描边（与标签菜单一致） */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagChipFlow(
+    tags: List<TagDto>,
+    selected: Set<Long>,
+    onToggle: (Long) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        tags.forEach { tag ->
+            TagChip(
+                label = tag.name,
+                custom = tag.isCustom,
+                count = tag.count.takeIf { it > 0 },
+                selected = tag.id in selected,
+                onClick = { onToggle(tag.id) },
+            )
+        }
+    }
 }

@@ -455,6 +455,11 @@ data class VideoTagsReplaceRequest(
 data class JavItemUpdateRequest(
     val title: String? = null,
     @SerialName("tag_ids") val tagIds: List<Long>? = null,
+    /**
+     * 刮削标签（is_user=false）：服务端 2026 起的 `scraped_tag_ids` 字段，
+     * 与 `tag_ids`（用户标签）分开提交、互不覆盖。传空数组＝清空该作品的刮削标签。
+     */
+    @SerialName("scraped_tag_ids") val scrapedTagIds: List<Long>? = null,
     @SerialName("idol_ids") val idolIds: List<Long>? = null,
     @SerialName("studio_id") val studioId: Long? = null,
     @SerialName("series_id") val seriesId: Long? = null,

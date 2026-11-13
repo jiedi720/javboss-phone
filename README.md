@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.71--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.72--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.71-modified**（versionCode 75） |
+| 当前版本 | **v0.3.72-modified**（versionCode 76） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -907,6 +907,16 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 保存时只提交 provider=3 且 id>0 的标签，避免服务端 `invalid tag_id` 整单失败。
   - 单测 `TagOrderRulesTest` 更新为 7 例（含只读分区）；全量单测 **216 例 / 26 suites**。
 
+- **编辑标签恢复增删 + 弹层与标签菜单同宽（v0.3.72）**：
+  - v0.3.71 把刮削标签做成只读，导致「编辑标签」里没法再增删大部分标签。本版恢复：
+    **自定义与刮削两段都可勾选**——自定义提交 `tag_ids`（服务端要求 `is_user=true`），
+    刮削提交 `scraped_tag_ids`（要求 `is_user=false`），两者分开提交、互不覆盖。
+    `JavItemUpdateRequest` 新增 `scraped_tag_ids` 字段，`saveJavTags(javId, tagIds, scrapedTagIds)`。
+  - 编辑标签弹层宽度从通用 `adaptiveDialogWidth` 改为 `adaptiveTagDialogWidth` +
+    `DialogProperties(usePlatformDefaultWidth = false)`，与主页「标签管理」弹层同宽。
+  - 弹层内两段都用彩底胶囊（自定义绿 / 刮削橙），选中带白描边；自定义仍排最前。
+  - 单测沿用 216 例 / 26 suites。
+
 </details>
 
 <details>
@@ -924,7 +934,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.71-modified / versionCode 75 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.72-modified / versionCode 76 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
