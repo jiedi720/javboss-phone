@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.70--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.71--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.70-modified**（versionCode 74） |
+| 当前版本 | **v0.3.71-modified**（versionCode 75） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -870,7 +870,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - JAV 封面左下角番号加**半透明黑底胶囊**（`Color(0xB3000000)` + 3dp 圆角），背景图案
     复杂时也能看清；字号 `labelSmall`(11sp) → `labelMedium`(12sp)，底部渐变保留给上方标签。
   - 单测新增 `ImagePagerRulesTest` 15 例 + `WindowSizeRulesTest` 4 例（左栏宽度下限 / 上限 /
-    单调性、横版判定）；全量单测 **215 例 / 26 suites**。
+    单调性、横版判定）；全量单测 **209 例 / 25 suites**。
 
 - **翻页动画提速 + 封面番号贴角（v0.3.69）**：
   - 用户反馈 2 项：① 样品图翻页动画速度再快一点；② 番号半透明黑底要**贴封面左下角**，
@@ -879,7 +879,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     单测从「合计 ≤ 600ms」收紧为「合计 ≤ 300ms」，防止以后又被调慢。
   - 番号黑底去掉左 / 下内边距，改为**贴死封面左边与下边**（只留右上 4dp 圆角），
     与标签的 6dp 左缩进错开；上方仍留 8dp 渐变过渡，不与标签贴死。
-  - 全量单测 **215 例 / 26 suites**。
+  - 全量单测 **209 例 / 25 suites**。
 
 - **女优作品评分 + 标签顺序 + 标签保存报错（v0.3.70）**：
   - 用户反馈 3 项：① 女优封面点进去的作品列表，封面左上角没有评分按钮；② 详情页标签里
@@ -897,6 +897,16 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     点击弹出同一个评分弹窗调整，保存后 `javMeta` 立即刷新。
   - 单测新增 `TagOrderRulesTest` 6 例；全量单测 **215 例 / 26 suites**。
 
+- **标签顺序纠正为自定义在前 + 编辑标签改胶囊样式（v0.3.71）**：
+  - v0.3.70 把顺序做反了（当时理解成「刮削在前」）。服务端 `GET /jav/tags` / `jav.tags` 本来就是
+    刮削在前、自定义在后，所以 v0.3.70 的 `scrapedFirst()` 等于没变。本版改为
+    `TagOrderRules.customFirst()`：**自定义标签（provider=3，绿色胶囊）排最前**，刮削（橙色）在后，
+    组内保持服务端原顺序；详情页标签区按此渲染。
+  - 「编辑标签」弹窗（详情页 → 编辑标签）改用统一的 `TagChip` **彩底白字胶囊**（原先 M3 FilterChip）：
+    上半区「自定义标签」可勾选（选中带白描边），下半区「刮削标签（只读，不在此处编辑）」灰色不可点。
+  - 保存时只提交 provider=3 且 id>0 的标签，避免服务端 `invalid tag_id` 整单失败。
+  - 单测 `TagOrderRulesTest` 更新为 7 例（含只读分区）；全量单测 **216 例 / 26 suites**。
+
 </details>
 
 <details>
@@ -906,7 +916,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
 本仓库从 `b812953`（2026-11-05）起增加 **58 个提交**，**85 个文件 / +14,658 / −789 行**
-（新增 50 个文件，其中 25 个是新的 JVM 单测文件，合计 26 suites / 215 例）。
+（新增 50 个文件，其中 25 个是新的 JVM 单测文件，合计 26 suites / 216 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 
@@ -914,11 +924,11 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 | 项 | 上游 v0.2.1 | 本分支 |
 | --- | --- | --- |
-| 版本 | 0.2.1 / versionCode 3 | 0.3.70-modified / versionCode 74 |
+| 版本 | 0.2.1 / versionCode 3 | 0.3.71-modified / versionCode 75 |
 | 产物 | 4 个 ABI 分包 + universal | **单一 arm64-v8a**（约 53MB） |
 | 体积 | 无压缩 | R8 混淆 + 资源压缩，64.6MB → 52.8MB（dex 13.7 → 2.2MB） |
 | 包名 / 桌面名 | `com.javboss.phone` | `com.javboss.modified` /「JavBoss Modified」，**与原版共存安装** |
-| 单测 | 无 | **215 例 / 26 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
+| 单测 | 无 | **216 例 / 26 suites**，窗口分级、列数、方向、地址、标签、文件版本、401 异常类型、收藏角标 / 实体映射 / 角标位置、女优收藏夹排序、标签配色、标签管理端点分派与筛选、标签分类分组、封面标签分类折叠、标签分类回填等纯规则都有回归测试 |
 | 崩溃诊断 | 无 | 全局捕获 → 私有目录日志 → 下次冷启动一键邮件发送完整堆栈 |
 | 构建信息 | 无 | `BuildConfig.BUILD_TIME`，设置页「关于」显示版本 / versionCode / 包名 / 打包时间 |
 

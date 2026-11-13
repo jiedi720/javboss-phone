@@ -1182,8 +1182,8 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
     // 普通视频（没有 JAV 元数据）也能看到服务端给它打的标签。
     // 编辑入口按两套互不相通的标签体系分流：JAV 详情「编辑标签」走 /jav/tags，
     // 普通视频详情「编辑视频标签」走 /tags；空标签时也能新增。
-    // v0.3.70：服务端把用户自定义标签排在最前，展示时改为刮削标签在前、自定义在后
-    val tags = TagOrderRules.scrapedFirst(
+    // v0.3.71：自定义标签（绿色胶囊）排最前，刮削标签（橙色）排在后面
+    val tags = TagOrderRules.customFirst(
         (state.video?.tags.orEmpty() + jav?.tags.orEmpty())
             .distinctBy { tag -> if (tag.id > 0) "id:${tag.id}" else "name:${tag.name}" },
     )
