@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.78--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.79--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.78-modified**（versionCode 82） |
+| 当前版本 | **v0.3.79-modified**（versionCode 83） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1068,6 +1068,35 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     ④排序回顶部 ⑤预览图 16:9 无黑边。截图见 `qa-mumu-pad/v0378_r3_*`。
   - 副作用：拖动预览会在服务端 `data/video/{id}/screenshot/` 按秒生成 jpg（文件名按秒固定，
     同一秒重复覆盖，不会无限累积）。
+  - 后续复查：⑤ 的**垂直位置**仍与参考图不符（卡片下沿到轨道上沿约 100px 间隙），
+    比例 / 无黑边黑框本身达标；由 v0.3.79 修复。
+
+- **播放器进度条四项视觉调整（v0.3.79）**：
+  - 用户看图反馈：①章节标记不要 3 个白色倒水滴 / 标签样式，改成参考图所示
+    （橙色轨道被几道纯黑窄竖缝切成 3 段）；②黑底播放进度条高度调小、圆形滑块也调小；
+    ③控制条右侧不要显示 `ExoPlayer`；④拖动进度条时预览图下沿仍没贴紧进度条上沿，
+    红框标出还有间隙。
+  - ①章节标记：`WebSlider` 删掉 `ChapterMarkers` 白色倒水滴 `Path` 绘制，改为在轨道
+    Box 内用 `Canvas` 按 `markerFractions` 画**与轨道等高的纯黑竖缝**（`ChapterGapWidth = 2.dp`），
+    把橙色 / 灰色轨道按章节起点切成若干段；竖缝画在轨道之上、圆形滑块之下，
+    受轨道圆角 `clip` 约束不外溢，也不会切掉滑块。首尾端点不画（起点有滑块、终点贴边）。
+  - ②尺寸：`WebSlider` 增加 `trackHeight` / `thumbSize` 两个参数（默认仍是
+    `WebSliderStyle.TrackHeight = 4.dp` / `ThumbSize = 16.dp`），播放器单独传
+    `PlayerTrackHeight = 3.dp` / `PlayerThumbSize = 12.dp`；`TouchHeight = 24.dp` 不变，
+    保证细轨道仍有足够手指命中高度。**调整封面滑块不传参，尺寸保持 v0.3.76 不变**。
+  - ③引擎文字：删掉 `PlaybackControls` 全屏时右侧的 `libVLC / ExoPlayer` `Text`，
+    并移除随之不再使用的 `activeEngine` 参数；播放设置浮层里的「当前引擎 / 解码」
+    属用户主动查看的信息，保留。
+  - ④预览贴紧：v0.3.78 用 root 坐标 `localToRoot(Offset.Zero)` 算垂直锚，MuMu 实测
+    卡片下沿 y≈1143、轨道 y≈1243..1253，**仍留约 100px 间隙**（12dp 余量 + 浮层父级
+    坐标偏差）。本轮**完全去掉运行时坐标测量**：预览卡片改
+    `align(Alignment.BottomStart)` 贴控制条底边，再按纯布局常量
+    `previewBottomOffset = -(buttonSize / 2 + PlayerTrackHeight / 2)` 上移。
+    控制条高度由最大子项（播放 / 全屏按钮 `buttonSize`）决定、WebSlider 在 Row 里
+    垂直居中 ⇒ 卡片下沿恰好落在轨道上沿，间隙为 0；卡片仍是
+    `matchParentSize()` 浮层不参与测量，进度条不会上移。
+  - 单测 **281 例 / 32 suites** 不变（本轮为纯 UI 绘制与尺寸调整，未新增纯规则，
+    故不新增单测）；按默认规则本轮未点名 MuMu，未做装机实拍。
 
 </details>
 

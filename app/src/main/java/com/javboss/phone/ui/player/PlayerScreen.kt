@@ -80,7 +80,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -119,6 +118,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/** v0.3.79：播放器进度条比通用滑块更细、圆形滑块更小（用户反馈「黑底的播放进度条调小一点」）。
+ *  调整封面等其它滑块不传这两个值，保持 v0.3.76 以来的尺寸不变。 */
+private val PlayerTrackHeight = 3.dp
+private val PlayerThumbSize = 12.dp
 
 /**
  * 手机 / 平板播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
@@ -775,7 +779,6 @@ private fun UnifiedPlayerStage(
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
-                activeEngine = activeEngine,
                 fullscreen = fullscreen,
                 chapterFractions = PlaybackBookmarkRules.fractions(chapters, durationMs),
                 previewBitmap = previewBitmap,
@@ -845,7 +848,6 @@ private fun PlaybackControls(
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
-    activeEngine: EngineMode,
     fullscreen: Boolean,
     chapterFractions: List<Float>,
     previewBitmap: Bitmap?,
@@ -860,16 +862,16 @@ private fun PlaybackControls(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         var sliderLeftPx by remember { mutableFloatStateOf(0f) }
         var sliderWidthPx by remember { mutableFloatStateOf(0f) }
-        var sliderHeightPx by remember { mutableFloatStateOf(0f) }
-        var sliderRootYPx by remember { mutableFloatStateOf(0f) }
-        var previewBoxRootYPx by remember { mutableFloatStateOf(0f) }
         val density = LocalDensity.current
+        // 控制条高度由最大子项（播放/全屏按钮）决定；WebSlider 在 Row 里垂直居中，
+        // 故轨道中心距控制条底边恒为 buttonSize/2，轨道上沿再减半个轨道高。
+        // v0.3.79 需求④：预览卡片改用**纯布局常量**把下沿锚到轨道上沿，
+        // 不再依赖 root 坐标测量（上一版实测仍留约 100px 间隙）。
+        val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
+        val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
+        val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
+        val previewBottomOffset = -(buttonSize / 2 + PlayerTrackHeight / 2)
         Surface(color = Color.Black.copy(alpha = 0.65f), modifier = Modifier.fillMaxWidth()) {
-            // 控制条保持紧凑按钮（34dp / 20dp）只在 Compact 竖屏小窗；
-            // 全屏或宽窗口一律用 48dp / 24dp 标准触控目标
-            val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
-            val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
-            val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = if (fullscreen) 8.dp else 2.dp),
@@ -900,14 +902,14 @@ private fun PlaybackControls(
                     onValueChange = { if (durationMs > 0) onSeek((it * durationMs).toLong()) },
                     markerFractions = chapterFractions,
                     onScrubFraction = onScrubFraction,
+                    trackHeight = PlayerTrackHeight,
+                    thumbSize = PlayerThumbSize,
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = if (fullscreen) 8.dp else 4.dp)
                         .onGloballyPositioned { coords ->
                             sliderLeftPx = coords.positionInParent().x
                             sliderWidthPx = coords.size.width.toFloat()
-                            sliderHeightPx = coords.size.height.toFloat()
-                            sliderRootYPx = coords.localToRoot(Offset.Zero).y
                         },
                 )
                 Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
@@ -925,14 +927,7 @@ private fun PlaybackControls(
                         modifier = Modifier.size(iconSize),
                     )
                 }
-                if (fullscreen) {
-                    Text(
-                        if (activeEngine == EngineMode.VLC) "libVLC" else "ExoPlayer",
-                        color = Color.White.copy(alpha = 0.6f),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(start = 8.dp, end = 4.dp),
-                    )
-                }
+                // v0.3.79 需求③：控制条右侧不再显示 ExoPlayer / libVLC 引擎文字
             }
         }
 
@@ -942,9 +937,9 @@ private fun PlaybackControls(
         // matchParentSize 子项不参与 Box 尺寸计算，控制条高度恒定，卡片只向上浮出。
         // v0.3.78 需求⑤：卡片尺寸按**原始视频帧宽高比**算，不再固定 128×84 + Crop。
         // 过高时按最大高度反算宽度，比例始终不变；水平居中于拖动点。
-        // 垂直位置以**进度条轨道中心**为锚（不是控制条顶部）：
-        // 12dp = 轨道半高 2dp + 章节标记高 9dp + 1dp 余量，
-        // 卡片底边落在轨道上沿上方 10dp，既紧贴又不会盖住白色章节标记。
+        // v0.3.79 需求④：卡片用 align(BottomStart) 贴控制条底边，再按
+        // previewBottomOffset（纯布局常量）上移，使**卡片下沿精确落在轨道上沿**，
+        // 间隙为 0；不依赖任何运行时坐标测量，也不会把进度条顶上去。
         val f = scrubFraction
         if (f != null) {
             val ratio = previewBitmap
@@ -962,25 +957,15 @@ private fun PlaybackControls(
             val centerX = with(density) {
                 (sliderLeftPx + sliderWidthPx * f).toDp()
             }
-            // 用 root 坐标算「轨道中心 → 浮层顶边」的真实差值：
-            // 浮层父 Box 与进度条 Row 之间有额外的 insets/对齐偏移，
-            // 直接用 positionInParent 会把卡片抬到画面中间，够不到进度条。
-            val sliderCenterY = with(density) {
-                (sliderRootYPx + sliderHeightPx / 2f - previewBoxRootYPx).toDp()
-            }
             val maxX = (maxWidth - cardWidth).coerceAtLeast(0.dp)
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .onGloballyPositioned { previewBoxRootYPx = it.localToRoot(Offset.Zero).y },
-            ) {
+            Box(Modifier.matchParentSize()) {
                 SeekPreviewCard(
                     bitmap = previewBitmap,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
+                        .align(Alignment.BottomStart)
                         .offset(
                             x = (centerX - cardWidth / 2).coerceIn(0.dp, maxX),
-                            y = sliderCenterY - 12.dp - cardHeight,
+                            y = previewBottomOffset,
                         )
                         // requiredWidth/Height：matchParentSize 的 Box 只有控制条那么高，
                         // 普通 width/height 会被父级 maxHeight 钳到 ~40dp，把 16:9 画面压扁成横条。
