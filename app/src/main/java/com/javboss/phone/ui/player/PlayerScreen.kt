@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -69,6 +71,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -77,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -96,6 +100,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.api.ApiClient
 import com.javboss.phone.data.EngineMode
 import com.javboss.phone.data.PlaybackBookmarkRules
 import com.javboss.phone.data.PlaybackChapter
@@ -111,6 +116,7 @@ import com.javboss.phone.ui.components.rememberWindowHeightDp
 import com.javboss.phone.ui.components.rememberWindowWidthDp
 import com.javboss.phone.ui.components.WebSlider
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -273,6 +279,8 @@ fun PlayerScreen(
                     seekSensitivity = state.seekSensitivity,
                     cookieHeader = viewModel.cookieHeader,
                     proxyUrl = viewModel::proxyUrl,
+                    videoId = videoId,
+                    apiClient = viewModel.apiClient,
                     fullscreen = fullscreen,
                     onToggleFullscreen = { fullscreen = !fullscreen },
                     onSwitchToVlc = viewModel::switchToVlc,
@@ -366,6 +374,8 @@ private fun UnifiedPlayerStage(
     seekSensitivity: SeekSensitivity,
     cookieHeader: String,
     proxyUrl: (String) -> String,
+    videoId: Long,
+    apiClient: ApiClient,
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
     onSwitchToVlc: (Long) -> Unit,
@@ -406,8 +416,12 @@ private fun UnifiedPlayerStage(
     var durationMs by remember { mutableLongStateOf(0L) }
     var subtitlesAvailable by remember { mutableStateOf(false) }
     var subtitlesEnabled by remember { mutableStateOf(false) }
-    // v0.3.77：视频内嵌章节（仅 libVLC 引擎可读）、拖动进度条的预览帧
+    // v0.3.78：章节来自与引擎无关的 VlcChapterProbe（默认 ExoPlayer 下也能读到），
+    // 拖动进度条的预览帧由独立协程取帧（不会被手势变化取消）。
     var chapters by remember(activeEngine) { mutableStateOf(emptyList<PlaybackChapter>()) }
+    var probedChapters by remember(urls, sourceIndex) {
+        mutableStateOf(emptyList<PlaybackChapter>())
+    }
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var gestureHint by remember { mutableStateOf<String?>(null) }
@@ -473,31 +487,68 @@ private fun UnifiedPlayerStage(
             durationMs = engine.durationMs
             subtitlesAvailable = engine.subtitlesAvailable
             subtitlesEnabled = engine.subtitlesEnabled
-            chapters = engine.chapters
+            // VLC 引擎自己读到的章节优先（更及时）；默认 ExoPlayer 引擎用静默探测结果
+            chapters = engine.chapters.takeIf { it.isNotEmpty() } ?: probedChapters
             onPlaybackState(isPlaying)   // 只有真正在播的时间才计入服务端观看时长
             if (isPlaying && positionMs > 0) resumePositionMs = positionMs
             delay(500)
         }
     }
 
-    // v0.3.77 需求②：拖动进度条时，在进度条上方预览对应时间点的视频帧。
-    // 服务端没有按时间点的预览图接口，客户端用 MediaMetadataRetriever 本地取帧；
-    // debounce 150ms + 秒级分桶，避免拖动过程中每个像素都重新 setDataSource / seek。
-    val previewUrl = remember(urls, sourceIndex) { urls.getOrNull(sourceIndex) }
-    val thumbnailLoader = remember(previewUrl) {
-        previewUrl?.let { SeekThumbnailLoader(it, cookieHeader) }
+    // v0.3.78 需求①：Media3 1.5.1 不暴露容器 chapters，默认 ExoPlayer 引擎下
+    // engine.chapters 恒为空。用独立、静默的 libVLC 对当前播放地址探测一次章节，
+    // 不改用户引擎偏好、不参与播放；失败返回空列表，不影响播放。
+    val chapterProbe = remember(context) { VlcChapterProbe(context, apiClient.okHttpClient) }
+    LaunchedEffect(urls, sourceIndex, activeEngine) {
+        val raw = urls.getOrNull(sourceIndex) ?: return@LaunchedEffect
+        // v0.3.78：静默 libVLC 探测也必须走本地鉴权代理。直接用不带 Cookie 的原始
+        // 地址会被服务端 401（logcat: "libvlc stream: HTTP 401 error"），
+        // 默认 ExoPlayer 下 chapters 因此恒为空 —— 这正是需求①上一版没落地的原因。
+        probedChapters = chapterProbe.probe(proxyUrl(raw))
     }
-    LaunchedEffect(scrubFraction, durationMs, thumbnailLoader) {
-        val f = scrubFraction
-        if (f == null || thumbnailLoader == null) {
+
+    // v0.3.78 需求②：取帧必须用**不会被 scrubFraction 变化取消**的协程。
+    // 上一版把 delay(150) + load() 放进以 scrubFraction 为 key 的 LaunchedEffect：
+    // 拖动时比例高频变化 → effect 每次被取消重启 → delay 永远等不完 → 一帧都取不到，
+    // 抬手又变 null 清空，所以只剩「预览加载中…」。现在改为回调里按秒级分桶节流，
+    // 每个桶起一个独立协程，跑完才写回 bitmap。
+    // 地址走本地鉴权代理（Cookie + Range 透传），比直接远程流更容易取到帧。
+    // v0.3.78 最终：预览帧由服务端 ffmpeg 按秒生成（POST /videos/{id}/screenshots），
+    // 不再用 MediaMetadataRetriever 从网络流取帧（MuMu 实测始终停在「预览加载中…」）。
+    val thumbnailLoader = remember(videoId) {
+        SeekThumbnailLoader(apiClient, videoId)
+    }
+    val previewScope = rememberCoroutineScope()
+    var lastPreviewBucket by remember { mutableLongStateOf(-1L) }
+    /** 已写回的最大分桶：快拖动时多个取帧请求并发乱序，用它挡住旧帧闪回。 */
+    var appliedPreviewBucket by remember { mutableLongStateOf(-1L) }
+
+    fun onScrub(f: Float?) {
+        scrubFraction = f
+        if (f == null) {
             previewBitmap = null
-            return@LaunchedEffect
+            lastPreviewBucket = -1L
+            appliedPreviewBucket = -1L
+            return
         }
-        delay(150)
         val timeMs = SeekPreviewRules.timeMs(f, durationMs)
-        if (timeMs <= 0L) return@LaunchedEffect
+        val loader = thumbnailLoader
+        if (timeMs <= 0L) return
         val bucket = SeekPreviewRules.bucket(timeMs)
-        previewBitmap = thumbnailLoader.load(bucket * SeekPreviewRules.THROTTLE_MS)
+        val last = lastPreviewBucket.takeIf { it >= 0L }
+        if (!SeekPreviewRules.shouldFetch(last, bucket)) return
+        lastPreviewBucket = bucket
+        previewScope.launch {
+            val bmp = loader.load(bucket * SeekPreviewRules.THROTTLE_MS)
+            // 只接受「不倒退」的桶：快拖动时多个取帧请求并发乱序完成，挡住旧帧闪回。
+            // 不能要求 bucket == 当前最新桶 —— 快拖动时桶每秒都在变，那样一帧都写不回
+            // （MuMu 实测：截图 API 全部 201/200，卡片却一直停在「预览加载中…」）。
+            // 取帧失败保留上一帧，抬手后 scrubFraction 变 null，旧结果一律不回写。
+            if (bmp != null && scrubFraction != null && bucket >= appliedPreviewBucket) {
+                appliedPreviewBucket = bucket
+                previewBitmap = bmp
+            }
+        }
     }
 
     LaunchedEffect(gestureHint) {
@@ -729,8 +780,7 @@ private fun UnifiedPlayerStage(
                 chapterFractions = PlaybackBookmarkRules.fractions(chapters, durationMs),
                 previewBitmap = previewBitmap,
                 scrubFraction = scrubFraction,
-                scrubTimeMs = scrubFraction?.let { SeekPreviewRules.timeMs(it, durationMs) } ?: 0L,
-                onScrubFraction = { scrubFraction = it },
+                onScrubFraction = { onScrub(it) },
                 onPlayingChange = engine::setPlaying,
                 onSeek = engine::seekTo,
                 onToggleFullscreen = onToggleFullscreen,
@@ -800,7 +850,6 @@ private fun PlaybackControls(
     chapterFractions: List<Float>,
     previewBitmap: Bitmap?,
     scrubFraction: Float?,
-    scrubTimeMs: Long,
     onScrubFraction: (Float?) -> Unit,
     onPlayingChange: (Boolean) -> Unit,
     onSeek: (Long) -> Unit,
@@ -811,6 +860,9 @@ private fun PlaybackControls(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         var sliderLeftPx by remember { mutableFloatStateOf(0f) }
         var sliderWidthPx by remember { mutableFloatStateOf(0f) }
+        var sliderHeightPx by remember { mutableFloatStateOf(0f) }
+        var sliderRootYPx by remember { mutableFloatStateOf(0f) }
+        var previewBoxRootYPx by remember { mutableFloatStateOf(0f) }
         val density = LocalDensity.current
         Surface(color = Color.Black.copy(alpha = 0.65f), modifier = Modifier.fillMaxWidth()) {
             // 控制条保持紧凑按钮（34dp / 20dp）只在 Compact 竖屏小窗；
@@ -854,6 +906,8 @@ private fun PlaybackControls(
                         .onGloballyPositioned { coords ->
                             sliderLeftPx = coords.positionInParent().x
                             sliderWidthPx = coords.size.width.toFloat()
+                            sliderHeightPx = coords.size.height.toFloat()
+                            sliderRootYPx = coords.localToRoot(Offset.Zero).y
                         },
                 )
                 Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
@@ -882,72 +936,85 @@ private fun PlaybackControls(
             }
         }
 
-        // v0.3.77 需求②：拖动进度条时把对应时间点的预览帧浮在进度条上方
+        // v0.3.78 需求③：预览卡片必须是**不参与测量的浮层**。
+        // 上一版把 84dp 卡片直接放进 BoxWithConstraints，拖动时把控制条从 ~48dp
+        // 撑到 84dp；父级 align(BottomCenter) 底边固定 → 顶边上移 36dp，进度条跟着上移。
+        // matchParentSize 子项不参与 Box 尺寸计算，控制条高度恒定，卡片只向上浮出。
+        // v0.3.78 需求⑤：卡片尺寸按**原始视频帧宽高比**算，不再固定 128×84 + Crop。
+        // 过高时按最大高度反算宽度，比例始终不变；水平居中于拖动点。
+        // 垂直位置以**进度条轨道中心**为锚（不是控制条顶部）：
+        // 12dp = 轨道半高 2dp + 章节标记高 9dp + 1dp 余量，
+        // 卡片底边落在轨道上沿上方 10dp，既紧贴又不会盖住白色章节标记。
         val f = scrubFraction
         if (f != null) {
-            val cardWidth = 128.dp
-            val cardHeight = 84.dp
+            val ratio = previewBitmap
+                ?.takeIf { !it.isRecycled && it.width > 0 }
+                ?.let { it.height.toFloat() / it.width.toFloat() }
+                ?.coerceIn(0.25f, 2.5f)
+                ?: (9f / 16f)
+            val maxCardHeight = 150.dp
+            var cardWidth = 160.dp
+            var cardHeight = cardWidth * ratio
+            if (cardHeight > maxCardHeight) {
+                cardHeight = maxCardHeight
+                cardWidth = cardHeight / ratio
+            }
             val centerX = with(density) {
                 (sliderLeftPx + sliderWidthPx * f).toDp()
             }
+            // 用 root 坐标算「轨道中心 → 浮层顶边」的真实差值：
+            // 浮层父 Box 与进度条 Row 之间有额外的 insets/对齐偏移，
+            // 直接用 positionInParent 会把卡片抬到画面中间，够不到进度条。
+            val sliderCenterY = with(density) {
+                (sliderRootYPx + sliderHeightPx / 2f - previewBoxRootYPx).toDp()
+            }
             val maxX = (maxWidth - cardWidth).coerceAtLeast(0.dp)
-            SeekPreviewCard(
-                bitmap = previewBitmap,
-                timeMs = scrubTimeMs,
-                modifier = Modifier
-                    .offset(x = (centerX - cardWidth / 2).coerceIn(0.dp, maxX), y = -(cardHeight + 6.dp))
-                    .size(cardWidth, cardHeight),
-            )
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .onGloballyPositioned { previewBoxRootYPx = it.localToRoot(Offset.Zero).y },
+            ) {
+                SeekPreviewCard(
+                    bitmap = previewBitmap,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(
+                            x = (centerX - cardWidth / 2).coerceIn(0.dp, maxX),
+                            y = sliderCenterY - 12.dp - cardHeight,
+                        )
+                        // requiredWidth/Height：matchParentSize 的 Box 只有控制条那么高，
+                        // 普通 width/height 会被父级 maxHeight 钳到 ~40dp，把 16:9 画面压扁成横条。
+                        // required* 忽略 incoming 约束，卡片按真实比例完整浮出。
+                        .requiredWidth(cardWidth)
+                        .requiredHeight(cardHeight),
+                )
+            }
         }
     }
 }
 
-/** 拖动预览卡片：视频帧 + 目标时间点；取帧失败/未完成时显示占位，不影响播放。 */
+/**
+ * 拖动预览卡片：v0.3.78 需求⑤ —— 只显示视频帧本身，按原始宽高比铺满，
+ * 去掉原来的半透明黑底 Surface、4dp 内边距、圆角黑框和时间文字（用户截图里是纯画面）。
+ * 取帧未完成时只留极淡占位，不再显示「预览加载中…」遮罩。
+ */
 @Composable
-private fun SeekPreviewCard(bitmap: Bitmap?, timeMs: Long, modifier: Modifier = Modifier) {
-    Surface(
-        color = Color.Black.copy(alpha = 0.85f),
-        shape = RoundedCornerShape(6.dp),
-        modifier = modifier,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(4.dp),
-        ) {
-            if (bitmap != null && !bitmap.isRecycled) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                )
-            } else {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.DarkGray.copy(alpha = 0.6f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "预览加载中…",
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-            Text(
-                formatDuration(timeMs / 1000).ifEmpty { "0:00" },
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
+private fun SeekPreviewCard(bitmap: Bitmap?, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(4.dp)
+    if (bitmap != null && !bitmap.isRecycled) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            // 外层卡片尺寸已按 bitmap 比例算好，FillBounds 不会有形变/黑边
+            contentScale = ContentScale.FillBounds,
+            modifier = modifier.clip(shape),
+        )
+    } else {
+        Box(
+            modifier
+                .clip(shape)
+                .background(Color.White.copy(alpha = 0.08f)),
+        )
     }
 }
 

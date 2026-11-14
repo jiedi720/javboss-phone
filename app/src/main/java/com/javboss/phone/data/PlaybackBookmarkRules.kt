@@ -24,6 +24,47 @@ object PlaybackBookmarkRules {
     /** 相距小于该值的章节视为同一点，避免重复标记挤在一起 */
     const val MERGE_WINDOW_MS = 1_000L
 
+    /**
+     * 把 libVLC `Chapter.timeOffset` 归一成毫秒（v0.3.78 修复需求①）。
+     *
+     * 原生 libVLC 的 chapter 时间偏移是**微秒**，但不同构建/Java 绑定层可能已折算成毫秒。
+     * 上一版直接当毫秒用，微秒值远大于总时长，被 [fractions] 的 `it < durationMs` 越界过滤
+     * 全部丢掉，章节标记因此一个都不显示。这里用媒体总时长（毫秒）作参照自动判断：
+     * 最大偏移明显超过总时长时按微秒除以 1000，否则原样返回。
+     */
+    fun normalizeTimeMs(offsets: List<Long>, durationMs: Long): List<Long> {
+        if (offsets.isEmpty()) return emptyList()
+        val max = offsets.max()
+        val scale = if (durationMs > 0L && max > durationMs * 2L) 1_000L else 1L
+        return offsets.map { it / scale }
+    }
+
+    /**
+     * MP4 chapter track 的兜底还原（v0.3.78，JUR-857 实测）。
+     *
+     * libVLC 3.6.5 对 MP4 的 QuickTime chapter track 不通过 `getChapters()` 暴露，
+     * 而是映射成多个 title，`MediaPlayer.Title.duration` 是**每章时长（微秒）**。
+     * 累加前缀即可还原各章起点（首章起点 0 不返回，与 [fractions] 忽略 t<=0 一致）。
+     *
+     * 只有「微秒总和 / 1000 与媒体总时长同量级（±20%）」才采信：单位若是毫秒、
+     * 或 titles 其实是 DVD 菜单而非章节，总和会对不上，直接返回空避免画错标记。
+     * 返回的偏移仍交由 [normalizeTimeMs] 统一归一成毫秒。
+     */
+    fun chapterOffsetsFromTitleDurations(durations: List<Long>, durationMs: Long): List<Long> {
+        if (durations.size < 2 || durationMs <= 0L) return emptyList()
+        if (durations.any { it <= 0L }) return emptyList()
+        val totalUs = durations.fold(0L) { acc, d -> acc + d }
+        val totalMs = totalUs / 1_000L
+        if (totalMs < durationMs * 8 / 10 || totalMs > durationMs * 12 / 10) return emptyList()
+        val offsets = mutableListOf<Long>()
+        var acc = 0L
+        for (i in 1 until durations.size) {
+            acc += durations[i - 1]
+            offsets += acc
+        }
+        return offsets
+    }
+
     fun fractions(chapters: List<PlaybackChapter>, durationMs: Long): List<Float> {
         if (durationMs <= 0L) return emptyList()
         val merged = chapters

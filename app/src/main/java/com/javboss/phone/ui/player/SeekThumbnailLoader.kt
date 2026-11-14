@@ -1,40 +1,48 @@
 package com.javboss.phone.ui.player
 
 import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
+import android.graphics.BitmapFactory
+import com.javboss.phone.data.api.ApiClient
+import com.javboss.phone.data.api.dto.ScreenshotSecondRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Request
 
 /**
- * 拖动进度条时的预览帧加载器（v0.3.77 需求②）。
+ * 拖动进度条时的预览帧加载器（v0.3.78 最终实现）。
  *
- * 服务端没有「按时间点返回视频帧」的接口（Web 端的进度条预览只在本机 MPV +
- * thumbfast 下可用），因此客户端用 [MediaMetadataRetriever] 带会话 Cookie 在 IO 线程
- * 本地取帧。取帧代价较高，调用方已用 SeekPreviewRules 做 debounce + 秒级分桶节流。
+ * 服务端没有「按时间点返回视频帧」的专用接口，但有按秒生成截图的
+ * `POST /videos/{id}/screenshots`（ffmpeg 从服务端本地文件取帧），返回图片 URL。
  *
- * 任何失败（格式不支持、网络 seek 失败、无关键帧）都返回 null，UI 只隐藏/占位预览卡片，
- * 绝不影响正在进行的播放。
+ * v0.3.77 / v0.3.78 初版用 [android.media.MediaMetadataRetriever] 从网络流取帧，
+ * MuMu 实测始终停在「预览加载中…」：3 小时大文件需要反复 HTTP Range seek，
+ * `MediaMetadataRetriever` 迟迟不返回，本地代理 NanoHTTPD 侧还伴随 sendBody 异常。
+ * 改为服务端 ffmpeg 取帧后不依赖客户端框架解码器与网络 Range，稳定可用。
+ *
+ * 调用方负责按秒级分桶节流，并用**不会被手势变化取消**的协程调用 [load]；
+ * 任何失败都返回 null，UI 保留上一帧 / 显示占位，绝不影响正在进行的播放。
  */
 class SeekThumbnailLoader(
-    private val url: String,
-    private val cookieHeader: String,
+    private val apiClient: ApiClient,
+    private val videoId: Long,
 ) {
     suspend fun load(timeMs: Long): Bitmap? = withContext(Dispatchers.IO) {
-        if (timeMs < 0L) return@withContext null
-        val retriever = MediaMetadataRetriever()
-        try {
-            val headers = if (cookieHeader.isBlank()) {
-                emptyMap()
+        if (timeMs < 0L || videoId <= 0L) return@withContext null
+        val bytes: ByteArray? = try {
+            val info = apiClient.api()
+                .createVideoScreenshot(videoId, ScreenshotSecondRequest(timeMs / 1000.0))
+            if (info.url.isBlank()) {
+                null
             } else {
-                mapOf("Cookie" to cookieHeader)
+                val url = apiClient.absoluteUrl(info.url)
+                val request = Request.Builder().url(url).get().build()
+                apiClient.okHttpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) response.body?.bytes() else null
+                }
             }
-            retriever.setDataSource(url, headers)
-            // timeUs 参数是微秒；OPTION_CLOSEST_SYNC 取最近关键帧，比逐帧解码快得多
-            retriever.getFrameAtTime(timeMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             null
-        } finally {
-            runCatching { retriever.release() }
         }
+        bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
     }
 }

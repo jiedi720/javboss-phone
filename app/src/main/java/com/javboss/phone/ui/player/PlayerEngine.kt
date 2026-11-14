@@ -15,6 +15,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import com.javboss.phone.data.PlaybackBookmarkRules
 import com.javboss.phone.data.PlaybackChapter
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
@@ -194,10 +195,15 @@ class VlcPlayerEngine(context: Context) : PlayerEngine {
      * 读取容器章节：titles 存在时按 title 下标逐个读；多数 MKV 没有 title，
      * 退化为 -1（当前 title）与 0 两种下标，结果按 timeOffset 去重排序。
      * 全部 native 调用都 runCatching 兜底：读不到章节绝不影响播放。
+     *
+     * v0.3.78：原生 libVLC 的 `Chapter.timeOffset` 是**微秒**，上一版直接当毫秒用，
+     * 微秒值远大于总时长，被 fractions() 的越界过滤全部丢掉，标记一个都不显示。
+     * 这里用 [PlaybackBookmarkRules.normalizeTimeMs] 按媒体总时长自动归一；
+     * 时长尚未解析出来时先不缓存，等下一次 TimeChanged 再试。
      */
     private fun tryReadChapters() {
         if (chaptersLoaded) return
-        val found = mutableListOf<PlaybackChapter>()
+        val raw = mutableListOf<Pair<Long, String>>()
         runCatching {
             val titles = mediaPlayer.titles
             val indices = if (titles.isNullOrEmpty()) {
@@ -209,12 +215,19 @@ class VlcPlayerEngine(context: Context) : PlayerEngine {
                 val chapters = runCatching { mediaPlayer.getChapters(index) }.getOrNull() ?: continue
                 for (chapter in chapters) {
                     if (chapter != null && chapter.timeOffset > 0L) {
-                        found += PlaybackChapter(chapter.timeOffset, chapter.name ?: "")
+                        raw += chapter.timeOffset to (chapter.name ?: "")
                     }
                 }
             }
         }
-        cachedChapters = found.distinctBy { it.timeMs }.sortedBy { it.timeMs }
+        val lengthMs = runCatching { mediaPlayer.length }.getOrDefault(0L)
+        if (raw.isNotEmpty() && lengthMs <= 0L) return
+        val times = PlaybackBookmarkRules.normalizeTimeMs(raw.map { it.first }, lengthMs)
+        cachedChapters = times.mapIndexed { index, timeMs ->
+            PlaybackChapter(timeMs, raw[index].second)
+        }
+            .distinctBy { it.timeMs }
+            .sortedBy { it.timeMs }
         chapterAttempts += 1
         if (cachedChapters.isNotEmpty() || chapterAttempts >= MAX_CHAPTER_ATTEMPTS) {
             chaptersLoaded = true

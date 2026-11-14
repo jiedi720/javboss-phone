@@ -112,12 +112,6 @@ fun WebSlider(
             },
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (markerFractions.isNotEmpty()) {
-            ChapterMarkers(
-                fractions = markerFractions,
-                modifier = Modifier.fillMaxWidth().height(WebSliderStyle.TouchHeight),
-            )
-        }
         // 轨道两端各内缩一个滑块半径，滑块中心与轨道端点重合（与浏览器原生 range 一致）
         Box(
             Modifier
@@ -144,6 +138,14 @@ fun WebSlider(
                 .clip(CircleShape)
                 .background(active),
         )
+        // 章节标记最后绘制：画在滑块之上，避免倒水滴下半截被 16dp 圆形滑块盖住。
+        // 标记本身位于轨道上方，不响应手势，不影响按下即定位 / 拖动跟随。
+        if (markerFractions.isNotEmpty()) {
+            ChapterMarkers(
+                fractions = markerFractions,
+                modifier = Modifier.fillMaxWidth().height(WebSliderStyle.TouchHeight),
+            )
+        }
     }
 }
 

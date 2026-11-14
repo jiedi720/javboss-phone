@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
@@ -314,6 +315,13 @@ fun FavGroupScreen(
     var coverAdjustTarget by remember { mutableStateOf<FavoriteItemDto?>(null) }
     var showSort by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
+    // v0.3.78 需求④：排序切换后列表「弹到最下面」的根因。
+    // LazyVerticalGrid 默认 state 会按 item key 锚定当前第一个可见项：升→降序反转时
+    // 原锚点在旧顺序里靠前、在新顺序里变成了最后一项，LazyGrid 为保持该 key 可见
+    // 就直接滚到列表末尾。这里让网格 state 随排序键重建（初始 index=0），
+    // 排序一变就从顶部开始，不再继承旧滚动位置。
+    val sortKey = "${state.sort.name}:${state.sortAsc}:${state.idolSort.name}:${state.idolSortAsc}"
+    val gridState = remember(sortKey) { LazyGridState() }
 
     LaunchedEffect(groupId, kind) { viewModel.load(groupId, kind) }
     LaunchedEffect(state.sessionExpired) {
@@ -392,6 +400,7 @@ fun FavGroupScreen(
                 state.items.isEmpty() -> CenterMessage("收藏夹是空的")
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(rememberGridColumns()),
+                    state = gridState,
                     contentPadding = PaddingValues(rememberAdaptivePadding()),
                     horizontalArrangement = Arrangement.spacedBy(rememberGridSpacing()),
                     verticalArrangement = Arrangement.spacedBy(rememberGridSpacing()),

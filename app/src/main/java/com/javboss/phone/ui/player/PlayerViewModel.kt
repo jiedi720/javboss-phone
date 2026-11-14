@@ -55,6 +55,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     val cookieHeader: String get() = container.cookieJar.cookieHeader()
 
+    /** 进度条预览取帧需要复用带 CookieJar 的 Retrofit / OkHttp 客户端。 */
+    val apiClient get() = container.apiClient
+
     fun load(videoId: Long, javCode: String?) {
         currentVideoId = videoId
         // 切换视频：立刻换成新视频的封面，同时把一定存在的视频缩略图作为最后兜底。

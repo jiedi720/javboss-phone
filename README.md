@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.77--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.78--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.77-modified**（versionCode 81） |
+| 当前版本 | **v0.3.78-modified**（versionCode 82） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1014,6 +1014,60 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
   - 全量单测 **266 例 / 31 suites**；未点名 MuMu，跳过真机实测。
   - 已知边界：ExoPlayer 引擎下章节标记为空（播放设置切到 libVLC 即可看到）；
     预览帧为客户端本地取帧，受容器格式 / 网络 seek 影响可能延迟或取不到（此时只显示占位）。
+  - ⚠️ 该版本**实测未落地**，由 v0.3.78 修复。
+
+- **修复 v0.3.77 三项实测未落地 + 追加 ④⑤（v0.3.78，按用户要求 MuMu 实测）**：
+  - 用户复查反馈：①章节标记没显示；②拖动预览只显示「预览加载中…」；
+    ③拖动时进度条整体上移（应固定不动）。上一版台账标 ✅ 但未装机验证，本轮认账重做。
+  - ①章节根因两个：默认引擎是 ExoPlayer（AUTO 也走 EXO），Media3 1.5.1 不暴露容器
+    chapters，`ExoPlayerEngine.chapters` 恒为空；且 libVLC `Chapter.timeOffset` 原生单位是
+    **微秒**，上一版当毫秒用，被 `fractions()` 的越界过滤全部丢弃。
+    → 新增 `VlcChapterProbe`：独立静默 libVLC（`--no-audio` / `--no-video` / `--vout=dummy`）
+    只对当前播放地址做 demux 解析读章节，不改引擎偏好、不参与播放；
+    `PlaybackBookmarkRules.normalizeTimeMs` 按媒体总时长自动归一 ms/us（+5 例单测）；
+    `WebSlider` 把标记移到最后绘制，避免倒水滴被 16dp 圆形滑块盖住。
+  - ②预览根因两层：上一版 `LaunchedEffect(scrubFraction, …) { delay(150); load() }`
+    以拖动比例为 key，高频变化不断取消重启，`delay` 永远等不完 → 一帧都取不到；
+    改为 `onScrub` 回调里按秒级分桶节流、独立 `rememberCoroutineScope().launch` 取帧。
+    但 MuMu 实测发现**仍停在「预览加载中…」**：客户端 `MediaMetadataRetriever` 从 HTTP 流
+    对 3 小时大文件反复 Range seek 迟迟不返回，本地代理侧还伴随 `NanoHTTPD sendBody` 异常
+    → 这条路线在真机上不可用。最终改用服务端现成的按秒截图接口
+    `POST /videos/{id}/screenshots {"second":N}`（ffmpeg 从服务端本地文件取帧，返回图片 URL），
+    再用带 CookieJar 的 OkHttp GET 该 URL 解码为 Bitmap；`SeekThumbnailLoader` 只依赖
+    ApiClient + videoId，不再碰网络视频流。写回只接受最新分桶的成功帧，失败保留上一帧，
+    抬手后不回写。
+  - ③上移根因：84dp 预览卡片参与 `BoxWithConstraints` 测量，把控制条从 ~48dp 撑到 84dp，
+    父级 `align(BottomCenter)` 底边固定 → 顶边上移 36dp，进度条跟着上移。
+    → 卡片改用 `Modifier.matchParentSize()` 浮层（不参与测量），控制条高度恒定。
+    MuMu 像素核对：拖动前后橙色轨道/滑块 y 均为 `1228..1269`（中心 1248.5 → 1248.1），**固定不动**。
+  - ①章节补充根因（MuMu logcat 实证）：`VlcChapterProbe` 在默认 ExoPlayer 下用了不带
+    Cookie 的原始 URL，libVLC 报 `HTTP 401 error / authentication failed without realm`，
+    静默 demux 根本没打开媒体 → 统一改走本地鉴权代理 `proxyUrl(raw)`。
+  - ①章节最终修复（JUR-857 实测）：libVLC 3.6.5 内部能解析 MP4 `chpl` box
+    （logcat `read box: "chpl" 4 chapters`），但 Java 层 `titles=0`、`getChapters()` 不暴露，
+    轮询 2 秒仍 `probe: no chapters` → 新增 `Mp4ChapterParser`，由 `VlcChapterProbe` 用带鉴权的
+    OkHttp 对代理地址发 `Range` 请求读文件头/尾窗口，直接解析 `chpl`（100ns 时间戳 ÷10000 得 ms）。
+    JUR-857 实测 `chpl fallback 4 chapters, times=[0, 990838, 1867257, 1969123]`，
+    进度条上呈现 3 个白色倒水滴标记（t>0）。`Mp4ChapterParserTest` 6 例 +
+    `PlaybackBookmarkRulesTest` 增 4 例（含 `chapterOffsetsFromTitleDurations` 兜底）。
+  - ④收藏夹内页排序切换后弹到底部：根因是 `LazyVerticalGrid` 默认 state 按 item key 锚定
+    原可见项，排序反转后锚点落到新列表末尾。→ `FavoritesScreen` 按
+    `sort/sortAsc/idolSort/idolSortAsc` 组成 `sortKey`，`remember(sortKey) { LazyGridState() }`
+    重建网格状态并显式传 `state`。MuMu 实测：滚到最底部后切「番号 A→Z」，列表回到顶部
+    （031814-563 / 092211-813 / ABP-313…）。
+  - ⑤预览图样式与位置：去掉 `Surface` 半透明黑底、4dp 内边距、固定 128×84 + `ContentScale.Crop`、
+    时间文字与「预览加载中…」黑框占位；改为按 bitmap 原始宽高比动态算卡片尺寸、
+    `ContentScale.FillBounds` 铺满、无 bitmap 时仅极淡占位。父级 `matchParentSize()` 会把
+    16:9 压扁成横条 → 用 `requiredWidth/requiredHeight` 忽略 incoming 约束。垂直锚最终用
+    **root 坐标** `(sliderRootYPx + h/2 - previewBoxRootYPx) - 12.dp`（12dp = 2dp 轨道半高 +
+    9dp 章节标记 + 1dp 余量）：浮层父 Box 与进度条 Row 之间存在 insets/对齐偏移，用
+    `positionInParent()` 会把卡片抬到画面中间，`localToRoot(Offset.Zero)` 实测差值才贴得住进度条
+    正上方、又不遮住章节标记。MuMu 实测预览帧为服务端 `1920x1080` jpg，卡片 16:9 无黑边黑框。
+  - 全量单测 **281 例 / 32 suites**；按用户明确要求装机 MuMu 实测五项全部通过：
+    ①章节标记 3 个 ②真实预览帧 ③灰色轨道像素拖动前后均 `y=1243..1253`（固定不动）
+    ④排序回顶部 ⑤预览图 16:9 无黑边。截图见 `qa-mumu-pad/v0378_r3_*`。
+  - 副作用：拖动预览会在服务端 `data/video/{id}/screenshot/` 按秒生成 jpg（文件名按秒固定，
+    同一秒重复覆盖，不会无限累积）。
 
 </details>
 
@@ -1023,8 +1077,8 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 ## 与上游原版的改进点
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
-本仓库从 `b812953`（2026-11-05）起增加 **67 个提交**，**98 个文件 / +16,620 / −883 行**
-（新增 63 个文件，其中 30 个是新的 JVM 单测文件，合计 31 suites / 266 例）。
+本仓库从 `b812953`（2026-11-05）起增加 **69 个提交**，**103 个文件 / 约 +17,000 / −883 行**
+（新增 68 个文件，其中 31 个是新的 JVM 单测文件，合计 32 suites / 281 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 

@@ -24,7 +24,9 @@ import com.javboss.phone.data.api.dto.PlaybackSessionResponse
 import com.javboss.phone.data.api.dto.PrefixDto
 import com.javboss.phone.data.api.dto.RemoveFavoriteItemsRequest
 import com.javboss.phone.data.api.dto.ReplaceFavoriteGroupsRequest
+import com.javboss.phone.data.api.dto.ScreenshotInfoDto
 import com.javboss.phone.data.api.dto.ScreenshotListResponse
+import com.javboss.phone.data.api.dto.ScreenshotSecondRequest
 import com.javboss.phone.data.api.dto.SelectedFavoriteGroupsResponse
 import com.javboss.phone.data.api.dto.SeriesDto
 import com.javboss.phone.data.api.dto.SeriesListResponse
@@ -187,6 +189,13 @@ interface JavBossApi {
 
     @GET("videos/{id}/screenshots")
     suspend fun listVideoScreenshots(@Path("id") id: Long): ScreenshotListResponse
+
+    /** 按秒生成视频截图（服务端 ffmpeg 从本地文件取帧），用于拖动进度条预览。 */
+    @POST("videos/{id}/screenshots")
+    suspend fun createVideoScreenshot(
+        @Path("id") id: Long,
+        @Body body: ScreenshotSecondRequest,
+    ): ScreenshotInfoDto
 
     /**
      * 作品的样品图像列表（Web 端 KO 组件的数据源）。
