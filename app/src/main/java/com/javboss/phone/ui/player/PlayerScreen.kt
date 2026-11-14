@@ -91,6 +91,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.compose.AsyncImage
 import androidx.core.view.WindowCompat
@@ -123,6 +124,10 @@ import kotlin.math.roundToInt
  *  调整封面等其它滑块不传这两个值，保持 v0.3.76 以来的尺寸不变。 */
 private val PlayerTrackHeight = 3.dp
 private val PlayerThumbSize = 12.dp
+
+/** v0.3.80：预览图下沿停在轨道上沿再上 2dp 安全缝；配合浮层 zIndex(-1f)，
+ *  控制条（含进度条）永远画在预览图之上，不会再出现「预览图挡住进度条」。 */
+private val PreviewTrackGap = 2.dp
 
 /**
  * 手机 / 平板播放页：保留现有双引擎与鉴权代理，只使用自绘触控层。
@@ -864,13 +869,15 @@ private fun PlaybackControls(
         var sliderWidthPx by remember { mutableFloatStateOf(0f) }
         val density = LocalDensity.current
         // 控制条高度由最大子项（播放/全屏按钮）决定；WebSlider 在 Row 里垂直居中，
-        // 故轨道中心距控制条底边恒为 buttonSize/2，轨道上沿再减半个轨道高。
-        // v0.3.79 需求④：预览卡片改用**纯布局常量**把下沿锚到轨道上沿，
-        // 不再依赖 root 坐标测量（上一版实测仍留约 100px 间隙）。
+        // 故轨道中心距控制条顶边恒为 buttonSize/2，轨道上沿再减半个轨道高。
+        // v0.3.80：预览卡片用 align(TopStart)（子项顶边恒为 0，不受「子项比父高」影响），
+        // 下沿位置 = 轨道上沿 - 2dp 安全缝，全部由布局常量算出，不依赖任何运行时坐标。
+        // 上一版用 align(BottomStart) + requiredHeight 的溢出子项，实际放置与推算不符，
+        // 整张卡片往下盖住进度条；本版同时用 zIndex(-1f) 把预览图放到控制条下层绘制。
         val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
         val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
         val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
-        val previewBottomOffset = -(buttonSize / 2 + PlayerTrackHeight / 2)
+        val previewBottomY = buttonSize / 2 - PlayerTrackHeight / 2 - PreviewTrackGap
         Surface(color = Color.Black.copy(alpha = 0.65f), modifier = Modifier.fillMaxWidth()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -937,9 +944,10 @@ private fun PlaybackControls(
         // matchParentSize 子项不参与 Box 尺寸计算，控制条高度恒定，卡片只向上浮出。
         // v0.3.78 需求⑤：卡片尺寸按**原始视频帧宽高比**算，不再固定 128×84 + Crop。
         // 过高时按最大高度反算宽度，比例始终不变；水平居中于拖动点。
-        // v0.3.79 需求④：卡片用 align(BottomStart) 贴控制条底边，再按
-        // previewBottomOffset（纯布局常量）上移，使**卡片下沿精确落在轨道上沿**，
-        // 间隙为 0；不依赖任何运行时坐标测量，也不会把进度条顶上去。
+        // v0.3.80：卡片下沿 = 轨道上沿 - 2dp 安全缝；卡片顶边从浮层顶边(0)起，
+        // 故 offset.y = previewBottomY - cardHeight，主体向上浮出控制条。
+        // 浮层 zIndex(-1f) → 控制条（含进度条 / 滑块 / 时间）绘制在预览图之上，
+        // 即使有 1~2dp 误差也绝不会再挡住进度条。
         val f = scrubFraction
         if (f != null) {
             val ratio = previewBitmap
@@ -958,14 +966,14 @@ private fun PlaybackControls(
                 (sliderLeftPx + sliderWidthPx * f).toDp()
             }
             val maxX = (maxWidth - cardWidth).coerceAtLeast(0.dp)
-            Box(Modifier.matchParentSize()) {
+            Box(Modifier.matchParentSize().zIndex(-1f)) {
                 SeekPreviewCard(
                     bitmap = previewBitmap,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
+                        .align(Alignment.TopStart)
                         .offset(
                             x = (centerX - cardWidth / 2).coerceIn(0.dp, maxX),
-                            y = previewBottomOffset,
+                            y = previewBottomY - cardHeight,
                         )
                         // requiredWidth/Height：matchParentSize 的 Box 只有控制条那么高，
                         // 普通 width/height 会被父级 maxHeight 钳到 ~40dp，把 16:9 画面压扁成横条。

@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.79--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.80--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.79-modified**（versionCode 83） |
+| 当前版本 | **v0.3.80-modified**（versionCode 84） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1097,6 +1097,24 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     `matchParentSize()` 浮层不参与测量，进度条不会上移。
   - 单测 **281 例 / 32 suites** 不变（本轮为纯 UI 绘制与尺寸调整，未新增纯规则，
     故不新增单测）；按默认规则本轮未点名 MuMu，未做装机实拍。
+  - 后续复查：v0.3.79 装机后用户反馈**预览图挡住进度条**，由 v0.3.80 修复（见下）。
+
+- **修复拖动预览图挡住进度条（v0.3.80）**：
+  - 用户反馈：`现在拖动时的预览图挡住进度条了`。v0.3.79 把卡片从「离轨道约 100px」
+    一把压到「贴住轨道」，结果整张预览图往下盖住控制条，把进度条挡住了。
+  - 根因两层：①v0.3.79 用 `align(Alignment.BottomStart)` + `requiredHeight`，
+    预览卡片（约 90dp）比父浮层（控制条高 48dp）大，`Box` 对溢出子项的实际放置
+    与「底边贴父底边」的推算不符，卡片整体偏下；②浮层声明在 `Surface` 之后、
+    绘制层级更高，卡片一旦压到控制条区域就盖住进度条 / 滑块 / 时间文字。
+  - 修复（结构性，不依赖任何运行时坐标测量）：
+    - 卡片改回 `align(Alignment.TopStart)`（子项顶边恒为浮层顶边，不受溢出影响），
+      `offset.y = previewBottomY - cardHeight`，其中
+      `previewBottomY = buttonSize/2 - PlayerTrackHeight/2 - PreviewTrackGap(2.dp)`
+      = 轨道上沿再上 2dp；卡片主体向上浮出控制条，下沿停在轨道上沿上方 2dp。
+    - 浮层 `Box` 加 `Modifier.zIndex(-1f)`，让 `Surface` 控制条（含进度条、圆形滑块、
+      时间文字）绘制在预览图**之上**；即使有 1~2dp 误差也绝不会再挡住进度条。
+    - 保留 `matchParentSize()` 浮层不参与测量 ⇒ 控制条高度恒定、进度条不上移。
+  - 单测 **281 例 / 32 suites** 不变；按默认规则本轮未点名 MuMu，未做装机实拍。
 
 </details>
 
