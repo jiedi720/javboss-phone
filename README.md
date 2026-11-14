@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.80--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.81--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.80-modified**（versionCode 84） |
+| 当前版本 | **v0.3.81-modified**（versionCode 85） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1115,6 +1115,25 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
       时间文字）绘制在预览图**之上**；即使有 1~2dp 误差也绝不会再挡住进度条。
     - 保留 `matchParentSize()` 浮层不参与测量 ⇒ 控制条高度恒定、进度条不上移。
   - 单测 **281 例 / 32 suites** 不变；按默认规则本轮未点名 MuMu，未做装机实拍。
+  - 后续复查：v0.3.80 装机后用户反馈**横屏位置对了、竖屏仍有间隙**，由 v0.3.81 修复（见下）。
+
+- **修复竖屏预览图与进度条之间的间隙（v0.3.81）**：
+  - 用户反馈：`现在 横屏状态下 预览图 位置对了，但竖屏状态下 预览图 和 进度条之间还是有间隙`。
+    这是同一位置第四轮：v0.3.78 离轨道约 100px → v0.3.79 挡住进度条 →
+    v0.3.80 横屏贴紧但竖屏留缝。
+  - 根因：v0.3.80 仍按「控制条高度 = 按钮尺寸」推算轨道上沿
+    （`previewBottomY = buttonSize/2 - PlayerTrackHeight/2 - gap`）。横屏
+    `fullscreen` 走 48dp 刚好与实测一致；竖屏 compact 走 34dp，控制条实际
+    高度与推算不等，卡片下沿就比轨道上沿高出一截，肉眼看是缝。
+  - 修复：不再推算，改为**实测**。`WebSlider` 的 `onGloballyPositioned`
+    同时记录 `positionInParent().y` 与 `size.height`；新增纯规则
+    `SeekPreviewRules.previewBottomPx(sliderTopPx, sliderHeightPx, trackHeightPx, gapPx)`
+    按「轨道在滑块内垂直居中」算轨道上沿，再留 2dp 安全缝。横屏 / 竖屏
+    走同一条公式，与按钮尺寸、屏幕方向完全解耦。
+    保留 v0.3.80 的 `align(TopStart)` + `zIndex(-1f)`：`matchParentSize()`
+    浮层不参与测量、进度条不上移，控制条永远画在预览图之上，不会再遮挡。
+  - 单测新增 4 例（实测轨道上沿、横竖屏同一公式、未测量兜底、安全缝），
+    口径 **285 例 / 32 suites**；按默认规则本轮未点名 MuMu，未做装机实拍。
 
 </details>
 
@@ -1125,7 +1144,7 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
 
 对照基线：上游 `main` 分支 `95dba40`（**v0.2.1 / versionCode 3**，2026-08-08 后未再更新）。
 本仓库从 `b812953`（2026-11-05）起增加 **69 个提交**，**103 个文件 / 约 +17,000 / −883 行**
-（新增 68 个文件，其中 31 个是新的 JVM 单测文件，合计 32 suites / 281 例）。
+（新增 68 个文件，其中 31 个是新的 JVM 单测文件，合计 32 suites / 285 例）。
 上游原有的三 tab 底部导航、ExoPlayer → libVLC 双引擎 + 本地鉴权代理、播放手势、
 局域网接入说明**全部保留**。
 

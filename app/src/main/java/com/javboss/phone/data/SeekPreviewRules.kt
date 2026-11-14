@@ -24,4 +24,24 @@ object SeekPreviewRules {
 
     /** 与上一次取帧的桶不同才需要取帧（null 表示从未取过）。 */
     fun shouldFetch(lastBucket: Long?, currentBucket: Long): Boolean = lastBucket != currentBucket
+
+    /**
+     * v0.3.81：预览卡片下沿相对「控制条顶边」的像素位置。
+     *
+     * 之前按「控制条高度 = 按钮尺寸」推算轨道上沿：横屏 48dp 刚好对，竖屏 34dp 时
+     * 控制条实际高度与推算不一致 → 预览图与进度条之间留缝。改为全部用实测值：
+     * [sliderTopPx] 滑块顶边距控制条顶边、[sliderHeightPx] 滑块自身高、
+     * [trackHeightPx] 轨道高；轨道在滑块内垂直居中，
+     * 故轨道上沿 = sliderTop + (sliderHeight - trackHeight) / 2，再留 [gapPx] 安全缝。
+     * 横屏 / 竖屏走同一条公式，不再依赖按钮尺寸或屏幕方向。
+     */
+    fun previewBottomPx(
+        sliderTopPx: Float,
+        sliderHeightPx: Float,
+        trackHeightPx: Float,
+        gapPx: Float,
+    ): Float {
+        if (sliderHeightPx <= 0f || trackHeightPx <= 0f) return sliderTopPx - gapPx
+        return sliderTopPx + (sliderHeightPx - trackHeightPx) / 2f - gapPx
+    }
 }

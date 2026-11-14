@@ -126,7 +126,8 @@ private val PlayerTrackHeight = 3.dp
 private val PlayerThumbSize = 12.dp
 
 /** v0.3.80：预览图下沿停在轨道上沿再上 2dp 安全缝；配合浮层 zIndex(-1f)，
- *  控制条（含进度条）永远画在预览图之上，不会再出现「预览图挡住进度条」。 */
+ *  控制条（含进度条）永远画在预览图之上，不会再出现「预览图挡住进度条」。
+ *  v0.3.81：轨道上沿改由实测滑块位置算出，横竖屏都适用。 */
 private val PreviewTrackGap = 2.dp
 
 /**
@@ -867,17 +868,26 @@ private fun PlaybackControls(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         var sliderLeftPx by remember { mutableFloatStateOf(0f) }
         var sliderWidthPx by remember { mutableFloatStateOf(0f) }
+        var sliderTopPx by remember { mutableFloatStateOf(0f) }
+        var sliderHeightPx by remember { mutableFloatStateOf(0f) }
         val density = LocalDensity.current
-        // 控制条高度由最大子项（播放/全屏按钮）决定；WebSlider 在 Row 里垂直居中，
-        // 故轨道中心距控制条顶边恒为 buttonSize/2，轨道上沿再减半个轨道高。
         // v0.3.80：预览卡片用 align(TopStart)（子项顶边恒为 0，不受「子项比父高」影响），
-        // 下沿位置 = 轨道上沿 - 2dp 安全缝，全部由布局常量算出，不依赖任何运行时坐标。
-        // 上一版用 align(BottomStart) + requiredHeight 的溢出子项，实际放置与推算不符，
-        // 整张卡片往下盖住进度条；本版同时用 zIndex(-1f) 把预览图放到控制条下层绘制。
+        // 浮层 zIndex(-1f) 让控制条（含进度条 / 滑块 / 时间）画在预览图之上，绝不遮挡。
+        // v0.3.81：不再按「控制条高度 = buttonSize」推算轨道上沿——横屏 48dp 刚好对，
+        // 竖屏 34dp 时控制条实际高度与推算不一致，预览图与进度条之间就留了缝。
+        // 改为实测 WebSlider 顶边距控制条顶边 + 滑块自身高度，轨道在滑块内垂直居中，
+        // 由 SeekPreviewRules.previewBottomPx 算轨道上沿再留安全缝，横竖屏同一公式。
         val compact = WindowSizeRules.isCompact(rememberWindowWidthDp())
         val buttonSize = if (fullscreen || !compact) 48.dp else 34.dp
         val iconSize = if (fullscreen || !compact) 24.dp else 20.dp
-        val previewBottomY = buttonSize / 2 - PlayerTrackHeight / 2 - PreviewTrackGap
+        val previewBottomY = with(density) {
+            SeekPreviewRules.previewBottomPx(
+                sliderTopPx = sliderTopPx,
+                sliderHeightPx = sliderHeightPx,
+                trackHeightPx = PlayerTrackHeight.toPx(),
+                gapPx = PreviewTrackGap.toPx(),
+            ).toDp()
+        }
         Surface(color = Color.Black.copy(alpha = 0.65f), modifier = Modifier.fillMaxWidth()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -916,7 +926,9 @@ private fun PlaybackControls(
                         .padding(horizontal = if (fullscreen) 8.dp else 4.dp)
                         .onGloballyPositioned { coords ->
                             sliderLeftPx = coords.positionInParent().x
+                            sliderTopPx = coords.positionInParent().y
                             sliderWidthPx = coords.size.width.toFloat()
+                            sliderHeightPx = coords.size.height.toFloat()
                         },
                 )
                 Text(formatDuration(durationMs / 1000).ifEmpty { "--:--" }, color = Color.White, style = timeStyle, maxLines = 1)
@@ -944,7 +956,7 @@ private fun PlaybackControls(
         // matchParentSize 子项不参与 Box 尺寸计算，控制条高度恒定，卡片只向上浮出。
         // v0.3.78 需求⑤：卡片尺寸按**原始视频帧宽高比**算，不再固定 128×84 + Crop。
         // 过高时按最大高度反算宽度，比例始终不变；水平居中于拖动点。
-        // v0.3.80：卡片下沿 = 轨道上沿 - 2dp 安全缝；卡片顶边从浮层顶边(0)起，
+        // v0.3.81：卡片下沿 = 实测轨道上沿 - 2dp 安全缝；卡片顶边从浮层顶边(0)起，
         // 故 offset.y = previewBottomY - cardHeight，主体向上浮出控制条。
         // 浮层 zIndex(-1f) → 控制条（含进度条 / 滑块 / 时间）绘制在预览图之上，
         // 即使有 1~2dp 误差也绝不会再挡住进度条。
