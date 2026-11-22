@@ -16,7 +16,8 @@ private val Context.presetDataStore by preferencesDataStore(name = "server_prese
  * 一条预设连接地址。
  * url 使用归一化后的地址（见 [ServerAddressRules]），同时充当去重主键，不额外维护 id。
  *
- * [password] 为空表示该预设没存密码，点选后仍需手输；非空时点选即自动登录。
+ * [password] 为空表示该预设没存密码。v0.3.83 起空密码也视为可直接登录：
+ * 服务端支持无密码实例时，提交空密码即可；需要密码的实例会在登录时被服务端拒绝并提示。
  * 密码只落在应用私有目录的 DataStore（AndroidManifest 已 allowBackup=false，不会进云备份）。
  */
 @Serializable
@@ -27,8 +28,11 @@ data class ServerPreset(
     val addedAt: Long = 0L,
     val usedAt: Long = 0L,
 ) {
-    /** 点选后是否可直接登录 */
-    val canAutoLogin: Boolean get() = password.isNotBlank()
+    /**
+     * 点选后是否可直接登录。v0.3.83 起恒为 true：无密码实例靠空密码登录，
+     * 需要密码但没存的预设提交后由服务端返回错误，不再本地拦一道「无法自动登录」。
+     */
+    val canAutoLogin: Boolean get() = true
 }
 
 /**

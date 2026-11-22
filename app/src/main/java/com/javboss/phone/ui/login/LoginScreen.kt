@@ -268,8 +268,8 @@ private fun PresetRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        // 存过密码的预设：点一下就直接登录，这里给个锁标记
-        if (preset.canAutoLogin) {
+        // 锁标记只表示「这条预设存过密码」，不再是能否自动登录的开关（空密码也能自动登录）
+        if (preset.password.isNotBlank()) {
             Icon(
                 Icons.Filled.Lock,
                 contentDescription = "已保存密码，点按直接登录",

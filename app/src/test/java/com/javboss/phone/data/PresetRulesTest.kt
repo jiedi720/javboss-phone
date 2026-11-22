@@ -103,13 +103,13 @@ class PresetRulesTest {
     }
 
     @Test
-    fun `empty password is treated as not saved and can clear an old one`() {
+    fun `empty password still allows auto login and can clear an old one`() {
         var list = PresetRules.upsert(emptyList(), "http://10.0.0.2:8655", null, password = "pw123", now = 1)
         assertTrue(list[0].canAutoLogin)
 
-        // 显式传空串 = 清掉密码
+        // 显式传空串 = 清掉密码；但无密码实例靠空密码照样能自动登录
         list = PresetRules.upsert(list, "http://10.0.0.2:8655", null, password = "", now = 2)
-        assertFalse(list[0].canAutoLogin)
+        assertTrue(list[0].canAutoLogin)
         assertEquals("", list[0].password)
 
         // setPassword 可单独改密码，不动名称与时间

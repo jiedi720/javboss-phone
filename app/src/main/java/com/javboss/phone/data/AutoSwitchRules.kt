@@ -6,10 +6,10 @@ import com.javboss.phone.data.api.ServerAddressRules
 /**
  * 「按所在网络自动切换登录」的纯逻辑（无 Android 依赖，可直接单测）。
  *
- * 两条已存密码的预设分别扮演「家里（局域网）」与「外面（外网）」：
+ * 两条预设分别扮演「家里（局域网）」与「外面（外网）」：
  * - 家里：私网 IPv4 字面量的预设（如 192.168.x.x / 10.x.x.x）
  * - 外面：其余（域名 / 公网 IP）的预设
- * 只考虑存过密码的预设（[ServerPreset.canAutoLogin]），没密码没法在后台静默登录。
+ * v0.3.83 起空密码预设也算可用（服务端支持无密码实例），所以不再按是否存过密码过滤。
  */
 object AutoSwitchRules {
 

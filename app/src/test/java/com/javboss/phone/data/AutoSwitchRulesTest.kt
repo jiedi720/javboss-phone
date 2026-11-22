@@ -36,11 +36,12 @@ class AutoSwitchRulesTest {
     }
 
     @Test
-    fun `presets without saved password are ignored`() {
-        val noPassword = preset("http://192.168.1.99:8655", password = "")
+    fun `presets without saved password are usable too`() {
+        // v0.3.83：空密码预设也能自动登录，因此也参与角色识别
+        val noPasswordLan = "http://192.168.1.99:8655"
         assertEquals(
-            lan to wan,
-            AutoSwitchRules.guessRoles(listOf(noPassword, preset(lan), preset(wan))),
+            noPasswordLan to wan,
+            AutoSwitchRules.guessRoles(listOf(preset(noPasswordLan, password = ""), preset(wan))),
         )
     }
 

@@ -142,8 +142,8 @@ class AutoLoginSwitcher(private val context: Context) {
             }
 
             val target = container.presets.presets.firstOrNull { it.url == targetUrl }
-            if (target == null || !target.canAutoLogin) {
-                emit(ServerSwitchNotice(false, "$label 这条预设没保存密码，无法自动登录"))
+            if (target == null) {
+                emit(ServerSwitchNotice(false, "$label 这条预设还没指定，请在设置里补齐"))
                 return@withLock
             }
 
