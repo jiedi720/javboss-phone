@@ -65,10 +65,11 @@ enum class IdolSortBase(
     CUP("罩杯", "cup_asc", "cup", "小→大", "大→小", false),
 }
 
-/** 作品库的四个卡片墙视角（对齐 TV 版作品库子页签） */
+/** 作品库的五个卡片墙视角（对齐 Web / TV 版作品库子页签，男优为 v0.3.82 新增） */
 enum class LibraryTab(val label: String) {
     WORKS("JAV"),
     IDOLS("女优"),
+    ACTORS("男优"),
     STUDIOS("片商"),
     SERIES("系列"),
 }
@@ -109,6 +110,8 @@ data class WorksUiState(
     /** 女优排序维度（默认作品数量，多→少，与 Web 端一致） */
     val idolsSort: IdolSortBase = IdolSortBase.WORK,
     val idolsSortAsc: Boolean = false,
+    /** 男优列表（v0.3.82）：与女优同结构，排序维度沿用 idolsSort */
+    val actors: EntityPage<IdolDto> = EntityPage(),
     val studios: EntityPage<StudioDto> = EntityPage(),
     val series: EntityPage<SeriesDto> = EntityPage(),
     val error: String? = null,
@@ -261,6 +264,7 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
         when (tab) {
             LibraryTab.WORKS -> Unit
             LibraryTab.IDOLS -> if (!uiState.idols.loaded) refreshIdols()
+            LibraryTab.ACTORS -> if (!uiState.actors.loaded) refreshActors()
             LibraryTab.STUDIOS -> if (!uiState.studios.loaded) refreshStudios()
             LibraryTab.SERIES -> if (!uiState.series.loaded) refreshSeries()
         }
@@ -280,6 +284,7 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
         when (uiState.tab) {
             LibraryTab.WORKS -> refreshWorks()
             LibraryTab.IDOLS -> refreshIdols()
+            LibraryTab.ACTORS -> refreshActors()
             LibraryTab.STUDIOS -> refreshStudios()
             LibraryTab.SERIES -> refreshSeries()
         }
@@ -289,6 +294,7 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
         when (uiState.tab) {
             LibraryTab.WORKS -> loadMoreWorks()
             LibraryTab.IDOLS -> loadMoreIdols()
+            LibraryTab.ACTORS -> loadMoreActors()
             LibraryTab.STUDIOS -> loadMoreStudios()
             LibraryTab.SERIES -> loadMoreSeries()
         }
@@ -314,7 +320,8 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
         }
         val s = uiState
         viewModelScope.launch { container.settings.saveIdolSort(s.idolsSort.name, s.idolsSortAsc) }
-        refreshIdols()
+        // 排序维度女优/男优共用，但只刷新当前视角（男优走 /jav/actors）
+        if (uiState.tab == LibraryTab.ACTORS) refreshActors() else refreshIdols()
     }
 
     fun refreshIdols() {
@@ -357,6 +364,61 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
                 uiState = uiState.copy(idols = uiState.idols.copy(loadingMore = false), sessionExpired = true)
             } catch (e: Exception) {
                 uiState = uiState.copy(idols = uiState.idols.copy(loadingMore = false))
+            }
+        }
+    }
+
+    // ---------- 男优（v0.3.82，与女优同分页逻辑，仅端点不同） ----------
+
+    private suspend fun fetchActors(limit: Int, offset: Int) = uiState.let { s ->
+        container.videoRepository.listJavActors(
+            limit = limit,
+            offset = offset,
+            search = s.search,
+            sort = if (s.idolsSortAsc) s.idolsSort.ascValue else s.idolsSort.descValue,
+        )
+    }
+
+    fun refreshActors() {
+        viewModelScope.launch {
+            uiState = uiState.copy(actors = uiState.actors.copy(loading = true))
+            try {
+                val res = fetchActors(PAGE_SIZE, 0)
+                uiState = uiState.copy(
+                    actors = EntityPage(
+                        items = res.items, total = res.total, loaded = true,
+                        endReached = res.items.size >= res.total,
+                    ),
+                )
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(actors = uiState.actors.copy(loading = false), sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(
+                    actors = uiState.actors.copy(loading = false),
+                    error = e.message ?: "加载失败",
+                )
+            }
+        }
+    }
+
+    private fun loadMoreActors() {
+        val p = uiState.actors
+        if (p.loading || p.loadingMore || p.endReached) return
+        viewModelScope.launch {
+            uiState = uiState.copy(actors = p.copy(loadingMore = true))
+            try {
+                val res = fetchActors(PAGE_SIZE, p.items.size)
+                val merged = (p.items + res.items).distinctBy { it.id }
+                uiState = uiState.copy(
+                    actors = p.copy(
+                        items = merged, total = res.total, loadingMore = false, loaded = true,
+                        endReached = merged.size >= res.total || res.items.isEmpty(),
+                    ),
+                )
+            } catch (e: AuthExpiredException) {
+                uiState = uiState.copy(actors = uiState.actors.copy(loadingMore = false), sessionExpired = true)
+            } catch (e: Exception) {
+                uiState = uiState.copy(actors = uiState.actors.copy(loadingMore = false))
             }
         }
     }

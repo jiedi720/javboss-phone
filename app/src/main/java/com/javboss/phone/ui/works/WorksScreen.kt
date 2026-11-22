@@ -149,7 +149,7 @@ fun WorksScreen(
         // v0.3.50：Rail 模式下这一栏功能并入原左侧 NavigationRail，
         // 内容区顶部不再画工具条；Compact 手机竖屏保持原样。
         if (!toolsInRail) {
-            // 顶栏：四个紧凑视角按钮 + 排序 / 搜索 / 筛选 三个紧凑图标，
+            // 顶栏：五个紧凑视角按钮 + 排序 / 搜索 / 筛选 三个紧凑图标，
             // 不再横滑，也不再被 48dp 的 IconButton 挤掉，窄屏也能一行完整显示
             Row(
                 Modifier
@@ -169,7 +169,10 @@ fun WorksScreen(
                 TagToolChip(onClick = { tools.worksTagsOpen = true })
                 Spacer(Modifier.weight(1f))
                 // 排序 / 筛选：只留一个按钮，打开后是同一个菜单（作品视角多一段筛选区）
-                if (state.tab == LibraryTab.WORKS || state.tab == LibraryTab.IDOLS) {
+                if (state.tab == LibraryTab.WORKS ||
+                    state.tab == LibraryTab.IDOLS ||
+                    state.tab == LibraryTab.ACTORS
+                ) {
                     CompactIconButton(Icons.AutoMirrored.Filled.Sort, "排序 / 筛选") {
                         if (state.tab == LibraryTab.WORKS) viewModel.loadFilterOptions()
                         tools.worksSortOpen = true
@@ -196,6 +199,7 @@ fun WorksScreen(
                         when (state.tab) {
                             LibraryTab.WORKS -> "搜索番号 / 标题"
                             LibraryTab.IDOLS -> "搜索女优"
+                            LibraryTab.ACTORS -> "搜索男优"
                             LibraryTab.STUDIOS -> "搜索片商"
                             LibraryTab.SERIES -> "搜索系列"
                         },
@@ -215,6 +219,7 @@ fun WorksScreen(
             isRefreshing = when (state.tab) {
                 LibraryTab.WORKS -> state.loading && state.items.isNotEmpty()
                 LibraryTab.IDOLS -> state.idols.loading && state.idols.items.isNotEmpty()
+                LibraryTab.ACTORS -> state.actors.loading && state.actors.items.isNotEmpty()
                 LibraryTab.STUDIOS -> state.studios.loading && state.studios.items.isNotEmpty()
                 LibraryTab.SERIES -> state.series.loading && state.series.items.isNotEmpty()
             },
@@ -301,6 +306,36 @@ fun WorksScreen(
                         }
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             GridFooter(state.idols.loadingMore, state.idols.endReached, state.idols.total)
+                        }
+                    }
+                    LibraryTab.ACTORS -> {
+                        if (state.actors.items.isEmpty() && !state.actors.loading) {
+                            item(span = { GridItemSpan(maxLineSpan) }) { CenterMessage("没有男优") }
+                        }
+                        items(state.actors.items, key = { it.id }) { actor ->
+                            IdolCard(
+                                coverUrl = viewModel.idolCoverUrl(actor),
+                                name = actor.displayName,
+                                secondaryName = actor.secondaryName,
+                                workCount = actor.workCount,
+                                infoRows = idolInfoRows(
+                                    birthDate = actor.birthDate,
+                                    heightCm = actor.heightCm,
+                                    bust = actor.bust,
+                                    waist = actor.waist,
+                                    hips = actor.hips,
+                                    cup = actor.cup,
+                                ),
+                                onClick = {
+                                    onOpenJavList("演员：${actor.displayName}", actor.id.toString(), "", 0, 0)
+                                },
+                                cropLeft = actor.coverCropLeft ?: 0.47,
+                                favoriteCount = actor.favoriteCount,
+                                favoriteTarget = FavoriteTarget.idol(actor.id),
+                            )
+                        }
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            GridFooter(state.actors.loadingMore, state.actors.endReached, state.actors.total)
                         }
                     }
                     LibraryTab.STUDIOS -> {
@@ -400,7 +435,9 @@ fun WorksScreen(
                         .padding(bottom = 32.dp),
                 ) {
                 Text(
-                    if (state.tab == LibraryTab.WORKS) "排序 / 筛选" else "排序 · 女优",
+                    if (state.tab == LibraryTab.WORKS) "排序 / 筛选"
+                    else if (state.tab == LibraryTab.ACTORS) "排序 · 男优"
+                    else "排序 · 女优",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -426,7 +463,7 @@ fun WorksScreen(
                         },
                         onPick = { viewModel.onSortClick(JavSortBase.entries[it]) },
                     )
-                    LibraryTab.IDOLS -> SortList(
+                    LibraryTab.IDOLS, LibraryTab.ACTORS -> SortList(
                         entries = IdolSortBase.entries.map { base ->
                             val selected = state.idolsSort == base
                             val direction = if (selected) {

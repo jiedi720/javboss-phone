@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Male
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
@@ -84,6 +85,7 @@ private val mainTabs = listOf(
 private fun libraryTabIcon(tab: LibraryTab): ImageVector = when (tab) {
     LibraryTab.WORKS -> Icons.Filled.Movie
     LibraryTab.IDOLS -> Icons.Filled.Person
+    LibraryTab.ACTORS -> Icons.Filled.Male
     LibraryTab.STUDIOS -> Icons.Filled.Business
     LibraryTab.SERIES -> Icons.Filled.CollectionsBookmark
 }
@@ -267,7 +269,8 @@ fun MainScreen(
                                         onClick = { tools.worksTagsOpen = true },
                                     )
                                     if (worksViewModel.uiState.tab == LibraryTab.WORKS ||
-                                        worksViewModel.uiState.tab == LibraryTab.IDOLS
+                                        worksViewModel.uiState.tab == LibraryTab.IDOLS ||
+                                        worksViewModel.uiState.tab == LibraryTab.ACTORS
                                     ) {
                                         RailToolButton(
                                             icon = Icons.AutoMirrored.Filled.Sort,

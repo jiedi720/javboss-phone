@@ -264,7 +264,8 @@ fun EditDialog(
                         JavItemUpdateRequest(
                             title = title,
                             tagIds = selectedTagIds.toList(),
-                            idolIds = selectedIdols.map { it.id },
+                            idolIds = selectedIdols.filterNot { it.isMale }.map { it.id },
+                            actorIds = selectedIdols.filter { it.isMale }.map { it.id },
                             studioId = studioId,
                             seriesId = seriesId,
                             releaseDate = releaseDate.ifBlank { null },

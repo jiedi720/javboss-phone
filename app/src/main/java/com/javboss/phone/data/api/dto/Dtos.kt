@@ -1,5 +1,6 @@
 package com.javboss.phone.data.api.dto
 
+import com.javboss.phone.data.PerformerRules
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -211,6 +212,11 @@ data class IdolDto(
     @SerialName("chinese_name") val chineseName: String = "",
     @SerialName("cover_code") val coverCode: String = "",
     /**
+     * 演员性别（v0.3.82）：服务端详情里的演员项带 `gender`，取值 `female` / `male`。
+     * 缺失时按女优处理，兼容旧服务端。
+     */
+    val gender: String = "female",
+    /**
      * 女优封面左移比例 0..1（Web 端 `cover_crop_left`）：封面按高度铺满后，
      * 从图片宽度的这个比例处开始显示；缺失时 Web 用 0.47。
      */
@@ -232,6 +238,9 @@ data class IdolDto(
     val aliases: List<String> = emptyList(),
 ) {
     val displayName: String get() = chineseName.ifBlank { name }
+
+    /** 男优判定与 Web 端 `ke(e)` 一致：只认 gender=male，其余都当女优 */
+    val isMale: Boolean get() = PerformerRules.isMale(gender)
 
     /** 主名右侧的副名（Web 端 name 后面那个灰色小字） */
     val secondaryName: String
@@ -483,6 +492,11 @@ data class JavItemUpdateRequest(
      */
     @SerialName("scraped_tag_ids") val scrapedTagIds: List<Long>? = null,
     @SerialName("idol_ids") val idolIds: List<Long>? = null,
+    /**
+     * 男优 ID（v0.3.82）：服务端把女优 `idol_ids` 与男优 `actor_ids` 分开存，
+     * 详情里虽合并成一个 `idols` 数组返回，提交时必须拆开，否则男优关联会丢。
+     */
+    @SerialName("actor_ids") val actorIds: List<Long>? = null,
     @SerialName("studio_id") val studioId: Long? = null,
     @SerialName("series_id") val seriesId: Long? = null,
     @SerialName("release_date") val releaseDate: String? = null,

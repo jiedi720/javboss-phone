@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.81--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.82--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.81-modified**（versionCode 85） |
+| 当前版本 | **v0.3.82-modified**（versionCode 86） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1134,6 +1134,34 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     浮层不参与测量、进度条不上移，控制条永远画在预览图之上，不会再遮挡。
   - 单测新增 4 例（实测轨道上沿、横竖屏同一公式、未测量兜底、安全缝），
     口径 **285 例 / 32 suites**；按默认规则本轮未点名 MuMu，未做装机实拍。
+
+- **支持无密码登录（v0.3.82）**：
+  - 用户场景：服务端改成空密码（无密码实例）后，APK 登录页密码留空会被
+    `LoginViewModel.login()` 本地拦下并提示「请填写密码」，根本没机会把空密码
+    提交给服务端，导致无密码实例永远登不进去。
+  - 修复：删除该本地 `isBlank()` 拦截，空密码直接走 `performLogin()` 提交
+    `{"password": ""}`；服务端接受即登录，不接受则返回明确错误
+    （由 `parseError` 展示，例如「密码格式无效」）。判定权交还服务端，
+    客户端不再替服务端做密码必填假设。
+  - 未动预设自动登录：`ServerPreset.canAutoLogin` 仍依赖已存密码，空密码预设
+    点选后只填地址、需手动点登录按钮，避免影响正常密码实例的自动登录。
+  - 本轮为纯逻辑删除、无可抽的纯规则，单测口径 **285 例 / 32 suites** 不变；
+    按默认规则未点名 MuMu，未做装机实拍。
+
+- **JAV 顶栏新增「男优」入口（v0.3.82）**：
+  - 服务端新增 `/jav/actors`（与 `/jav/idols` 同参数、同返回结构），Web 端用
+    `cn("male")` 切换端点。客户端在「JAV / 女优」右边加「男优」视角，
+    横屏 Rail 与竖屏顶栏都可见，并带独立图标。
+  - 视角接 `/jav/actors`，沿用女优那套搜索、分页、排序与收藏夹逻辑
+    （男优收藏夹仍走 `idol` 这一套，与 Web 一致）；沿用本地持久化排序值。
+
+- **详情页演员栏按性别分色（v0.3.82）**：
+  - 服务端详情演员项带 `gender`（`female` / `male`），Web 端按此给女优
+    `purple-100 / purple-700`、男优 `sky-100 / sky-700` 的胶囊配色。
+    `IdolDto` 补 `gender` 字段（缺失按女优兼容旧服务端），详情页演员栏据此
+    分别着色，点击筛选作品的行为不变（服务端统一用 `idol_ids` 参数）。
+  - 新增纯规则 `PerformerRules.isMale/listPath` + 3 例单测，单测口径
+    **288 例 / 33 suites**；按默认规则未点名 MuMu，未做装机实拍。
 
 </details>
 

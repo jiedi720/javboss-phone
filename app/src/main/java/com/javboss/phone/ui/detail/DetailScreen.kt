@@ -1134,6 +1134,15 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
 
+    // 演员配色与 Web 端 detail 一致：女优 purple-100/purple-700，男优 sky-100/sky-700
+    val actressChipColors = AssistChipDefaults.assistChipColors(
+        containerColor = Color(0xFFF3E8FF),
+        labelColor = Color(0xFF7E22CE),
+    )
+    val actorChipColors = AssistChipDefaults.assistChipColors(
+        containerColor = Color(0xFFE0F2FE),
+        labelColor = Color(0xFF0369A1),
+    )
     // 演员（可点击）：放在片商 / 系列上面
     if (!jav?.idols.isNullOrEmpty()) {
         Spacer(Modifier.height(16.dp))
@@ -1146,6 +1155,7 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
                         p.onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
                     },
                     label = { Text(idol.displayName) },
+                    colors = if (idol.isMale) actorChipColors else actressChipColors,
                 )
             }
         }

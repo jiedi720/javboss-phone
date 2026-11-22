@@ -166,6 +166,16 @@ interface JavBossApi {
         @Query("favorite_group_id") favoriteGroupId: Long? = null,
     ): IdolListResponse
 
+    /** 男优列表（v0.3.82）：与 /jav/idols 同参数、同返回结构，Web 端 `cn("male")` */
+    @GET("jav/actors")
+    suspend fun listJavActors(
+        @Query("limit") limit: Int = 25,
+        @Query("offset") offset: Int = 0,
+        @Query("search") search: String = "",
+        @Query("sort") sort: String = "",
+        @Query("favorite_group_id") favoriteGroupId: Long? = null,
+    ): IdolListResponse
+
     @GET("jav/studios")
     suspend fun listJavStudios(
         @Query("limit") limit: Int = 25,

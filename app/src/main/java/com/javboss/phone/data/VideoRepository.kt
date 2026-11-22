@@ -311,6 +311,21 @@ class VideoRepository(private val apiClient: ApiClient) {
             favoriteGroupId = favoriteGroupId,
         )
 
+    suspend fun listJavActors(
+        limit: Int,
+        offset: Int,
+        search: String = "",
+        sort: String = "",
+        favoriteGroupId: Long? = null,
+    ): IdolListResponse =
+        apiClient.api().listJavActors(
+            limit = limit,
+            offset = offset,
+            search = search,
+            sort = sort,
+            favoriteGroupId = favoriteGroupId,
+        )
+
     suspend fun listJavStudios(limit: Int, offset: Int, search: String = ""): StudioListResponse =
         apiClient.api().listJavStudios(limit = limit, offset = offset, search = search)
 

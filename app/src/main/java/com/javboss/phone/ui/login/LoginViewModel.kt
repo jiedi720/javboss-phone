@@ -184,10 +184,9 @@ class LoginViewModel(app: Application) : AndroidViewModel(app) {
             uiState = uiState.copy(error = resolved.reason)
             return
         }
-        if (uiState.password.isBlank()) {
-            uiState = uiState.copy(error = "请填写密码")
-            return
-        }
+        // v0.3.82：服务端支持无密码实例时密码可留空，不再本地拦截，
+        // 直接把空密码提交给服务端由其判定（服务端不接受会返回明确错误，
+        // 由下方 catch 里的 parseError 展示，例如「密码格式无效」）。
         performLogin(
             url = (resolved as ServerAddressResult.Valid).url,
             password = uiState.password,
