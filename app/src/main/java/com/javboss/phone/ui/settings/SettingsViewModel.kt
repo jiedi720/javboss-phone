@@ -45,7 +45,7 @@ data class SettingsUiState(
     val wanPresetUrl: String = "",
     /** 探测地址覆盖；留空 = 跟随家里预设的地址 */
     val probeUrlOverride: String = "",
-    /** 可用于自动切换的预设（存过密码的），供设置页单选 */
+    /** 可用于自动切换 / 手动切换账号的预设（v0.3.83 起空密码预设也算可用，即全部预设） */
     val switchPresets: List<ServerPreset> = emptyList(),
     /** 探测地址输入校验错误 */
     val probeError: String? = null,
@@ -212,6 +212,15 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun usablePresets(): List<ServerPreset> =
         container.presets.presets.filter { it.canAutoLogin }
+
+    /**
+     * v0.3.84 手动切换账号：用目标预设的地址和密码重新登录。
+     * 复用 AutoLoginSwitcher 的切换流程（带失败回滚 + 成功清栈刷新通知），
+     * 不退出到登录页。切换本身不在 ViewModel 里做，避免重复一套会话快照逻辑。
+     */
+    fun switchAccount(preset: ServerPreset) {
+        container.autoLoginSwitcher.switchTo(preset)
+    }
 
     // ---------- 读取路径 ----------
 

@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.83--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.84--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.83-modified**（versionCode 87） |
+| 当前版本 | **v0.3.84-modified**（versionCode 88） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1171,6 +1171,15 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     登录页的锁标记改为只按"是否存过密码"显示，不再代表能否自动登录；
     自动切换的失败文案也同步更新。
   - 单测口径 **288 例 / 33 suites** 不变（更新了 2 条旧断言）；按默认规则
+    未点名 MuMu，未做装机实拍。
+
+- **设置里直接切换账号（v0.3.84）**：
+  - 用户场景：想换一个已保存的账号登录，原来只能「退出登录」再重新输地址和密码。
+  - 设置 → 账号卡片新增「切换账号」入口，列出所有已保存账号（当前账号标注且不可重选），
+    点一条即用它的地址+密码重新登录，不用先退出。复用自动切换的「登录前快照、失败自动回滚」
+    流程：切换失败会保持原来的连接并 Toast 提示，不会把用户踢回登录页；切换成功则清掉旧页面
+    缓存重建主界面，避免显示上一个账号的数据。
+  - 单测口径 **288 例 / 33 suites** 不变（纯 UI + 复用现有切换流程）；按默认规则
     未点名 MuMu，未做装机实拍。
 
 </details>

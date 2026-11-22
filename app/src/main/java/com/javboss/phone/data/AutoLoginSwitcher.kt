@@ -100,6 +100,36 @@ class AutoLoginSwitcher(private val context: Context) {
         checkJob = scope.launch { doCheck(force) }
     }
 
+    /**
+     * 手动切换账号（v0.3.84）：直接切到指定预设，不走网络探测、也不受自动切换开关限制。
+     * 与自动切换共用同一把锁和「快照 → 登录 → 失败回滚」流程；成功会发 changed 通知，
+     * 由导航层清掉旧返回栈重建页面（服务器换了，缓存数据全部失效）。
+     */
+    fun switchTo(preset: ServerPreset) {
+        checkJob?.cancel()
+        checkJob = scope.launch { doSwitchTo(preset) }
+    }
+
+    private suspend fun doSwitchTo(preset: ServerPreset) {
+        checkMutex.withLock {
+            val session = container.session
+            if (ServerAddressRules.normalize(preset.url) == session.serverUrl) {
+                emit(ServerSwitchNotice(false, "当前已经是「${preset.name}」，无需切换"))
+                return@withLock
+            }
+            // 登录前先快照：AuthRepository.login 会先清掉旧会话，失败必须原样恢复
+            val snapshotUrl = session.serverUrl
+            val snapshotCookie = session.cookieHeader
+            try {
+                container.authRepository.login(preset.url, preset.password)
+                emit(ServerSwitchNotice(true, "已切换到「${preset.name}」"))
+            } catch (e: Exception) {
+                restoreSession(snapshotUrl, snapshotCookie)
+                emit(ServerSwitchNotice(false, "切换失败，已保持原来的连接：${e.message ?: "无法登录"}"))
+            }
+        }
+    }
+
     /** 播放页进入 / 退出时调用；退出时把播放期间攒下的检查补上 */
     fun setPlaybackActive(active: Boolean) {
         val ended = playbackActive && !active

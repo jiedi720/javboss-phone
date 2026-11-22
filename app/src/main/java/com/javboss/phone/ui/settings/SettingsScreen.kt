@@ -51,6 +51,7 @@ import com.javboss.phone.BuildConfig
 import com.javboss.phone.data.LaunchTab
 import com.javboss.phone.data.ServerPreset
 import com.javboss.phone.data.WindowSizeRules
+import com.javboss.phone.data.api.ServerAddressRules
 import com.javboss.phone.data.api.dto.DirectoryDto
 import com.javboss.phone.ui.components.adaptiveDialogWidth
 import com.javboss.phone.ui.components.adaptiveMaxWidth
@@ -71,6 +72,7 @@ fun SettingsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<DirectoryDto?>(null) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showSwitchAccount by remember { mutableStateOf(false) }
     // 探测地址输入框的本地草稿；持久化值变化（保存成功）时同步刷新
     var probeDraft by remember(state.probeUrlOverride) { mutableStateOf(state.probeUrlOverride) }
 
@@ -159,17 +161,32 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider()
                 Spacer(Modifier.height(2.dp))
-                // 用紧凑的文本按钮：文字跟随新主题橙，不再用旧的浅红语义色；
-                // 也不用整行高的 TextButton，卡片留白明显收窄
-                Text(
-                    text = "退出登录",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .clickable { showLogoutConfirm = true }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                )
+                // v0.3.84：切换账号与退出登录并排。切换账号列出所有已存账号，
+                // 点一条直接用它的地址+密码重新登录（失败自动回滚），不用先退出再重填。
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "切换账号",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable { showSwitchAccount = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                    // 用紧凑的文本按钮：文字跟随新主题橙，不再用旧的浅红语义色；
+                    // 也不用整行高的 TextButton，卡片留白明显收窄
+                    Text(
+                        text = "退出登录",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable { showLogoutConfirm = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
 
@@ -452,6 +469,87 @@ fun SettingsScreen(
                 TextButton(onClick = { showLogoutConfirm = false }) { Text("取消") }
             },
         )
+    }
+
+    // v0.3.84：切换账号弹窗。列出所有已保存账号，当前账号禁用点选并标注；
+    // 点其他账号直接用那条的地址+密码重新登录，无需先退出。切换结果（成功/失败回滚）
+    // 由导航层统一收通知 Toast，失败不会把用户踢回登录页。
+    if (showSwitchAccount) {
+        AlertDialog(
+            modifier = Modifier.adaptiveDialogWidth(),
+            onDismissRequest = { showSwitchAccount = false },
+            title = { Text("切换账号") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        "选一条已保存的账号直接登录，不用退出后再重新输入。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (state.switchPresets.isEmpty()) {
+                        Text(
+                            "还没有保存过账号。请先在登录页登录一次并勾选「记住密码」。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        state.switchPresets.forEach { preset ->
+                            val isCurrent =
+                                ServerAddressRules.normalize(preset.url) == state.serverUrl
+                            SwitchAccountRow(
+                                name = preset.name,
+                                url = preset.url,
+                                current = isCurrent,
+                                onClick = {
+                                    showSwitchAccount = false
+                                    if (!isCurrent) viewModel.switchAccount(preset)
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSwitchAccount = false }) { Text("关闭") }
+            },
+        )
+    }
+}
+
+/** 切换账号弹窗里的一行：名称 + 地址，当前账号标注且点选只关闭弹窗不触发切换 */
+@Composable
+private fun SwitchAccountRow(
+    name: String,
+    url: String,
+    current: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                name + if (current) "（当前）" else "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (current) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                url,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        RadioButton(selected = current, onClick = onClick)
     }
 }
 
