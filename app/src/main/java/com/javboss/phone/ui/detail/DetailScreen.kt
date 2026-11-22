@@ -88,6 +88,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -1134,15 +1135,15 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
     fun showPreview(items: List<PreviewItem>, index: Int) =
         p.onPreview(PreviewState(items = items, index = index))
 
-    // 演员配色与 Web 端 detail 一致：女优 purple-100/purple-700，男优 sky-100/sky-700
-    val actressChipColors = AssistChipDefaults.assistChipColors(
-        containerColor = Color(0xFFF3E8FF),
-        labelColor = Color(0xFF7E22CE),
-    )
-    val actorChipColors = AssistChipDefaults.assistChipColors(
-        containerColor = Color(0xFFE0F2FE),
-        labelColor = Color(0xFF0369A1),
-    )
+    // 演员胶囊样式与 Web 端 detail 一致（v0.3.85）：
+    // 服务端是纯文字胶囊 `rounded-full font-medium px-2 py-1 text-xs`，
+    // 女 bg-purple-100 / text-purple-700，男 bg-sky-100 / text-sky-700，
+    // 不是 Material Chip（无描边、无内建高度、全圆角）。这里用 Box 自绘对齐。
+    val actressPillBg = Color(0xFFF3E8FF)   // purple-100
+    val actressPillFg = Color(0xFF7E22CE)   // purple-700
+    val actorPillBg = Color(0xFFE0F2FE)     // sky-100
+    val actorPillFg = Color(0xFF0369A1)     // sky-700
+    val pillShape = RoundedCornerShape(50)  // rounded-full
     // 演员（可点击）：放在片商 / 系列上面
     if (!jav?.idols.isNullOrEmpty()) {
         Spacer(Modifier.height(16.dp))
@@ -1150,13 +1151,30 @@ private fun ColumnScope.DetailExtras(p: DetailBodyParams) {
         Spacer(Modifier.height(8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             jav!!.idols.forEach { idol ->
-                AssistChip(
-                    onClick = {
-                        p.onOpenJavList("演员：${idol.displayName}", idol.id.toString(), "", 0, 0)
-                    },
-                    label = { Text(idol.displayName) },
-                    colors = if (idol.isMale) actorChipColors else actressChipColors,
-                )
+                val isMale = idol.isMale
+                Box(
+                    modifier = Modifier
+                        .clip(pillShape)
+                        .background(if (isMale) actorPillBg else actressPillBg)
+                        .clickable {
+                            p.onOpenJavList(
+                                "演员：${idol.displayName}",
+                                idol.id.toString(),
+                                "",
+                                0,
+                                0,
+                            )
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp), // px-2 py-1
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = idol.displayName,
+                        style = MaterialTheme.typography.labelSmall, // text-xs ≈ 12sp
+                        fontWeight = FontWeight.Medium,              // font-medium
+                        color = if (isMale) actorPillFg else actressPillFg,
+                    )
+                }
             }
         }
     }

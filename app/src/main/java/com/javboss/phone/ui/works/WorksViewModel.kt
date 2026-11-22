@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.javboss.phone.JavBossApp
 import com.javboss.phone.data.CoverCropRules
+import com.javboss.phone.data.PerformerSortRules
 import com.javboss.phone.data.api.AuthExpiredException
 import com.javboss.phone.data.api.dto.IdolDto
 import com.javboss.phone.data.api.dto.JavDto
@@ -259,7 +260,21 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onTabChange(tab: LibraryTab) {
         if (tab == uiState.tab) return
-        uiState = uiState.copy(tab = tab)
+        var next = uiState.copy(tab = tab)
+        // v0.3.85：服务端男优排序（Xe）只有 work/recent/birth/height 四项，
+        // 女优专属的三围/罩杯维度切到男优视角要纠正回 WORK（对齐 Web 端 `_t()`），
+        // 否则用 /jav/actors?sort=bust 请求会被服务端拒绝或返回空。
+        if (tab == LibraryTab.ACTORS) {
+            val effective = PerformerSortRules.effectiveSortName(next.idolsSort.name, isMale = true)
+            val corrected = IdolSortBase.valueOf(effective)
+            if (corrected != next.idolsSort) {
+                next = next.copy(idolsSort = corrected, idolsSortAsc = corrected.defaultAsc)
+                viewModelScope.launch {
+                    container.settings.saveIdolSort(corrected.name, corrected.defaultAsc)
+                }
+            }
+        }
+        uiState = next
         // 首次切到某视角时加载；之后沿用已加载数据，搜索变化才刷新
         when (tab) {
             LibraryTab.WORKS -> Unit
@@ -311,12 +326,16 @@ class WorksViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** 女优点排序：换维度用默认方向，点同一个维度切升降序（与作品一致） */
+    /** 女优/男优排序：换维度用默认方向，点同一个维度切升降序（与作品一致） */
     fun onIdolSortClick(base: IdolSortBase) {
-        uiState = if (uiState.idolsSort == base) {
+        // 防御性兜底：男优视角不接受三围/罩杯维度（UI 菜单已过滤，这里是双保险）
+        val safeBase = if (uiState.tab == LibraryTab.ACTORS) {
+            IdolSortBase.valueOf(PerformerSortRules.effectiveSortName(base.name, isMale = true))
+        } else base
+        uiState = if (uiState.idolsSort == safeBase) {
             uiState.copy(idolsSortAsc = !uiState.idolsSortAsc)
         } else {
-            uiState.copy(idolsSort = base, idolsSortAsc = base.defaultAsc)
+            uiState.copy(idolsSort = safeBase, idolsSortAsc = safeBase.defaultAsc)
         }
         val s = uiState
         viewModelScope.launch { container.settings.saveIdolSort(s.idolsSort.name, s.idolsSortAsc) }

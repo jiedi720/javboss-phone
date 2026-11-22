@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.javboss.phone.data.PerformerSortRules
 import com.javboss.phone.data.TagColorRules
 import com.javboss.phone.data.TagManageRules
 import com.javboss.phone.data.TagScope
@@ -463,7 +464,7 @@ fun WorksScreen(
                         },
                         onPick = { viewModel.onSortClick(JavSortBase.entries[it]) },
                     )
-                    LibraryTab.IDOLS, LibraryTab.ACTORS -> SortList(
+                    LibraryTab.IDOLS -> SortList(
                         entries = IdolSortBase.entries.map { base ->
                             val selected = state.idolsSort == base
                             val direction = if (selected) {
@@ -477,6 +478,27 @@ fun WorksScreen(
                         },
                         onPick = { viewModel.onIdolSortClick(IdolSortBase.entries[it]) },
                     )
+                    // v0.3.85：服务端男优排序只有 work/recent/birth/height（Xe），
+                    // 不显示女优专属的三围/罩杯维度，与 Web 端男优页一致。
+                    LibraryTab.ACTORS -> {
+                        val maleBases = IdolSortBase.entries.filter {
+                            PerformerSortRules.allowedForMale(it.name)
+                        }
+                        SortList(
+                            entries = maleBases.map { base ->
+                                val selected = state.idolsSort == base
+                                val direction = if (selected) {
+                                    if (state.idolsSortAsc) base.ascLabel else base.descLabel
+                                } else if (base.defaultAsc) {
+                                    base.ascLabel
+                                } else {
+                                    base.descLabel
+                                }
+                                SortEntry(base.label, selected, direction)
+                            },
+                            onPick = { viewModel.onIdolSortClick(maleBases[it]) },
+                        )
+                    }
                     else -> Unit
                 }
                 if (state.tab == LibraryTab.WORKS) {

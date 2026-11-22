@@ -8,7 +8,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/Android-客户端-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/版本-v0.3.84--modified-orange" alt="Version">
+  <img src="https://img.shields.io/badge/版本-v0.3.85--modified-orange" alt="Version">
   <img src="https://img.shields.io/badge/架构-arm64--v8a-blue" alt="ABI">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
@@ -27,7 +27,7 @@
 
 | 项目 | 当前信息 |
 | --- | --- |
-| 当前版本 | **v0.3.84-modified**（versionCode 88） |
+| 当前版本 | **v0.3.85-modified**（versionCode 89） |
 | Android 包名 | `com.javboss.modified` |
 | 应用名称 | JavBoss Modified |
 | 发布架构 | `arm64-v8a` |
@@ -1181,6 +1181,15 @@ Release APK 输出目录：`app/build/outputs/apk/release/`。
     缓存重建主界面，避免显示上一个账号的数据。
   - 单测口径 **288 例 / 33 suites** 不变（纯 UI + 复用现有切换流程）；按默认规则
     未点名 MuMu，未做装机实拍。
+
+- **男优排序对齐服务端 + 演员胶囊样式（v0.3.85）**：
+  - 男优排序：反查 dev bundle `Je`（女优 8 维）/`Ye={bust,hips,waist,cup}`/`Xe=Je-Ye`，
+    服务端男优排序只有 **work/recent/birth(年龄)/height** 四项。客户端排序菜单在男优视角只显示这 4 项；
+    从女优视角带着三围/罩杯维度切到男优时，按 Web 端 `_t()` 逻辑自动纠正回「作品数量」。
+    新增纯规则 `PerformerSortRules` + 4 例单测（口径 292 例 / 33 suites）。
+  - 演员标签：详情页演员栏从 Material AssistChip 改为服务端同款胶囊——全圆角、
+    `font-medium`、`px-2 py-1 text-xs`；女优紫底紫字（purple-100/700）、男优天蓝底蓝字（sky-100/700），
+    点击筛选作品的行为不变。按默认规则未点名 MuMu，未做装机实拍。
 
 </details>
 
